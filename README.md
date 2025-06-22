@@ -216,6 +216,46 @@ pip install -e .
 - Use `chisel sweep` to clean up old droplets automatically
 - Droplets self-destruct after 15 minutes of inactivity
 
+### Using chisel from DigitalOcean droplets
+
+If you want to use chisel from one DigitalOcean droplet to manage another (e.g., from a personal GPU droplet to a chisel-dev droplet), you need to set up SSH access:
+
+**Quick setup:**
+```bash
+# On your DigitalOcean droplet (or local machine)
+chisel ssh-setup
+```
+
+This command will:
+1. Generate an SSH key if you don't have one
+2. Show you your public key in a formatted panel
+3. **Automatically add it to your DigitalOcean account** via the API
+4. Provide instructions for manual setup if the API call fails
+
+**Example output:**
+```
+Your SSH public key (id_ed25519.pub):
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL... user@droplet                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Attempting to add SSH key to your DigitalOcean account...
+✓ Successfully added SSH key 'chisel-droplet-name-1234567890' to your DigitalOcean account!
+Now run 'chisel down' then 'chisel up' to recreate any existing droplets with this key.
+```
+
+**After setup:**
+```bash
+# Recreate any existing droplets to include your new key
+chisel down
+chisel up
+
+# Now these commands will work from your droplet
+chisel sync myfile.cpp
+chisel run "hipcc myfile.cpp && ./a.out"
+chisel profile kernel.cpp
+```
+
 ### Architecture pieces
 
 - AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly

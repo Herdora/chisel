@@ -1,5 +1,8 @@
 """Chisel CLI - A tool for managing DigitalOcean GPU droplets for HIP kernel development."""
 
+import os
+import subprocess
+import time
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
@@ -473,6 +476,103 @@ def sweep(
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command()
+def ssh_setup():
+    """Set up SSH access from current machine to chisel droplets."""
+    config = Config()
+    
+    # Check if configured
+    if not config.token:
+        console.print("[red]Error: No API token configured.[/red]")
+        console.print("[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]")
+        raise typer.Exit(1)
+    
+    # Ensure local SSH key exists
+    ssh_key_paths = [
+        (os.path.expanduser("~/.ssh/id_ed25519"), os.path.expanduser("~/.ssh/id_ed25519.pub")),
+        (os.path.expanduser("~/.ssh/id_rsa"), os.path.expanduser("~/.ssh/id_rsa.pub")),
+        (os.path.expanduser("~/.ssh/id_ecdsa"), os.path.expanduser("~/.ssh/id_ecdsa.pub")),
+    ]
+    
+    public_key_path = None
+    for _, pub_path in ssh_key_paths:
+        if os.path.exists(pub_path):
+            public_key_path = pub_path
+            break
+    
+    if not public_key_path:
+        console.print("[yellow]No SSH key found. Generating new ED25519 key...[/yellow]")
+        os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+        private_path = os.path.expanduser("~/.ssh/id_ed25519")
+        public_key_path = os.path.expanduser("~/.ssh/id_ed25519.pub")
+        
+        subprocess.run([
+            "ssh-keygen", "-t", "ed25519", "-f", private_path, "-N", "", "-q"
+        ], check=True)
+        console.print("[green]✓ Generated new SSH key[/green]")
+    
+    # Read public key
+    with open(public_key_path, 'r') as f:
+        public_key = f.read().strip()
+    
+    console.print(f"\n[cyan]Your SSH public key ({os.path.basename(public_key_path)}):[/cyan]")
+    console.print(Panel(public_key, border_style="green"))
+    
+    # Check if we're on a DigitalOcean droplet
+    try:
+        import requests
+        response = requests.get("http://169.254.169.254/metadata/v1/id", timeout=1)
+        is_on_do_droplet = response.status_code == 200
+    except:
+        is_on_do_droplet = False
+    
+    if is_on_do_droplet:
+        console.print("\n[yellow]You're running on a DigitalOcean droplet![/yellow]")
+        console.print("\n[cyan]To use chisel from this droplet:[/cyan]")
+        console.print("1. If automatic addition fails, manually add the SSH key:")
+        console.print("   - Go to: https://amd.digitalocean.com/account/keys")
+        console.print("   - Click 'Add SSH Key'")
+        console.print("   - Paste the key and give it a name (e.g., 'chisel-droplet')")
+        console.print("2. Run 'chisel down' to destroy any existing chisel-dev droplet")
+        console.print("3. Run 'chisel up' to create a new droplet with your key")
+        console.print("\n[green]Then you'll be able to use chisel sync/run/profile from this droplet![/green]")
+    else:
+        console.print("\n[cyan]If automatic addition fails, manually add this key:[/cyan]")
+        console.print("1. Go to: https://amd.digitalocean.com/account/keys")
+        console.print("2. Click 'Add SSH Key'")
+        console.print("3. Paste the key above and give it a name")
+        console.print("4. Future droplets created with 'chisel up' will include this key")
+    
+    # Try to add key to DO account via API
+    console.print("\n[cyan]Attempting to add SSH key to your DigitalOcean account...[/cyan]")
+    try:
+        do_client = DOClient(config.token)
+        key_name = f"chisel-{os.uname().nodename}-{int(time.time())}"
+        
+        response = do_client.client.ssh_keys.create(body={
+            "name": key_name,
+            "public_key": public_key
+        })
+        
+        if response and "ssh_key" in response:
+            console.print(f"[green]✓ Successfully added SSH key '{key_name}' to your DigitalOcean account![/green]")
+            if is_on_do_droplet:
+                console.print("[yellow]Now run 'chisel down' then 'chisel up' to recreate any existing droplets with this key.[/yellow]")
+            else:
+                console.print("[yellow]Future droplets created with 'chisel up' will include this key.[/yellow]")
+        else:
+            console.print("[red]✗ Failed to add SSH key to DigitalOcean account[/red]")
+            console.print("[yellow]Please add it manually using the instructions above.[/yellow]")
+    except Exception as e:
+        if "already in use" in str(e).lower() or "ssh key is already in use" in str(e).lower():
+            console.print("[green]✓ This SSH key is already in your DigitalOcean account[/green]")
+            if is_on_do_droplet:
+                console.print("[yellow]If chisel sync/run still fails, run 'chisel down' then 'chisel up' to recreate the droplet.[/yellow]")
+        else:
+            console.print(f"[red]✗ Could not automatically add key to DigitalOcean account: {e}[/red]")
+            console.print("[yellow]Please add it manually using the instructions above.[/yellow]")
 
 
 @app.command()

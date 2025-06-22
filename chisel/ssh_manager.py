@@ -47,10 +47,81 @@ class InterruptHandler:
 class SSHManager:
     def __init__(self):
         self.state = State()
+        self._ensure_local_ssh_key()
         
     def get_droplet_info(self) -> Optional[Dict[str, Any]]:
         """Get droplet info from state."""
         return self.state.get_droplet_info()
+    
+    def _ensure_local_ssh_key(self) -> Optional[str]:
+        """Ensure local SSH key exists and return path to public key."""
+        ssh_key_paths = [
+            (os.path.expanduser("~/.ssh/id_ed25519"), os.path.expanduser("~/.ssh/id_ed25519.pub")),
+            (os.path.expanduser("~/.ssh/id_rsa"), os.path.expanduser("~/.ssh/id_rsa.pub")),
+            (os.path.expanduser("~/.ssh/id_ecdsa"), os.path.expanduser("~/.ssh/id_ecdsa.pub")),
+        ]
+        
+        # Check for existing keys
+        for private_path, public_path in ssh_key_paths:
+            if os.path.exists(private_path) and os.path.exists(public_path):
+                return public_path
+        
+        # Generate new ED25519 key if none exist
+        try:
+            private_path = os.path.expanduser("~/.ssh/id_ed25519")
+            public_path = os.path.expanduser("~/.ssh/id_ed25519.pub")
+            
+            # Ensure .ssh directory exists
+            os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+            
+            # Generate key
+            subprocess.run([
+                "ssh-keygen", "-t", "ed25519", "-f", private_path, "-N", "", "-q"
+            ], check=True, capture_output=True)
+            
+            console.print("[green]Generated new SSH key[/green]")
+            return public_path
+        except Exception:
+            return None
+    
+    def _ensure_ssh_access(self, ip: str) -> bool:
+        """Ensure we can SSH to the droplet, adding our key if necessary."""
+        # First, try to connect
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(ip, username="root", timeout=5)
+            ssh.close()
+            return True
+        except paramiko.AuthenticationException:
+            # Authentication failed
+            console.print("[red]SSH authentication failed.[/red]")
+            
+            # Get local SSH public key
+            public_key_path = self._ensure_local_ssh_key()
+            if not public_key_path or not os.path.exists(public_key_path):
+                console.print("[red]No SSH key found. Generating one...[/red]")
+                return False
+            
+            with open(public_key_path, 'r') as f:
+                public_key = f.read().strip()
+            
+            console.print(f"\n[yellow]To enable SSH access from this machine to the droplet:[/yellow]")
+            console.print(f"\n[cyan]Option 1: Add your SSH key to DigitalOcean and recreate the droplet:[/cyan]")
+            console.print(f"1. Go to: https://amd.digitalocean.com/account/keys")
+            console.print(f"2. Click 'Add SSH Key'")
+            console.print(f"3. Paste this key and give it a name:")
+            console.print(f"\n[white]{public_key}[/white]\n")
+            console.print(f"4. Run 'chisel down' then 'chisel up' to recreate the droplet with your key")
+            
+            console.print(f"\n[cyan]Option 2: Manually add the key to the existing droplet:[/cyan]")
+            console.print(f"1. SSH into the droplet from a machine that has access")
+            console.print(f"2. Run: echo '{public_key}' >> ~/.ssh/authorized_keys")
+            
+            return False
+        except Exception as e:
+            console.print(f"[red]SSH connection error: {e}[/red]")
+            return False
     
     def _show_cost_warning(self) -> None:
         """Show cost warning if droplet has been running for a while."""
@@ -71,6 +142,11 @@ class SSHManager:
         
         # Show cost warning
         self._show_cost_warning()
+        
+        # Ensure SSH access
+        ip = droplet_info["ip"]
+        if not self._ensure_ssh_access(ip):
+            return False
             
         # Default destination
         if destination is None:

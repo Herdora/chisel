@@ -26,13 +26,66 @@ class DropletManager:
         )
 
     def get_ssh_keys(self) -> List[int]:
-        """Get all SSH key IDs from DO account."""
+        """Get all SSH key IDs from DO account, including current droplet's key if on DO."""
+        ssh_key_ids = []
+        
         try:
+            # Get existing keys from DO account
             response = self.client.client.ssh_keys.list()
             keys = response.get("ssh_keys", [])
-            return [key["id"] for key in keys]
+            ssh_key_ids = [key["id"] for key in keys]
         except Exception:
-            return []
+            pass
+        
+        # Check if we're running on a DigitalOcean droplet and add local SSH key
+        try:
+            import requests
+            # Check DO metadata service
+            metadata_response = requests.get(
+                "http://169.254.169.254/metadata/v1/id",
+                timeout=1
+            )
+            if metadata_response.status_code == 200:
+                # We're on a DO droplet - check for local SSH keys
+                import os
+                ssh_pub_paths = [
+                    os.path.expanduser("~/.ssh/id_rsa.pub"),
+                    os.path.expanduser("~/.ssh/id_ed25519.pub"),
+                    os.path.expanduser("~/.ssh/id_ecdsa.pub"),
+                ]
+                
+                for pub_path in ssh_pub_paths:
+                    if os.path.exists(pub_path):
+                        with open(pub_path, 'r') as f:
+                            pub_key_content = f.read().strip()
+                        
+                        # Add this key to DO account temporarily
+                        try:
+                            key_name = f"chisel-temp-{os.path.basename(pub_path)}-{int(time.time())}"
+                            key_response = self.client.client.ssh_keys.create(
+                                body={
+                                    "name": key_name,
+                                    "public_key": pub_key_content
+                                }
+                            )
+                            if key_response and "ssh_key" in key_response:
+                                ssh_key_ids.append(key_response["ssh_key"]["id"])
+                                console.print(f"[green]Added local SSH key to droplet[/green]")
+                        except Exception as e:
+                            # Key might already exist, try to find it
+                            if "already in use" in str(e):
+                                # Find the existing key
+                                for key in keys:
+                                    if key.get("public_key", "").strip() == pub_key_content:
+                                        if key["id"] not in ssh_key_ids:
+                                            ssh_key_ids.append(key["id"])
+                                        break
+                        break  # Only add first found key
+        except Exception:
+            # Not on DO droplet or can't access metadata, continue normally
+            pass
+        
+        return ssh_key_ids
 
     def find_existing_droplet(self) -> Optional[Dict[str, Any]]:
         """Find existing chisel-dev droplet."""
