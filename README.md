@@ -5,12 +5,32 @@
 
 ### CLI interface
 
-1. set up
-	- `chisel configure`
-	- This will prompt your DigitalOcean API token if one is not set.
-	- To get your API token, go here: [digitalocean.com/api](https://amd.digitalocean.com/account/api/)
-	- Here's a guide on creating a token: [guide](https://docs.digitalocean.com/reference/api/create-personal-access-token/)
-	- this stores token in ~/.config/chisel/config.toml; verify quota.
+1. **Configuration**
+	- `chisel configure` - Set up your DigitalOcean API credentials
+	
+	**Usage:**
+	```bash
+	# Interactive configuration (recommended for first-time setup)
+	chisel configure
+	
+	# Non-interactive with token
+	chisel configure --token YOUR_DIGITALOCEAN_TOKEN
+	```
+	
+	**Features:**
+	- Prompts for your DigitalOcean API token if not already configured
+	- Validates the token with DigitalOcean's API before saving
+	- Displays your account information and current balance
+	- Stores the token securely in `~/.config/chisel/config.toml`
+	- Supports environment variable override via `CHISEL_DO_TOKEN`
+	
+	**Getting your API token:**
+	1. Visit [DigitalOcean API Tokens](https://cloud.digitalocean.com/account/api/)
+	2. Click "Generate New Token"
+	3. Give it a name (e.g., "chisel-cli") and ensure it has **read and write** access
+	4. Copy the token immediately (you won't be able to see it again)
+	
+	For detailed instructions, see the [official guide](https://docs.digitalocean.com/reference/api/create-personal-access-token/).
 
 2. spin-up
 	- `chisel up`
@@ -72,8 +92,7 @@ Miscallenous:
 
 |TODO | Deliverable                                                 |
 | --- | ----------------------------------------------------------- |
-| [ ] |	`chisel configure`,					    |
-| [ ] |	`chisel auth` + DO token validation, skeleton Typer CLI.    |
+| [x] |	`chisel configure` - DO token validation, config storage     |
 | [ ] | `chisel up` / `down`, cloud-init basics, state cache.       |
 | [ ] | `sync` + `run` (blocking), colored log streaming.           |
 | [ ] | `profile` milestone	                                    |
