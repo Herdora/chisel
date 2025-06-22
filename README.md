@@ -279,20 +279,13 @@ chisel profile kernel.cpp
 7. **Cost guardrails** – warn if droplet has been alive >N hours; `chisel sweep` to nuke zombies.
 
 
-### TODO list
-
-|TODO | Deliverable                                                 |
-| --- | ----------------------------------------------------------- |
-| [x] |	`chisel configure` - DO token validation, config storage     |
-| [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
-| [x] | `sync` + `run` (blocking), colored log streaming.           |
-| [x] | `profile` - rocprof integration, result parsing, Perfetto.  |
-| [x] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
-| [x] | Cost warnings, README with install script, publish to PyPI. |
-
 ### Future
 
 - concurrent runs (non-blocking sync and run) 
+- multi-cloud
+- support NVIDIA (to run nsight-compute profiling)
+- support other cloud backends (Prime Intellect, Lambda, Hyperstack) 
+- add Grafana support
 
 
 
