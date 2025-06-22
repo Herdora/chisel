@@ -25,24 +25,51 @@
 	
 	For detailed instructions, see the [official guide](https://docs.digitalocean.com/reference/api/create-personal-access-token/).
 
-2. spin-up
-	- `chisel up`
-	- check for existing 'chisel-dev' droplet
-	- if none, call DO API to create `gpu-mi300x1-192gb`, inject user SSH key, boot
+2. **Spin up GPU droplet**
+	- `chisel up` - Create or reuse a GPU-accelerated droplet
+	
+	**Usage:**
+	```bash
+	chisel up
+	```
+	
+	**What it does:**
+	- Checks for existing 'chisel-dev' droplet
+	- If none exists, creates a new droplet with:
+	  - Size: `gpu-mi300x1-192gb` (AMD MI300X GPU)
+	  - Image: Ubuntu 22.04 LTS
+	  - Region: ATL1 (where AMD GPUs are available)
+	  - SSH keys: Automatically injects all keys from your DO account
+	- Waits for droplet to be ready and SSH accessible
+	- Displays connection information
 
-3. sync code
+3. **List droplets**
+	- `chisel list` - Show all chisel droplets
+	
+	**Usage:**
+	```bash
+	chisel list
+	```
+	
+	**Shows:**
+	- All active chisel droplets with their status
+	- IP addresses for SSH access
+	- Region, size, and creation time
+	- Current active droplet from local state
+
+4. sync code
 	- `chisel sync hip-kernel-file`
 	- pushes your local kernel source tree to the droplet (only the files that changed)
 
-4. run test
+5. run test
 	- e.g. `chisel run make && ./bench.sh`
 	- ssh exec the given command, stream stdoud/sterr, return exit code; etc.
 
-5. grab artifacts
+6. grab artifacts
 	- `chisel pull out/`
 	- SCP back to `./out` locally
 
-6. profile your kernel
+7. profile your kernel
 	- `chisel profile <cmd> [--trace hip,hsa,roctx] [--out DIR] [--open]`
 	- `rocprof -d /tmp/chisel_profile --hip-trace --hsa-trace --stats ./bench.sh → generates results.csv, results.stats.csv, and a Chrome-trace JSON.`
 	- `tar -czf /tmp/chisel_profile.tgz -C /tmp chisel_profile`
@@ -50,9 +77,19 @@
 	- read results sort by total time and prints top N hottest kernels
 	- or you can run `chisel profile --open`: same as above plus auto launch w/ perfetto
 
-7. stop billing
-	- `chisel down`
-	- power-off the droplet
+8. **Stop billing**
+	- `chisel down` - Destroy the droplet to stop charges
+	
+	**Usage:**
+	```bash
+	chisel down
+	```
+	
+	**What it does:**
+	- Prompts for confirmation before destroying
+	- Completely removes the droplet (not just powered off)
+	- Clears local state cache
+	- Stops all billing immediately
 
 Miscallenous:
 	- If no requests in 15 minutes, droplet will destroy itself
@@ -86,7 +123,7 @@ Miscallenous:
 |TODO | Deliverable                                                 |
 | --- | ----------------------------------------------------------- |
 | [x] |	`chisel configure` - DO token validation, config storage     |
-| [ ] | `chisel up` / `down`, cloud-init basics, state cache.       |
+| [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
 | [ ] | `sync` + `run` (blocking), colored log streaming.           |
 | [ ] | `profile` milestone	                                    |
 | [ ] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
