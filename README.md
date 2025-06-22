@@ -7,14 +7,21 @@
 
 ### Setup
 
-**With uv:**
+**From PyPI (recommended):**
+```bash
+pip install chisel-cli
+```
+
+**Development setup:**
+
+*With uv:*
 ```bash
 uv sync
 # Note: prefix all chisel commands with 'uv run'
 uv run chisel <command>  
 ```
 
-**venv:**
+*With venv:*
 ```bash
 pip install -e .
 ```
