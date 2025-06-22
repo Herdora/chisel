@@ -3,6 +3,8 @@
 import os
 import subprocess
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -146,3 +148,222 @@ class SSHManager:
             return 1
         finally:
             ssh.close()
+    
+    def profile(self, command: str, trace: str = "hip,hsa", output_dir: str = "./out", open_result: bool = False) -> Optional[str]:
+        """Profile a command with rocprof and pull results locally."""
+        droplet_info = self.get_droplet_info()
+        if not droplet_info:
+            console.print("[red]Error: No active droplet found[/red]")
+            console.print("[yellow]Run 'chisel up' first to create a droplet[/yellow]")
+            return None
+            
+        ip = droplet_info["ip"]
+        
+        # Create remote profile directory
+        remote_profile_dir = "/tmp/chisel_profile"
+        
+        # Build rocprof command
+        trace_flags = []
+        if "hip" in trace:
+            trace_flags.append("--hip-trace")
+        if "hsa" in trace:
+            trace_flags.append("--hsa-trace")
+        if "roctx" in trace:
+            trace_flags.append("--roctx-trace")
+        
+        trace_flags.append("--stats")
+        
+        # Create the profile command  
+        profile_cmd = f"""
+        rm -rf {remote_profile_dir} && 
+        mkdir -p {remote_profile_dir} && 
+        cd {remote_profile_dir} && 
+        rocprof -d {remote_profile_dir} {' '.join(trace_flags)} -o results.csv {command}
+        """
+        
+        console.print(f"[cyan]Profiling on {ip}: {command}[/cyan]")
+        console.print(f"[cyan]Trace options: {trace}[/cyan]")
+        
+        # Execute profiling
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        try:
+            # Connect and run profiling
+            ssh.connect(ip, username="root", timeout=10)
+            
+            # Run profiling command
+            stdin, stdout, stderr = ssh.exec_command(profile_cmd, get_pty=True)
+            
+            # Stream output
+            channel = stdout.channel
+            while True:
+                if channel.recv_ready():
+                    data = channel.recv(1024).decode('utf-8', errors='replace')
+                    if data:
+                        console.print(data, end='')
+                        
+                if channel.recv_stderr_ready():
+                    data = channel.recv_stderr(1024).decode('utf-8', errors='replace')
+                    if data:
+                        console.print(f"[yellow]{data}[/yellow]", end='')
+                        
+                if channel.exit_status_ready():
+                    break
+                    
+            exit_code = channel.recv_exit_status()
+            
+            if exit_code != 0:
+                console.print(f"\n[red]Profiling failed with exit code {exit_code}[/red]")
+                return None
+            
+            console.print("\n[green]✓ Profiling completed[/green]")
+            
+            # Create archive on remote
+            archive_cmd = f"cd /tmp && tar -czf chisel_profile.tgz chisel_profile"
+            stdin, stdout, stderr = ssh.exec_command(archive_cmd)
+            
+            archive_exit_code = stdout.channel.recv_exit_status()
+            if archive_exit_code != 0:
+                console.print("[red]Error: Failed to create archive[/red]")
+                return None
+            
+            console.print("[cyan]Pulling results to local machine...[/cyan]")
+            
+            # Pull archive using scp
+            local_output_dir = Path(output_dir)
+            local_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            local_archive_path = local_output_dir / "chisel_profile.tgz"
+            
+            # Use scp to download
+            scp_cmd = [
+                "scp", 
+                "-o", "StrictHostKeyChecking=no",
+                f"root@{ip}:/tmp/chisel_profile.tgz",
+                str(local_archive_path)
+            ]
+            
+            result = subprocess.run(scp_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                console.print(f"[red]Error: Failed to download archive: {result.stderr}[/red]")
+                return None
+            
+            # Extract archive
+            with tarfile.open(local_archive_path, 'r:gz') as tar:
+                tar.extractall(local_output_dir)
+            
+            # Clean up archive
+            local_archive_path.unlink()
+            
+            # Clean up remote files
+            cleanup_cmd = f"rm -rf {remote_profile_dir} /tmp/chisel_profile.tgz"
+            ssh.exec_command(cleanup_cmd)
+            
+            console.print(f"[green]✓ Profile results saved to {local_output_dir / 'chisel_profile'}[/green]")
+            
+            # Show summary if results files exist (try JSON first, then CSV)
+            json_file = local_output_dir / "chisel_profile" / "results.json"
+            csv_file = local_output_dir / "chisel_profile" / "results.csv"
+            stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
+            
+            if json_file.exists():
+                self._show_profile_summary(json_file)
+            elif csv_file.exists():
+                self._show_profile_summary(csv_file)
+            elif stats_csv_file.exists():
+                self._show_profile_summary(stats_csv_file)
+            
+            return str(local_output_dir / "chisel_profile")
+            
+        except Exception as e:
+            console.print(f"[red]Error during profiling: {e}[/red]")
+            return None
+        finally:
+            ssh.close()
+    
+    def _show_profile_summary(self, stats_file: Path) -> None:
+        """Show a summary of the profiling results."""
+        try:
+            import json
+            
+            console.print("\n[cyan]Top GPU Kernels by Total Time:[/cyan]")
+            
+            # Try to parse as JSON trace format
+            if stats_file.suffix == '.json' or stats_file.name == 'results.json':
+                with open(stats_file, 'r') as f:
+                    data = json.load(f)
+                
+                kernels = []
+                for event in data.get('traceEvents', []):
+                    if (event.get('ph') == 'X' and 
+                        'pid' in event and 
+                        event.get('pid') in [6, 7] and  # GPU pids
+                        'DurationNs' in event.get('args', {})):
+                        
+                        kernel_name = event.get('name', '')
+                        duration_ns = int(event['args']['DurationNs'])
+                        
+                        kernels.append({
+                            'name': kernel_name,
+                            'total_time': duration_ns / 1_000_000,  # Convert to ms
+                            'duration_ns': duration_ns
+                        })
+                
+                # Sort by total time
+                kernels.sort(key=lambda x: x['total_time'], reverse=True)
+                
+                # Show kernels
+                for i, kernel in enumerate(kernels):
+                    console.print(f"  {i+1:2d}. {kernel['name'][:60]:<60} {kernel['total_time']:8.3f} ms")
+                
+                # Also show top HIP API calls
+                hip_calls = []
+                for event in data.get('traceEvents', []):
+                    if (event.get('ph') == 'X' and 
+                        event.get('pid') == 2 and  # CPU HIP API pid
+                        'DurationNs' in event.get('args', {})):
+                        
+                        api_name = event.get('name', '')
+                        duration_ns = int(event['args']['DurationNs'])
+                        
+                        hip_calls.append({
+                            'name': api_name,
+                            'total_time': duration_ns / 1_000_000,  # Convert to ms
+                            'duration_ns': duration_ns
+                        })
+                
+                # Sort by total time  
+                hip_calls.sort(key=lambda x: x['total_time'], reverse=True)
+                
+                if hip_calls:
+                    console.print("\n[cyan]Top HIP API Calls by Total Time:[/cyan]")
+                    for i, call in enumerate(hip_calls[:5]):
+                        console.print(f"  {i+1:2d}. {call['name'][:60]:<60} {call['total_time']:8.3f} ms")
+                
+            else:
+                # Try CSV format
+                import csv
+                kernels = []
+                with open(stats_file, 'r') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if 'KernelName' in row and 'TotalDurationNs' in row:
+                            kernels.append({
+                                'name': row['KernelName'],
+                                'total_time': float(row['TotalDurationNs']) / 1_000_000,  # Convert to ms
+                                'calls': int(row.get('Calls', 0))
+                            })
+                
+                # Sort by total time
+                kernels.sort(key=lambda x: x['total_time'], reverse=True)
+                
+                # Show top 10
+                for i, kernel in enumerate(kernels[:10]):
+                    console.print(f"  {i+1:2d}. {kernel['name'][:60]:<60} {kernel['total_time']:8.2f} ms ({kernel['calls']} calls)")
+                
+                if len(kernels) > 10:
+                    console.print(f"  ... and {len(kernels) - 10} more kernels")
+                
+        except Exception as e:
+            console.print(f"[yellow]Could not parse profile summary: {e}[/yellow]")

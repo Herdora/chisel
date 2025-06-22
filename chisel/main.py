@@ -259,6 +259,81 @@ def run(
 
 
 @app.command()
+def profile(
+    command_or_file: str = typer.Argument(..., help="Command to profile, or source file (e.g., 'simple-mm.cpp')"),
+    trace: Optional[str] = typer.Option("hip,hsa", "--trace", help="Trace options (hip,hsa,roctx)"),
+    output_dir: Optional[str] = typer.Option("./out", "--out", help="Local output directory"),
+    open_result: bool = typer.Option(False, "--open", help="Auto-open results with perfetto"),
+    compiler_args: Optional[str] = typer.Option("", "--args", help="Additional compiler arguments (for source files)")
+):
+    """Profile a command or source file with rocprof and pull results locally.
+    
+    Examples:
+        chisel profile simple-mm.cpp              # Auto-compile and profile
+        chisel profile "/tmp/my-binary"           # Profile existing binary
+        chisel profile "ls -la"                   # Profile any command
+        chisel profile kernel.cpp --args "-O3"   # Custom compiler flags
+    """
+    try:
+        ssh_manager = SSHManager()
+        
+        # Check if it's a source file
+        if (command_or_file.endswith(('.cpp', '.c', '.hip', '.cu')) and 
+            not command_or_file.startswith('/')):
+            
+            # It's a source file - sync and compile first
+            from pathlib import Path
+            source_file = Path(command_or_file)
+            
+            if not source_file.exists():
+                console.print(f"[red]Error: Source file '{command_or_file}' not found[/red]")
+                raise typer.Exit(1)
+            
+            # Sync the source file
+            console.print(f"[cyan]Syncing {command_or_file}...[/cyan]")
+            if not ssh_manager.sync(str(source_file)):
+                console.print("[red]Error: Failed to sync source file[/red]")
+                raise typer.Exit(1)
+            
+            # Determine compiler and remote paths
+            remote_source = f"/root/chisel/{source_file.name}"
+            remote_binary = f"/tmp/{source_file.stem}"
+            
+            if source_file.suffix in ['.cpp', '.hip']:
+                compiler = "hipcc"
+            elif source_file.suffix == '.cu':
+                compiler = "nvcc"  # For CUDA files
+            else:
+                compiler = "gcc"   # For .c files
+            
+            # Build compile and run command
+            compile_cmd = f"{compiler} {remote_source} -o {remote_binary}"
+            if compiler_args:
+                compile_cmd += f" {compiler_args}"
+            
+            full_command = f"{compile_cmd} && {remote_binary}"
+            
+            console.print(f"[cyan]Compiling with: {compile_cmd}[/cyan]")
+            
+        else:
+            # It's a direct command
+            full_command = command_or_file
+        
+        # Profile the command
+        local_archive = ssh_manager.profile(full_command, trace, output_dir, open_result)
+        
+        if local_archive and open_result:
+            console.print(f"[cyan]Opening results with perfetto...[/cyan]")
+            import webbrowser
+            webbrowser.open("https://ui.perfetto.dev/")
+            console.print("[yellow]Load the trace file in perfetto to visualize the results[/yellow]")
+        
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def version():
     """Show Chisel version."""
     from chisel import __version__
