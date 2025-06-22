@@ -99,19 +99,7 @@
 	- Handles both stdout and stderr
 	- Works with interactive commands
 
-6. **Grab artifacts** (TODO)
-	- `chisel pull out/`
-	- SCP back to `./out` locally
-
-7. **Profile your kernel** (TODO)
-	- `chisel profile <cmd> [--trace hip,hsa,roctx] [--out DIR] [--open]`
-	- `rocprof -d /tmp/chisel_profile --hip-trace --hsa-trace --stats ./bench.sh → generates results.csv, results.stats.csv, and a Chrome-trace JSON.`
-	- `tar -czf /tmp/chisel_profile.tgz -C /tmp chisel_profile`
-	- copies the archive back to local
-	- read results sort by total time and prints top N hottest kernels
-	- or you can run `chisel profile --open`: same as above plus auto launch w/ perfetto
-
-8. **Stop billing**
+6. **Stop billing**
 	- `chisel down` - Destroy the droplet to stop charges
 	
 	**Usage:**
@@ -159,13 +147,19 @@ Miscallenous:
 | [x] |	`chisel configure` - DO token validation, config storage     |
 | [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
 | [x] | `sync` + `run` (blocking), colored log streaming.           |
-| [ ] | `profile` milestone	                                    |
 | [ ] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
 | [ ] | Cost warnings, README with install script, publish to PyPI. |
 
 ### Future
 
-- concurrent runs (non-blocking sync and run) 
+- concurrent runs (non-blocking sync and run)
+- **Profile your kernel**
+	- `chisel profile <cmd> [--trace hip,hsa,roctx] [--out DIR] [--open]`
+	- `rocprof -d /tmp/chisel_profile --hip-trace --hsa-trace --stats ./bench.sh → generates results.csv, results.stats.csv, and a Chrome-trace JSON.`
+	- `tar -czf /tmp/chisel_profile.tgz -C /tmp chisel_profile`
+	- copies the archive back to local
+	- read results sort by total time and prints top N hottest kernels
+	- or you can run `chisel profile --open`: same as above plus auto launch w/ perfetto 
 
 
 
