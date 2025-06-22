@@ -3,6 +3,8 @@
 	<h1>chisel</h1>
 </div>
 
+**TL;DR:** A CLI tool for developing AMD GPU kernels on DigitalOcean. Spins up GPU droplets, syncs code, runs/profiles HIP kernels with rocprof, and pulls results back locally. Zero GPU hardware required—just write, test, and profile AMD GPU code from your laptop.
+
 ### Setup
 
 **Regular environment:**
