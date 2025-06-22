@@ -17,13 +17,6 @@
 	chisel configure --token YOUR_DIGITALOCEAN_TOKEN
 	```
 	
-	**Features:**
-	- Prompts for your DigitalOcean API token if not already configured
-	- Validates the token with DigitalOcean's API before saving
-	- Displays your account information and current balance
-	- Stores the token securely in `~/.config/chisel/config.toml`
-	- Supports environment variable override via `CHISEL_DO_TOKEN`
-	
 	**Getting your API token:**
 	1. Visit [DigitalOcean API Tokens](https://cloud.digitalocean.com/account/api/)
 	2. Click "Generate New Token"
