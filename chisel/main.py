@@ -9,6 +9,7 @@ from typing import Optional
 
 from chisel.config import Config
 from chisel.do_client import DOClient
+from chisel.droplet import DropletManager
 
 app = typer.Typer(
     name="chisel",
@@ -102,6 +103,73 @@ def configure(
     except Exception as e:
         console.print(f"[red]Error validating token: {e}[/red]")
         console.print("[yellow]Please ensure you have a valid DigitalOcean API token with read and write permissions.[/yellow]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def up():
+    """Create or reuse a GPU droplet for development."""
+    config = Config()
+    
+    # Check if configured
+    if not config.token:
+        console.print("[red]Error: No API token configured.[/red]")
+        console.print("[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize clients
+        do_client = DOClient(config.token)
+        droplet_manager = DropletManager(do_client)
+        
+        # Create or find droplet
+        droplet = droplet_manager.up()
+        
+        # Display success info
+        console.print("\n[green]✓ Droplet is ready![/green]")
+        console.print(f"[cyan]Name:[/cyan] {droplet['name']}")
+        console.print(f"[cyan]IP:[/cyan] {droplet.get('ip', 'N/A')}")
+        console.print(f"[cyan]Region:[/cyan] {droplet['region']['slug']}")
+        console.print(f"[cyan]Size:[/cyan] {droplet['size']['slug']}")
+        console.print(f"\n[yellow]SSH:[/yellow] ssh root@{droplet.get('ip', 'N/A')}")
+        
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def down():
+    """Destroy the current droplet to stop billing."""
+    config = Config()
+    
+    # Check if configured
+    if not config.token:
+        console.print("[red]Error: No API token configured.[/red]")
+        console.print("[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize clients
+        do_client = DOClient(config.token)
+        droplet_manager = DropletManager(do_client)
+        
+        # Confirm destruction
+        confirm = Prompt.ask(
+            "[yellow]Are you sure you want to destroy the droplet?[/yellow]",
+            choices=["y", "n"],
+            default="n"
+        )
+        
+        if confirm.lower() == "y":
+            success = droplet_manager.down()
+            if not success:
+                raise typer.Exit(1)
+        else:
+            console.print("[yellow]Cancelled[/yellow]")
+            
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
 
