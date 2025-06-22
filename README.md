@@ -7,19 +7,19 @@
 
 ### Setup
 
-**Regular environment:**
-```bash
-pip install -e .
-```
-
 **With uv:**
 ```bash
 uv sync
 # Note: prefix all chisel commands with 'uv run'
-uv run chisel configure
+uv run chisel <command>  
 ```
 
-### CLI interface
+**venv:**
+```bash
+pip install -e .
+```
+
+### How to use 
 
 1. **Configuration**
 	- `chisel configure` - Set up your DigitalOcean API credentials
