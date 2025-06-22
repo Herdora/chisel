@@ -145,7 +145,49 @@ uv run chisel configure
 	- Displays summary of top kernel hotspots
 	- Optionally opens Chrome trace in Perfetto
 
-7. **Stop billing**
+7. **Pull artifacts**
+	- `chisel pull` - Pull files or directories from the droplet to local machine
+	
+	**Usage:**
+	```bash
+	# Pull a specific file to current directory
+	chisel pull /tmp/results.txt
+	
+	# Pull to a specific local path
+	chisel pull /tmp/logs/ --local ./local_logs/
+	
+	# Pull compiled binary
+	chisel pull /root/chisel/my-binary --local ./my-binary
+	```
+	
+	**What it does:**
+	- Pulls any file or directory from the remote droplet
+	- Automatically handles files vs directories
+	- Creates local destination directories as needed
+	- Shows progress and confirmation
+
+8. **Clean up old droplets**
+	- `chisel sweep` - Clean up droplets that have been running too long
+	
+	**Usage:**
+	```bash
+	# Clean up droplets older than 6 hours (default)
+	chisel sweep
+	
+	# Custom time threshold
+	chisel sweep --hours 12
+	
+	# Auto-confirm without prompting
+	chisel sweep --yes
+	```
+	
+	**What it does:**
+	- Shows all droplets with uptime and estimated costs
+	- Identifies droplets running longer than specified threshold
+	- Prompts for confirmation before destroying old droplets
+	- Clears local state if active droplet was destroyed
+
+9. **Stop billing**
 	- `chisel down` - Destroy the droplet to stop charges
 	
 	**Usage:**
@@ -159,11 +201,13 @@ uv run chisel configure
 	- Clears local state cache
 	- Stops all billing immediately
 
-Miscallenous:
-	- If no requests in 15 minutes, droplet will destroy itself
+**Cost Management:**
+- Cost warnings appear when droplets run longer than 12 hours
+- Estimated at $1.99/hour for AMD MI300X GPU droplets
+- Use `chisel sweep` to clean up old droplets automatically
+- Droplets self-destruct after 15 minutes of inactivity
 
 ### Architecture pieces
-
 
 - AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly
 - Use DigitalOcean's `pydo` to create / destroy nodes
@@ -194,8 +238,8 @@ Miscallenous:
 | [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
 | [x] | `sync` + `run` (blocking), colored log streaming.           |
 | [x] | `profile` - rocprof integration, result parsing, Perfetto.  |
-| [ ] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
-| [ ] | Cost warnings, README with install script, publish to PyPI. |
+| [x] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
+| [x] | Cost warnings, README with install script, publish to PyPI. |
 
 ### Future
 

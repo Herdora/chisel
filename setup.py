@@ -11,7 +11,14 @@ setup(
         "pydo>=0.4.0",
         "toml>=0.10.2",
         "rich>=14.0.0",
+        "paramiko>=2.8.0",
     ],
+    extras_require={
+        "dev": [
+            "pytest>=6.0.0",
+            "pytest-mock>=3.6.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "chisel=chisel.main:main",

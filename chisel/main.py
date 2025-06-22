@@ -334,6 +334,148 @@ def profile(
 
 
 @app.command()
+def pull(
+    remote_path: str = typer.Argument(..., help="Remote file or directory path to pull"),
+    local_path: Optional[str] = typer.Option(None, "--local", "-l", help="Local destination path (default: current directory)")
+):
+    """Pull files or directories from the droplet to local machine."""
+    try:
+        ssh_manager = SSHManager()
+        success = ssh_manager.pull(remote_path, local_path)
+        if not success:
+            raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def sweep(
+    hours: float = typer.Option(6.0, "--hours", help="Droplets older than this many hours will be flagged for cleanup"),
+    auto_confirm: bool = typer.Option(False, "--yes", "-y", help="Auto-confirm destruction without prompting")
+):
+    """Clean up old droplets that have been running too long."""
+    config = Config()
+    
+    # Check if configured
+    if not config.token:
+        console.print("[red]Error: No API token configured.[/red]")
+        console.print("[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize clients
+        do_client = DOClient(config.token)
+        droplet_manager = DropletManager(do_client)
+        
+        # Get all droplets
+        droplets = droplet_manager.list_droplets()
+        
+        if not droplets:
+            console.print("[yellow]No chisel droplets found[/yellow]")
+            return
+        
+        # Calculate costs and filter old droplets
+        old_droplets = []
+        total_estimated_cost = 0.0
+        
+        for droplet in droplets:
+            try:
+                from datetime import datetime, timezone
+                created_at = datetime.fromisoformat(droplet["created_at"].replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                uptime_hours = (now - created_at).total_seconds() / 3600
+                cost = uptime_hours * 1.99  # $1.99/hour for gpu-mi300x1-192gb
+                
+                if uptime_hours >= hours:
+                    old_droplets.append({
+                        'droplet': droplet,
+                        'uptime_hours': uptime_hours,
+                        'cost': cost
+                    })
+                
+                total_estimated_cost += cost
+                    
+            except Exception:
+                # If we can't parse the date, skip this droplet
+                continue
+        
+        if not old_droplets:
+            console.print(f"[green]No droplets found running longer than {hours} hours[/green]")
+            console.print(f"[cyan]Total estimated cost for all droplets: ${total_estimated_cost:.2f}[/cyan]")
+            return
+        
+        # Show summary
+        console.print(f"\n[yellow]Found {len(old_droplets)} droplet(s) running longer than {hours} hours:[/yellow]\n")
+        
+        # Create table
+        table = Table(title="Droplets to Clean Up")
+        table.add_column("Name", style="cyan")
+        table.add_column("IP", style="green")
+        table.add_column("Uptime", style="yellow")
+        table.add_column("Est. Cost", style="red")
+        table.add_column("Status", style="blue")
+        
+        total_old_cost = 0.0
+        for item in old_droplets:
+            droplet = item['droplet']
+            uptime_hours = item['uptime_hours']
+            cost = item['cost']
+            total_old_cost += cost
+            
+            table.add_row(
+                droplet["name"],
+                droplet.get("ip", "N/A"),
+                f"{uptime_hours:.1f}h",
+                f"${cost:.2f}",
+                droplet["status"]
+            )
+        
+        console.print(table)
+        console.print(f"\n[red]Total cost for old droplets: ${total_old_cost:.2f}[/red]")
+        console.print(f"[cyan]Total cost for all droplets: ${total_estimated_cost:.2f}[/cyan]")
+        
+        # Confirm cleanup
+        if not auto_confirm:
+            confirm = Prompt.ask(
+                f"\n[yellow]Destroy {len(old_droplets)} droplet(s)?[/yellow]",
+                choices=["y", "n"],
+                default="n"
+            )
+            
+            if confirm.lower() != "y":
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+        
+        # Destroy droplets
+        destroyed_count = 0
+        for item in old_droplets:
+            droplet = item['droplet']
+            try:
+                console.print(f"[yellow]Destroying {droplet['name']}...[/yellow]")
+                droplet_manager.destroy_droplet(droplet['id'])
+                destroyed_count += 1
+                console.print(f"[green]✓ Destroyed {droplet['name']}[/green]")
+            except Exception as e:
+                console.print(f"[red]✗ Failed to destroy {droplet['name']}: {e}[/red]")
+        
+        console.print(f"\n[green]Successfully destroyed {destroyed_count}/{len(old_droplets)} droplets[/green]")
+        
+        # Clear state if current droplet was destroyed
+        state_info = droplet_manager.state.get_droplet_info()
+        if state_info:
+            for item in old_droplets:
+                if item['droplet']['id'] == state_info['droplet_id']:
+                    droplet_manager.state.clear()
+                    console.print("[yellow]Cleared local state (active droplet was destroyed)[/yellow]")
+                    break
+        
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def version():
     """Show Chisel version."""
     from chisel import __version__

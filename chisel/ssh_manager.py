@@ -1,6 +1,7 @@
 """SSH and sync operations for chisel."""
 
 import os
+import signal
 import subprocess
 import sys
 import tarfile
@@ -17,6 +18,32 @@ from .state import State
 console = Console()
 
 
+class InterruptHandler:
+    """Handle graceful interrupts for long-running operations."""
+    
+    def __init__(self):
+        self.interrupted = False
+        self.old_handler = None
+        
+    def __enter__(self):
+        self.old_handler = signal.signal(signal.SIGINT, self._signal_handler)
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.old_handler:
+            signal.signal(signal.SIGINT, self.old_handler)
+    
+    def _signal_handler(self, signum, frame):
+        """Handle interrupt signal."""
+        self.interrupted = True
+        console.print("\n[yellow]Interrupt received. Cleaning up...[/yellow]")
+        
+    def check_interrupted(self):
+        """Check if interrupted and raise KeyboardInterrupt if so."""
+        if self.interrupted:
+            raise KeyboardInterrupt("Operation interrupted by user")
+
+
 class SSHManager:
     def __init__(self):
         self.state = State()
@@ -24,6 +51,15 @@ class SSHManager:
     def get_droplet_info(self) -> Optional[Dict[str, Any]]:
         """Get droplet info from state."""
         return self.state.get_droplet_info()
+    
+    def _show_cost_warning(self) -> None:
+        """Show cost warning if droplet has been running for a while."""
+        should_warn, uptime_hours, estimated_cost = self.state.should_warn_cost()
+        
+        if should_warn:
+            console.print(f"\n[yellow]⚠️  Cost Warning: Droplet has been running for {uptime_hours:.1f} hours[/yellow]")
+            console.print(f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at $1.99/hour)[/yellow]")
+            console.print(f"[yellow]   Run 'chisel down' to stop billing[/yellow]\n")
         
     def sync(self, source: str, destination: Optional[str] = None) -> bool:
         """Sync files to the droplet using rsync."""
@@ -32,6 +68,9 @@ class SSHManager:
             console.print("[red]Error: No active droplet found[/red]")
             console.print("[yellow]Run 'chisel up' first to create a droplet[/yellow]")
             return False
+        
+        # Show cost warning
+        self._show_cost_warning()
             
         # Default destination
         if destination is None:
@@ -82,72 +121,88 @@ class SSHManager:
             console.print("[red]Error: No active droplet found[/red]")
             console.print("[yellow]Run 'chisel up' first to create a droplet[/yellow]")
             return 1
+        
+        # Show cost warning
+        self._show_cost_warning()
             
         ip = droplet_info["ip"]
         
         console.print(f"[cyan]Running on {ip}: {command}[/cyan]")
         
-        # Create SSH client
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        
-        try:
-            # Connect
-            ssh.connect(ip, username="root", timeout=10)
+        with InterruptHandler() as interrupt_handler:
+            # Create SSH client
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
-            # Execute command
-            stdin, stdout, stderr = ssh.exec_command(command, get_pty=True)
-            
-            # Get the channel for real-time output
-            channel = stdout.channel
-            
-            # Stream output
-            while True:
-                # Check if there's data to read
-                if channel.recv_ready():
-                    data = channel.recv(1024).decode('utf-8', errors='replace')
-                    if data:
-                        console.print(data, end='')
-                        
-                if channel.recv_stderr_ready():
-                    data = channel.recv_stderr(1024).decode('utf-8', errors='replace')
-                    if data:
-                        console.print(f"[red]{data}[/red]", end='')
-                        
-                # Check if command is done
-                if channel.exit_status_ready():
-                    break
+            try:
+                # Connect
+                ssh.connect(ip, username="root", timeout=10)
+                
+                # Execute command
+                stdin, stdout, stderr = ssh.exec_command(command, get_pty=True)
+                
+                # Get the channel for real-time output
+                channel = stdout.channel
+                
+                # Stream output
+                while True:
+                    # Check for interrupt
+                    interrupt_handler.check_interrupted()
                     
-            # Get exit code
-            exit_code = channel.recv_exit_status()
-            
-            # Read any remaining output
-            remaining_stdout = stdout.read().decode('utf-8', errors='replace')
-            remaining_stderr = stderr.read().decode('utf-8', errors='replace')
-            
-            if remaining_stdout:
-                console.print(remaining_stdout, end='')
-            if remaining_stderr:
-                console.print(f"[red]{remaining_stderr}[/red]", end='')
+                    # Check if there's data to read
+                    if channel.recv_ready():
+                        data = channel.recv(1024).decode('utf-8', errors='replace')
+                        if data:
+                            console.print(data, end='')
+                            
+                    if channel.recv_stderr_ready():
+                        data = channel.recv_stderr(1024).decode('utf-8', errors='replace')
+                        if data:
+                            console.print(f"[red]{data}[/red]", end='')
+                            
+                    # Check if command is done
+                    if channel.exit_status_ready():
+                        break
+                        
+                # Get exit code
+                exit_code = channel.recv_exit_status()
                 
-            if exit_code != 0:
-                console.print(f"\n[red]Command exited with code {exit_code}[/red]")
-            else:
-                console.print("\n[green]✓ Command completed successfully[/green]")
+                # Read any remaining output
+                remaining_stdout = stdout.read().decode('utf-8', errors='replace')
+                remaining_stderr = stderr.read().decode('utf-8', errors='replace')
                 
-            return exit_code
-            
-        except paramiko.AuthenticationException:
-            console.print("[red]Error: SSH authentication failed[/red]")
-            return 1
-        except paramiko.SSHException as e:
-            console.print(f"[red]Error: SSH connection failed: {e}[/red]")
-            return 1
-        except Exception as e:
-            console.print(f"[red]Error: {e}[/red]")
-            return 1
-        finally:
-            ssh.close()
+                if remaining_stdout:
+                    console.print(remaining_stdout, end='')
+                if remaining_stderr:
+                    console.print(f"[red]{remaining_stderr}[/red]", end='')
+                    
+                if exit_code != 0:
+                    console.print(f"\n[red]Command exited with code {exit_code}[/red]")
+                else:
+                    console.print("\n[green]✓ Command completed successfully[/green]")
+                    
+                return exit_code
+                
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Operation interrupted by user[/yellow]")
+                # Terminate the remote command if possible
+                try:
+                    if 'channel' in locals() and not channel.closed:
+                        channel.close()
+                except:
+                    pass
+                return 130  # Standard exit code for Ctrl+C
+            except paramiko.AuthenticationException:
+                console.print("[red]Error: SSH authentication failed[/red]")
+                return 1
+            except paramiko.SSHException as e:
+                console.print(f"[red]Error: SSH connection failed: {e}[/red]")
+                return 1
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+                return 1
+            finally:
+                ssh.close()
     
     def profile(self, command: str, trace: str = "hip,hsa", output_dir: str = "./out", open_result: bool = False) -> Optional[str]:
         """Profile a command with rocprof and pull results locally."""
@@ -156,6 +211,9 @@ class SSHManager:
             console.print("[red]Error: No active droplet found[/red]")
             console.print("[yellow]Run 'chisel up' first to create a droplet[/yellow]")
             return None
+        
+        # Show cost warning
+        self._show_cost_warning()
             
         ip = droplet_info["ip"]
         
@@ -184,103 +242,208 @@ class SSHManager:
         console.print(f"[cyan]Profiling on {ip}: {command}[/cyan]")
         console.print(f"[cyan]Trace options: {trace}[/cyan]")
         
-        # Execute profiling
+        with InterruptHandler() as interrupt_handler:
+            # Execute profiling
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            try:
+                # Connect and run profiling
+                ssh.connect(ip, username="root", timeout=10)
+                
+                # Run profiling command
+                stdin, stdout, stderr = ssh.exec_command(profile_cmd, get_pty=True)
+                
+                # Stream output
+                channel = stdout.channel
+                while True:
+                    # Check for interrupt
+                    interrupt_handler.check_interrupted()
+                    
+                    if channel.recv_ready():
+                        data = channel.recv(1024).decode('utf-8', errors='replace')
+                        if data:
+                            console.print(data, end='')
+                            
+                    if channel.recv_stderr_ready():
+                        data = channel.recv_stderr(1024).decode('utf-8', errors='replace')
+                        if data:
+                            console.print(f"[yellow]{data}[/yellow]", end='')
+                            
+                    if channel.exit_status_ready():
+                        break
+                        
+                exit_code = channel.recv_exit_status()
+                
+                if exit_code != 0:
+                    console.print(f"\n[red]Profiling failed with exit code {exit_code}[/red]")
+                    return None
+                
+                console.print("\n[green]✓ Profiling completed[/green]")
+                
+                # Create archive on remote
+                archive_cmd = f"cd /tmp && tar -czf chisel_profile.tgz chisel_profile"
+                stdin, stdout, stderr = ssh.exec_command(archive_cmd)
+                
+                archive_exit_code = stdout.channel.recv_exit_status()
+                if archive_exit_code != 0:
+                    console.print("[red]Error: Failed to create archive[/red]")
+                    return None
+                
+                console.print("[cyan]Pulling results to local machine...[/cyan]")
+                
+                # Pull archive using scp
+                local_output_dir = Path(output_dir)
+                local_output_dir.mkdir(parents=True, exist_ok=True)
+                
+                local_archive_path = local_output_dir / "chisel_profile.tgz"
+                
+                # Use scp to download
+                scp_cmd = [
+                    "scp", 
+                    "-o", "StrictHostKeyChecking=no",
+                    f"root@{ip}:/tmp/chisel_profile.tgz",
+                    str(local_archive_path)
+                ]
+                
+                result = subprocess.run(scp_cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    console.print(f"[red]Error: Failed to download archive: {result.stderr}[/red]")
+                    return None
+                
+                # Extract archive
+                with tarfile.open(local_archive_path, 'r:gz') as tar:
+                    tar.extractall(local_output_dir)
+                
+                # Clean up archive
+                local_archive_path.unlink()
+                
+                # Clean up remote files
+                cleanup_cmd = f"rm -rf {remote_profile_dir} /tmp/chisel_profile.tgz"
+                ssh.exec_command(cleanup_cmd)
+                
+                console.print(f"[green]✓ Profile results saved to {local_output_dir / 'chisel_profile'}[/green]")
+                
+                # Show summary if results files exist (try JSON first, then CSV)
+                json_file = local_output_dir / "chisel_profile" / "results.json"
+                csv_file = local_output_dir / "chisel_profile" / "results.csv"
+                stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
+                
+                if json_file.exists():
+                    self._show_profile_summary(json_file)
+                elif csv_file.exists():
+                    self._show_profile_summary(csv_file)
+                elif stats_csv_file.exists():
+                    self._show_profile_summary(stats_csv_file)
+                
+                return str(local_output_dir / "chisel_profile")
+                
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Profiling interrupted by user[/yellow]")
+                # Clean up remote files
+                try:
+                    cleanup_cmd = f"rm -rf {remote_profile_dir} /tmp/chisel_profile.tgz"
+                    ssh.exec_command(cleanup_cmd)
+                except:
+                    pass
+                return None
+            except Exception as e:
+                console.print(f"[red]Error during profiling: {e}[/red]")
+                return None
+            finally:
+                ssh.close()
+    
+    def pull(self, remote_path: str, local_path: Optional[str] = None) -> bool:
+        """Pull files or directories from the droplet to local machine."""
+        droplet_info = self.get_droplet_info()
+        if not droplet_info:
+            console.print("[red]Error: No active droplet found[/red]")
+            console.print("[yellow]Run 'chisel up' first to create a droplet[/yellow]")
+            return False
+        
+        # Show cost warning
+        self._show_cost_warning()
+            
+        ip = droplet_info["ip"]
+        
+        # Default local path is current directory with remote filename
+        if local_path is None:
+            remote_basename = os.path.basename(remote_path.rstrip('/'))
+            if not remote_basename:
+                remote_basename = "pulled_files"
+            local_path = f"./{remote_basename}"
+        
+        # Resolve local path
+        local_path_obj = Path(local_path).resolve()
+        
+        console.print(f"[cyan]Pulling {remote_path} from {ip} to {local_path}[/cyan]")
+        
+        # First check if remote path exists and get info
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
         try:
-            # Connect and run profiling
             ssh.connect(ip, username="root", timeout=10)
             
-            # Run profiling command
-            stdin, stdout, stderr = ssh.exec_command(profile_cmd, get_pty=True)
+            # Check if remote path exists and if it's a file or directory
+            stdin, stdout, stderr = ssh.exec_command(f"test -e '{remote_path}' && echo 'exists' || echo 'missing'")
+            exists_result = stdout.read().decode().strip()
             
-            # Stream output
-            channel = stdout.channel
-            while True:
-                if channel.recv_ready():
-                    data = channel.recv(1024).decode('utf-8', errors='replace')
-                    if data:
-                        console.print(data, end='')
-                        
-                if channel.recv_stderr_ready():
-                    data = channel.recv_stderr(1024).decode('utf-8', errors='replace')
-                    if data:
-                        console.print(f"[yellow]{data}[/yellow]", end='')
-                        
-                if channel.exit_status_ready():
-                    break
-                    
-            exit_code = channel.recv_exit_status()
+            if exists_result == 'missing':
+                console.print(f"[red]Error: Remote path '{remote_path}' does not exist[/red]")
+                return False
             
-            if exit_code != 0:
-                console.print(f"\n[red]Profiling failed with exit code {exit_code}[/red]")
-                return None
+            # Check if it's a directory
+            stdin, stdout, stderr = ssh.exec_command(f"test -d '{remote_path}' && echo 'dir' || echo 'file'")
+            path_type = stdout.read().decode().strip()
             
-            console.print("\n[green]✓ Profiling completed[/green]")
-            
-            # Create archive on remote
-            archive_cmd = f"cd /tmp && tar -czf chisel_profile.tgz chisel_profile"
-            stdin, stdout, stderr = ssh.exec_command(archive_cmd)
-            
-            archive_exit_code = stdout.channel.recv_exit_status()
-            if archive_exit_code != 0:
-                console.print("[red]Error: Failed to create archive[/red]")
-                return None
-            
-            console.print("[cyan]Pulling results to local machine...[/cyan]")
-            
-            # Pull archive using scp
-            local_output_dir = Path(output_dir)
-            local_output_dir.mkdir(parents=True, exist_ok=True)
-            
-            local_archive_path = local_output_dir / "chisel_profile.tgz"
-            
-            # Use scp to download
-            scp_cmd = [
-                "scp", 
-                "-o", "StrictHostKeyChecking=no",
-                f"root@{ip}:/tmp/chisel_profile.tgz",
-                str(local_archive_path)
-            ]
-            
-            result = subprocess.run(scp_cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                console.print(f"[red]Error: Failed to download archive: {result.stderr}[/red]")
-                return None
-            
-            # Extract archive
-            with tarfile.open(local_archive_path, 'r:gz') as tar:
-                tar.extractall(local_output_dir)
-            
-            # Clean up archive
-            local_archive_path.unlink()
-            
-            # Clean up remote files
-            cleanup_cmd = f"rm -rf {remote_profile_dir} /tmp/chisel_profile.tgz"
-            ssh.exec_command(cleanup_cmd)
-            
-            console.print(f"[green]✓ Profile results saved to {local_output_dir / 'chisel_profile'}[/green]")
-            
-            # Show summary if results files exist (try JSON first, then CSV)
-            json_file = local_output_dir / "chisel_profile" / "results.json"
-            csv_file = local_output_dir / "chisel_profile" / "results.csv"
-            stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
-            
-            if json_file.exists():
-                self._show_profile_summary(json_file)
-            elif csv_file.exists():
-                self._show_profile_summary(csv_file)
-            elif stats_csv_file.exists():
-                self._show_profile_summary(stats_csv_file)
-            
-            return str(local_output_dir / "chisel_profile")
-            
-        except Exception as e:
-            console.print(f"[red]Error during profiling: {e}[/red]")
-            return None
-        finally:
             ssh.close()
+            
+            # Use scp for file transfer
+            if path_type == "dir":
+                # For directories, use scp -r
+                scp_cmd = [
+                    "scp", 
+                    "-r",
+                    "-o", "StrictHostKeyChecking=no",
+                    f"root@{ip}:{remote_path}",
+                    str(local_path_obj.parent)  # scp -r will create the directory
+                ]
+            else:
+                # For files, create parent directory if needed
+                local_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                scp_cmd = [
+                    "scp",
+                    "-o", "StrictHostKeyChecking=no", 
+                    f"root@{ip}:{remote_path}",
+                    str(local_path_obj)
+                ]
+            
+            # Execute scp
+            result = subprocess.run(scp_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                console.print(f"[red]Error: Failed to pull files: {result.stderr}[/red]")
+                return False
+            
+            console.print(f"[green]✓ Successfully pulled to {local_path}[/green]")
+            return True
+            
+        except paramiko.AuthenticationException:
+            console.print("[red]Error: SSH authentication failed[/red]")
+            return False
+        except paramiko.SSHException as e:
+            console.print(f"[red]Error: SSH connection failed: {e}[/red]")
+            return False
+        except subprocess.CalledProcessError as e:
+            console.print(f"[red]Error: SCP failed with code {e.returncode}[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            return False
+        finally:
+            if 'ssh' in locals():
+                ssh.close()
     
     def _show_profile_summary(self, stats_file: Path) -> None:
         """Show a summary of the profiling results."""

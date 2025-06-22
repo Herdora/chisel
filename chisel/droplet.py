@@ -163,8 +163,8 @@ echo "Setup completed"
                     existing["ip"] = network["ip_address"]
                     break
 
-            # Save state
-            self.state.save(existing["id"], existing.get("ip", ""), existing["name"])
+            # Save state with creation time from droplet info
+            self.state.save(existing["id"], existing.get("ip", ""), existing["name"], existing.get("created_at"))
             return existing
 
         # Create new droplet
@@ -180,8 +180,8 @@ echo "Setup completed"
         else:
             console.print("[yellow]Warning: SSH may not be fully ready yet[/yellow]")
 
-        # Save state
-        self.state.save(droplet["id"], droplet["ip"], droplet["name"])
+        # Save state with creation time
+        self.state.save(droplet["id"], droplet["ip"], droplet["name"], droplet.get("created_at"))
 
         return droplet
 

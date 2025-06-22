@@ -13,3 +13,8 @@ chisel_cli.egg-info/dependency_links.txt
 chisel_cli.egg-info/entry_points.txt
 chisel_cli.egg-info/requires.txt
 chisel_cli.egg-info/top_level.txt
+tests/__init__.py
+tests/conftest.py
+tests/test_cli.py
+tests/test_config.py
+tests/test_ssh_manager.py
