@@ -193,3 +193,25 @@ apt-get install -y build-essential git
             if "404" in str(e):
                 self.state.clear()
             return False
+    
+    def list_droplets(self) -> List[Dict[str, Any]]:
+        """List all chisel droplets."""
+        try:
+            response = self.client.client.droplets.list()
+            droplets = response.get("droplets", [])
+            
+            # Filter for chisel droplets
+            chisel_droplets = []
+            for droplet in droplets:
+                if droplet["name"] == self.droplet_name or "chisel" in droplet.get("tags", []):
+                    # Get the public IP
+                    for network in droplet["networks"]["v4"]:
+                        if network["type"] == "public":
+                            droplet["ip"] = network["ip_address"]
+                            break
+                    chisel_droplets.append(droplet)
+            
+            return chisel_droplets
+        except Exception as e:
+            console.print(f"[red]Error listing droplets: {e}[/red]")
+            return []

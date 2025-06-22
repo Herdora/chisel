@@ -174,6 +174,60 @@ def down():
 
 
 @app.command()
+def list():
+    """List all chisel droplets."""
+    config = Config()
+    
+    # Check if configured
+    if not config.token:
+        console.print("[red]Error: No API token configured.[/red]")
+        console.print("[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize clients
+        do_client = DOClient(config.token)
+        droplet_manager = DropletManager(do_client)
+        
+        # Get droplets
+        droplets = droplet_manager.list_droplets()
+        
+        if not droplets:
+            console.print("[yellow]No chisel droplets found[/yellow]")
+            return
+        
+        # Create table
+        table = Table(title="Chisel Droplets")
+        table.add_column("Name", style="cyan")
+        table.add_column("IP", style="green")
+        table.add_column("Status", style="yellow")
+        table.add_column("Region", style="blue")
+        table.add_column("Size", style="magenta")
+        table.add_column("Created", style="white")
+        
+        for droplet in droplets:
+            table.add_row(
+                droplet["name"],
+                droplet.get("ip", "N/A"),
+                droplet["status"],
+                droplet["region"]["slug"],
+                droplet["size"]["slug"],
+                droplet["created_at"][:19].replace("T", " ")
+            )
+        
+        console.print(table)
+        
+        # Show state info
+        state_info = droplet_manager.state.get_droplet_info()
+        if state_info:
+            console.print(f"\n[cyan]Active droplet from state:[/cyan] {state_info['name']} ({state_info['ip']})")
+        
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def version():
     """Show Chisel version."""
     from chisel import __version__
