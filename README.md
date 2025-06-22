@@ -1,10 +1,7 @@
 <div align="center">
   <img width="300" height="300" src="https://github.com/user-attachments/assets/75ae4b61-b6a7-40a4-a46b-6b35baba7404" alt="Chisel CLI logo" /> 
-	<h5>chisel</h5>
+	<h3>chisel</h3>
 </div>
-
-- AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly
-- Use DigitalOcean's `pydo` to create / destroy nodes
 
 ### CLI workflow
 
@@ -49,6 +46,10 @@ Miscallenous:
 	- If no requests in 15 minutes, droplet will destroy itself
 
 ### Architecture pieces
+
+
+- AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly
+- Use DigitalOcean's `pydo` to create / destroy nodes
 
 1. **Python CLI skeleton** – `typer` or `argparse`; single `main.py`.
 2. **DigitalOcean wrapper**
