@@ -78,7 +78,7 @@ apt-get install -y build-essential git
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            progress.add_task("Activating droplet to be active...", total=None)
+            progress.add_task("Activating droplet...", total=None)
 
             while time.time() - start_time < timeout:
                 response = self.client.client.droplets.get(droplet_id)
@@ -104,7 +104,7 @@ apt-get install -y build-essential git
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task("Waiting for SSH to be ready...", total=None)
+            progress.add_task("Waiting for SSH to be ready...", total=None)
 
             while time.time() - start_time < timeout:
                 try:
@@ -121,10 +121,10 @@ apt-get install -y build-essential git
                             ssh.connect(ip, username="root", timeout=5)
                             ssh.close()
                             return True
-                        except:
+                        except Exception:
                             pass
 
-                except:
+                except Exception:
                     pass
 
                 time.sleep(5)
@@ -193,24 +193,26 @@ apt-get install -y build-essential git
             if "404" in str(e):
                 self.state.clear()
             return False
-    
+
     def list_droplets(self) -> List[Dict[str, Any]]:
         """List all chisel droplets."""
         try:
             response = self.client.client.droplets.list()
             droplets = response.get("droplets", [])
-            
+
             # Filter for chisel droplets
             chisel_droplets = []
             for droplet in droplets:
-                if droplet["name"] == self.droplet_name or "chisel" in droplet.get("tags", []):
+                if droplet["name"] == self.droplet_name or "chisel" in droplet.get(
+                    "tags", []
+                ):
                     # Get the public IP
                     for network in droplet["networks"]["v4"]:
                         if network["type"] == "public":
                             droplet["ip"] = network["ip_address"]
                             break
                     chisel_droplets.append(droplet)
-            
+
             return chisel_droplets
         except Exception as e:
             console.print(f"[red]Error listing droplets: {e}[/red]")
