@@ -52,7 +52,7 @@ def configure(
         # No token found, prompt for it
         console.print("[yellow]No DigitalOcean API token found.[/yellow]")
         console.print("\nTo get your API token:")
-        console.print("1. Go to: https://cloud.digitalocean.com/account/api/")
+        console.print("1. Go to: https://amd.digitalocean.com/account/api/tokens")
         console.print("2. Generate a new token with read and write access")
         console.print("3. Copy the token (you won't be able to see it again)\n")
         
