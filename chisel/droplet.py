@@ -164,7 +164,12 @@ echo "Setup completed"
                     break
 
             # Save state with creation time from droplet info
-            self.state.save(existing["id"], existing.get("ip", ""), existing["name"], existing.get("created_at"))
+            self.state.save(
+                existing["id"],
+                existing.get("ip", ""),
+                existing["name"],
+                existing.get("created_at"),
+            )
             return existing
 
         # Create new droplet
@@ -181,7 +186,9 @@ echo "Setup completed"
             console.print("[yellow]Warning: SSH may not be fully ready yet[/yellow]")
 
         # Save state with creation time
-        self.state.save(droplet["id"], droplet["ip"], droplet["name"], droplet.get("created_at"))
+        self.state.save(
+            droplet["id"], droplet["ip"], droplet["name"], droplet.get("created_at")
+        )
 
         return droplet
 

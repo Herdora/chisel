@@ -41,7 +41,7 @@ pip install -e .
 	```
 	
 	**Getting your API token:**
-	1. Visit [DigitalOcean API Tokens](https://cloud.digitalocean.com/account/api/)
+	1. Visit [DigitalOcean API Tokens](https://amd.digitalocean.com/account/api/tokens)
 	2. Click "Generate New Token"
 	3. Give it a name (e.g., "chisel-cli") and ensure it has **read and write** access
 	4. Copy the token immediately (you won't be able to see it again)
