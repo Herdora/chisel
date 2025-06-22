@@ -3,6 +3,20 @@
 	<h1>chisel</h1>
 </div>
 
+### Setup
+
+**Regular environment:**
+```bash
+pip install -e .
+```
+
+**With uv:**
+```bash
+uv sync
+# Note: prefix all chisel commands with 'uv run'
+uv run chisel configure
+```
+
 ### CLI interface
 
 1. **Configuration**
@@ -99,7 +113,39 @@
 	- Handles both stdout and stderr
 	- Works with interactive commands
 
-6. **Stop billing**
+6. **Profile kernels**
+	- `chisel profile` - Profile commands or source files with rocprof and pull results locally
+	
+	**Usage:**
+	```bash
+	# Profile source file (auto-compiles with hipcc)
+	chisel profile simple-mm.cpp
+	
+	# Profile with custom compiler flags
+	chisel profile kernel.cpp --args "-O3 -DNDEBUG"
+	
+	# Profile existing binary
+	chisel profile "/tmp/my-binary"
+	
+	# Profile any command
+	chisel profile "ls -la"
+	
+	# Custom trace options and output directory
+	chisel profile simple-mm.cpp --trace hip,hsa,roctx --out ./results
+	
+	# Auto-open results in Perfetto
+	chisel profile kernel.cpp --open
+	```
+	
+	**What it does:**
+	- Auto-syncs source files to droplet if needed
+	- Compiles source files with hipcc
+	- Runs rocprof with specified trace options
+	- Downloads profile results to local directory
+	- Displays summary of top kernel hotspots
+	- Optionally opens Chrome trace in Perfetto
+
+7. **Stop billing**
 	- `chisel down` - Destroy the droplet to stop charges
 	
 	**Usage:**
@@ -147,19 +193,13 @@ Miscallenous:
 | [x] |	`chisel configure` - DO token validation, config storage     |
 | [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
 | [x] | `sync` + `run` (blocking), colored log streaming.           |
+| [x] | `profile` - rocprof integration, result parsing, Perfetto.  |
 | [ ] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
 | [ ] | Cost warnings, README with install script, publish to PyPI. |
 
 ### Future
 
-- concurrent runs (non-blocking sync and run)
-- **Profile your kernel**
-	- `chisel profile <cmd> [--trace hip,hsa,roctx] [--out DIR] [--open]`
-	- `rocprof -d /tmp/chisel_profile --hip-trace --hsa-trace --stats ./bench.sh → generates results.csv, results.stats.csv, and a Chrome-trace JSON.`
-	- `tar -czf /tmp/chisel_profile.tgz -C /tmp chisel_profile`
-	- copies the archive back to local
-	- read results sort by total time and prints top N hottest kernels
-	- or you can run `chisel profile --open`: same as above plus auto launch w/ perfetto 
+- concurrent runs (non-blocking sync and run) 
 
 
 
