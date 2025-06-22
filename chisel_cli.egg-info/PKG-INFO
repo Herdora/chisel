@@ -1,10 +1,30 @@
 Metadata-Version: 2.4
 Name: chisel-cli
 Version: 0.1.0
-Summary: A CLI tool for managing DigitalOcean GPU droplets for HIP kernel development
+Summary: A CLI tool for developing AMD GPU kernels on DigitalOcean
 Author: Chisel Contributors
+Maintainer: Chisel Contributors
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/anthropics/chisel
+Project-URL: Bug Tracker, https://github.com/anthropics/chisel/issues
+Project-URL: Repository, https://github.com/anthropics/chisel
+Keywords: gpu,amd,hip,rocm,digitalocean,cloud,development,profiling
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: Topic :: System :: Distributed Computing
+Classifier: Topic :: Scientific/Engineering
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: typer>=0.16.0
 Requires-Dist: pydo>=0.4.0
 Requires-Dist: toml>=0.10.2
@@ -13,34 +33,30 @@ Requires-Dist: paramiko>=2.8.0
 Provides-Extra: dev
 Requires-Dist: pytest>=6.0.0; extra == "dev"
 Requires-Dist: pytest-mock>=3.6.0; extra == "dev"
-Dynamic: author
-Dynamic: description
-Dynamic: description-content-type
-Dynamic: provides-extra
-Dynamic: requires-dist
-Dynamic: requires-python
-Dynamic: summary
+Dynamic: license-file
 
 <div align="center">
   <img width="300" height="300" src="https://github.com/user-attachments/assets/75ae4b61-b6a7-40a4-a46b-6b35baba7404" alt="Chisel CLI logo" /> 
 	<h1>chisel</h1>
 </div>
 
-### Setup
+**TL;DR:** A CLI tool for developing AMD GPU kernels on DigitalOcean. Spins up GPU droplets, syncs code, runs/profiles HIP kernels with rocprof, and pulls results back locally. Zero GPU hardware required—just write, test, and profile AMD GPU code from your laptop.
 
-**Regular environment:**
-```bash
-pip install -e .
-```
+### Setup
 
 **With uv:**
 ```bash
 uv sync
 # Note: prefix all chisel commands with 'uv run'
-uv run chisel configure
+uv run chisel <command>  
 ```
 
-### CLI interface
+**venv:**
+```bash
+pip install -e .
+```
+
+### How to use 
 
 1. **Configuration**
 	- `chisel configure` - Set up your DigitalOcean API credentials
@@ -168,7 +184,49 @@ uv run chisel configure
 	- Displays summary of top kernel hotspots
 	- Optionally opens Chrome trace in Perfetto
 
-7. **Stop billing**
+7. **Pull artifacts**
+	- `chisel pull` - Pull files or directories from the droplet to local machine
+	
+	**Usage:**
+	```bash
+	# Pull a specific file to current directory
+	chisel pull /tmp/results.txt
+	
+	# Pull to a specific local path
+	chisel pull /tmp/logs/ --local ./local_logs/
+	
+	# Pull compiled binary
+	chisel pull /root/chisel/my-binary --local ./my-binary
+	```
+	
+	**What it does:**
+	- Pulls any file or directory from the remote droplet
+	- Automatically handles files vs directories
+	- Creates local destination directories as needed
+	- Shows progress and confirmation
+
+8. **Clean up old droplets**
+	- `chisel sweep` - Clean up droplets that have been running too long
+	
+	**Usage:**
+	```bash
+	# Clean up droplets older than 6 hours (default)
+	chisel sweep
+	
+	# Custom time threshold
+	chisel sweep --hours 12
+	
+	# Auto-confirm without prompting
+	chisel sweep --yes
+	```
+	
+	**What it does:**
+	- Shows all droplets with uptime and estimated costs
+	- Identifies droplets running longer than specified threshold
+	- Prompts for confirmation before destroying old droplets
+	- Clears local state if active droplet was destroyed
+
+9. **Stop billing**
 	- `chisel down` - Destroy the droplet to stop charges
 	
 	**Usage:**
@@ -182,11 +240,13 @@ uv run chisel configure
 	- Clears local state cache
 	- Stops all billing immediately
 
-Miscallenous:
-	- If no requests in 15 minutes, droplet will destroy itself
+**Cost Management:**
+- Cost warnings appear when droplets run longer than 12 hours
+- Estimated at $1.99/hour for AMD MI300X GPU droplets
+- Use `chisel sweep` to clean up old droplets automatically
+- Droplets self-destruct after 15 minutes of inactivity
 
 ### Architecture pieces
-
 
 - AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly
 - Use DigitalOcean's `pydo` to create / destroy nodes
@@ -217,8 +277,8 @@ Miscallenous:
 | [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
 | [x] | `sync` + `run` (blocking), colored log streaming.           |
 | [x] | `profile` - rocprof integration, result parsing, Perfetto.  |
-| [ ] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
-| [ ] | Cost warnings, README with install script, publish to PyPI. |
+| [x] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
+| [x] | Cost warnings, README with install script, publish to PyPI. |
 
 ### Future
 
