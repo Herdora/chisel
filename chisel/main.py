@@ -10,6 +10,7 @@ from typing import Optional
 from chisel.config import Config
 from chisel.do_client import DOClient
 from chisel.droplet import DropletManager
+from chisel.ssh_manager import SSHManager
 
 app = typer.Typer(
     name="chisel",
@@ -222,6 +223,36 @@ def list():
         if state_info:
             console.print(f"\n[cyan]Active droplet from state:[/cyan] {state_info['name']} ({state_info['ip']})")
         
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def sync(
+    source: str = typer.Argument(..., help="Source file or directory to sync"),
+    destination: Optional[str] = typer.Option(None, "--dest", "-d", help="Destination path on droplet (default: /root/chisel/)")
+):
+    """Sync files to the droplet."""
+    try:
+        ssh_manager = SSHManager()
+        success = ssh_manager.sync(source, destination)
+        if not success:
+            raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def run(
+    command: str = typer.Argument(..., help="Command to execute on the droplet")
+):
+    """Execute a command on the droplet."""
+    try:
+        ssh_manager = SSHManager()
+        exit_code = ssh_manager.run(command)
+        raise typer.Exit(exit_code)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)

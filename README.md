@@ -37,7 +37,7 @@
 	- Checks for existing 'chisel-dev' droplet
 	- If none exists, creates a new droplet with:
 	  - Size: `gpu-mi300x1-192gb` (AMD MI300X GPU)
-	  - Image: Ubuntu 22.04 LTS
+	  - Image: AMD AI/ML Ready (ROCm pre-installed)
 	  - Region: ATL1 (where AMD GPUs are available)
 	  - SSH keys: Automatically injects all keys from your DO account
 	- Waits for droplet to be ready and SSH accessible
@@ -57,19 +57,53 @@
 	- Region, size, and creation time
 	- Current active droplet from local state
 
-4. sync code
-	- `chisel sync hip-kernel-file`
-	- pushes your local kernel source tree to the droplet (only the files that changed)
+4. **Sync code**
+	- `chisel sync` - Push local files to droplet (only changed files)
+	
+	**Usage:**
+	```bash
+	# Sync a file to /root/chisel/ (default)
+	chisel sync simple-mm.cpp
+	
+	# Sync directory contents
+	chisel sync ./src/
+	
+	# Sync to custom destination
+	chisel sync myfile.cpp --dest /tmp/
+	```
+	
+	**What it does:**
+	- Uses rsync for efficient file transfer
+	- Only transfers changed files
+	- Shows progress during transfer
+	- Creates destination directory if needed
 
-5. run test
-	- e.g. `chisel run make && ./bench.sh`
-	- ssh exec the given command, stream stdoud/sterr, return exit code; etc.
+5. **Run commands**
+	- `chisel run` - Execute commands remotely with live output streaming
+	
+	**Usage:**
+	```bash
+	# Compile and run HIP kernel
+	chisel run "hipcc /root/chisel/simple-mm.cpp -o /tmp/test && /tmp/test"
+	
+	# Run multiple commands
+	chisel run "make && ./bench.sh"
+	
+	# Check GPU status
+	chisel run "rocm-smi"
+	```
+	
+	**What it does:**
+	- SSH exec with real-time output streaming
+	- Returns actual exit codes
+	- Handles both stdout and stderr
+	- Works with interactive commands
 
-6. grab artifacts
+6. **Grab artifacts** (TODO)
 	- `chisel pull out/`
 	- SCP back to `./out` locally
 
-7. profile your kernel
+7. **Profile your kernel** (TODO)
 	- `chisel profile <cmd> [--trace hip,hsa,roctx] [--out DIR] [--open]`
 	- `rocprof -d /tmp/chisel_profile --hip-trace --hsa-trace --stats ./bench.sh → generates results.csv, results.stats.csv, and a Chrome-trace JSON.`
 	- `tar -czf /tmp/chisel_profile.tgz -C /tmp chisel_profile`
@@ -106,7 +140,7 @@ Miscallenous:
    ```python
    import pydo
    client = pydo.Client(token=token)
-   client.droplets.create(size='gpu-mi300x1-192gb', image='ubuntu-22-04-x64', ...)
+   client.droplets.create(size='gpu-mi300x1-192gb', image='gpu-amd-base', ...)
    ```
 3. **SSH/rsync layer** – Use `paramiko` for exec + `rsync`/`scp` shell out (simplest); later swap to async libraries if perf matters.
 4. **Cloud-init script** – idempotent bash that:
@@ -124,10 +158,14 @@ Miscallenous:
 | --- | ----------------------------------------------------------- |
 | [x] |	`chisel configure` - DO token validation, config storage     |
 | [x] | `chisel up` / `down` / `list`, cloud-init basics, state cache. |
-| [ ] | `sync` + `run` (blocking), colored log streaming.           |
+| [x] | `sync` + `run` (blocking), colored log streaming.           |
 | [ ] | `profile` milestone	                                    |
 | [ ] | Artifact `pull`, graceful ^C handling, rudimentary tests.   |
 | [ ] | Cost warnings, README with install script, publish to PyPI. |
+
+### Future
+
+- concurrent runs (non-blocking sync and run) 
 
 
 

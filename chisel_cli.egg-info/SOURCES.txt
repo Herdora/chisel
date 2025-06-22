@@ -3,7 +3,10 @@ setup.py
 chisel/__init__.py
 chisel/config.py
 chisel/do_client.py
+chisel/droplet.py
 chisel/main.py
+chisel/ssh_manager.py
+chisel/state.py
 chisel_cli.egg-info/PKG-INFO
 chisel_cli.egg-info/SOURCES.txt
 chisel_cli.egg-info/dependency_links.txt

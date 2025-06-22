@@ -20,7 +20,7 @@ class DropletManager:
         self.state = State()
         self.droplet_name = "chisel-dev"
         self.droplet_size = "gpu-mi300x1-192gb"
-        self.droplet_image = "ubuntu-22-04-x64"
+        self.droplet_image = "gpu-amd-base"
         self.droplet_region = (
             "atl1"  # TODO: check where AMD droplets available and default to that
         )
@@ -52,8 +52,22 @@ class DropletManager:
         ssh_keys = self.get_ssh_keys()
 
         user_data = """#!/bin/bash
+# Update package list
 apt-get update
-apt-get install -y build-essential git
+
+# Install basic development tools  
+apt-get install -y build-essential git wget curl
+
+# ROCm should be pre-installed on gpu-mi300x1-base image
+# Just make sure environment is properly set up
+echo 'export PATH=/opt/rocm/bin:$PATH' >> /etc/profile.d/rocm.sh
+echo 'export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/rocm.sh
+echo 'export HIP_PATH=/opt/rocm' >> /etc/profile.d/rocm.sh
+
+# Make hipcc globally accessible
+ln -sf /opt/rocm/bin/hipcc /usr/local/bin/hipcc
+
+echo "Setup completed"
 """
 
         body = {
