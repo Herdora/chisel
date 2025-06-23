@@ -322,13 +322,19 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 - `up` - Create or reuse a GPU droplet
 - `down` - Destroy the current droplet
 - `status` - Check droplet status
+- `profile` - Profile HIP files or commands with rocprof
+- `sync` - Sync files to the droplet
+- `run` - Execute commands on the droplet
+- `pull` - Pull files from the droplet
 
 **Usage examples:**
 
 - "Configure my chisel setup with token xyz123"
 - "Start a GPU droplet for development"
-- "Check my current droplet status"
-- "Stop my droplet to save costs"
+- "Profile my matrix_multiply.hip file"
+- "Run rocm-smi on the droplet"
+- "Sync my_kernel.cpp to the droplet"
+- "Pull the results.csv file from the droplet"
 
 ### Architecture pieces
 
@@ -356,8 +362,9 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 
 ### Future
 
-- concurrent runs (non-blocking sync and run)
-- multi-cloud
-- support NVIDIA (to run nsight-compute profiling)
-- support other cloud backends (Prime Intellect, Lambda, Hyperstack)
-- add Grafana support
+- [x] MCP server
+- [ ] concurrent runs (non-blocking sync and run)
+- [ ] multi-cloud
+- [ ] support NVIDIA (nsight-compute profiling)
+- [ ] support other cloud backends (through Modal)
+- [ ] add Grafana support
