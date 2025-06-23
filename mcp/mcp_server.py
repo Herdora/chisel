@@ -3,15 +3,23 @@
 
 import io
 import sys
+import os
 from typing import Optional
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mcp.server.fastmcp import FastMCP
 
 # Import chisel modules
-from chisel.config import Config
-from chisel.do_client import DOClient
-from chisel.droplet import DropletManager
-from chisel.ssh_manager import SSHManager
+try:
+    from chisel.config import Config
+    from chisel.do_client import DOClient
+    from chisel.droplet import DropletManager
+    from chisel.ssh_manager import SSHManager
+except ImportError as e:
+    print(f"Failed to import chisel modules: {e}", file=sys.stderr)
+    sys.exit(1)
 
 # Initialize FastMCP server
 mcp = FastMCP("chisel")
@@ -222,46 +230,156 @@ Run the 'configure' tool first to set up your DigitalOcean API token."""
         return f"❌ Error getting status: {e}"
 
 
+async def ensure_droplet_ready() -> tuple[bool, str]:
+    """Ensure droplet is configured and ready for use.
+    
+    Returns:
+        (success, message) - success is True if droplet is ready, message describes status
+    """
+    try:
+        config = Config()
+        
+        # Step 1: Check if configured
+        if not config.token:
+            return False, """❌ No API token configured.
+
+Run the 'configure' tool first to set up your DigitalOcean API token."""
+        
+        # Step 2: Check droplet state
+        with SuppressOutput():
+            do_client = DOClient(config.token)
+            droplet_manager = DropletManager(do_client)
+            
+            # Check if we have an active droplet in state
+            state_info = droplet_manager.state.get_droplet_info()
+            if state_info:
+                # Verify the droplet actually exists on DO
+                try:
+                    droplet_response = do_client.client.droplets.get(state_info["droplet_id"])
+                    droplet = droplet_response["droplet"]
+                    
+                    if droplet["status"] == "active":
+                        return True, f"✅ Droplet {droplet['name']} ({state_info['ip']}) is ready"
+                    else:
+                        return False, f"❌ Droplet {droplet['name']} is in '{droplet['status']}' state, not active"
+                        
+                except Exception:
+                    # Droplet doesn't exist anymore, clear state
+                    droplet_manager.state.clear()
+                    return False, "❌ Previous droplet no longer exists. Need to create a new one."
+            
+            # Check if there's an existing droplet we can use
+            existing_droplet = droplet_manager.find_existing_droplet()
+            if existing_droplet and existing_droplet["status"] == "active":
+                # Update state with found droplet
+                ip = None
+                for network in existing_droplet.get("networks", {}).get("v4", []):
+                    if network["type"] == "public":
+                        ip = network["ip_address"]
+                        break
+                
+                if ip:
+                    droplet_manager.state.save(
+                        droplet_id=existing_droplet["id"],
+                        ip=ip,
+                        name=existing_droplet["name"],
+                        created_at=existing_droplet.get("created_at")
+                    )
+                    return True, f"✅ Found and connected to existing droplet {existing_droplet['name']} ({ip})"
+            
+            # No active droplet found
+            return False, "❌ No active droplet found. Need to create one with 'up' command."
+    
+    except Exception as e:
+        return False, f"❌ Error checking droplet status: {e}"
+
+
 @mcp.tool()
 async def profile(
     file_or_command: str,
     trace: Optional[str] = "hip,hsa",
-    analyze: bool = True
+    analyze: bool = True,
+    auto_setup: bool = True
 ) -> str:
-    """Profile a HIP file or command on the GPU droplet.
+    """Profile a HIP file or command on the GPU droplet with automatic setup.
+    
+    This tool automatically ensures the droplet is configured and ready before profiling:
+    - Checks if API token is configured
+    - Verifies droplet exists and is active
+    - Creates droplet if needed (when auto_setup=True)
+    - Then profiles the specified file or command
     
     Args:
         file_or_command: Either a path to a HIP file (e.g., 'kernel.hip') or a command to profile
         trace: Trace options (default: 'hip,hsa'). Can include 'hip', 'hsa', 'roctx'
         analyze: Whether to analyze and summarize the profiling results (default: True)
+        auto_setup: Whether to automatically create droplet if needed (default: True)
     
     Examples:
         - profile("matrix_multiply.hip")
         - profile("/root/chisel/my_kernel", trace="hip,hsa,roctx")
         - profile("ls -la", trace="hsa")
+        - profile("kernel.hip", auto_setup=False)  # Don't auto-create droplet
     """
     import os
     from pathlib import Path
     
     try:
-        config = Config()
+        result = ""
         
-        # Check if configured
-        if not config.token:
-            return """❌ No API token configured.
-
-Run the 'configure' tool first to set up your DigitalOcean API token."""
+        # Step 1: Ensure droplet is ready
+        ready, status_msg = await ensure_droplet_ready()
+        
+        if not ready:
+            if not auto_setup:
+                return status_msg
+            
+            result += "🔧 Setting up environment...\n\n"
+            result += f"Status: {status_msg}\n"
+            
+            # Check if we need to configure first
+            config = Config()
+            if not config.token:
+                result += "\n❌ Cannot proceed: No API token configured.\n"
+                result += "Please run the 'configure' tool first to set up your DigitalOcean API token."
+                return result
+            
+            # Try to create a droplet
+            result += "\n🚀 Creating GPU droplet...\n"
+            try:
+                with SuppressOutput():
+                    do_client = DOClient(config.token)
+                    droplet_manager = DropletManager(do_client)
+                    droplet = droplet_manager.up()
+                
+                # Format success message
+                name = droplet["name"]
+                ip = droplet.get("ip", "N/A")
+                result += f"✅ Droplet '{name}' created successfully! (IP: {ip})\n\n"
+            except Exception as e:
+                result += f"\n❌ Failed to create droplet: {e}\n"
+                return result
+            
+            # Verify droplet is now ready
+            ready, status_msg = await ensure_droplet_ready()
+            if not ready:
+                result += f"\n❌ Droplet still not ready after creation: {status_msg}\n"
+                return result
+        else:
+            result += f"🎯 {status_msg}\n\n"
+        
+        # Step 2: Proceed with profiling
+        result += "🔍 Starting profiling...\n\n"
         
         # Initialize SSH manager
         with SuppressOutput():
             ssh_manager = SSHManager()
             
-            # Get droplet info to ensure we have an active droplet
+            # Double-check droplet info (should be available now)
             droplet_info = ssh_manager.get_droplet_info()
             if not droplet_info:
-                return """❌ No active droplet found.
-
-Run the 'up' tool first to create a GPU droplet."""
+                result += "❌ Critical error: Cannot get droplet info after setup\n"
+                return result
         
         # Check if it's a local file that needs to be synced
         is_source_file = file_or_command.endswith(('.cpp', '.c', '.hip', '.cu'))
@@ -274,14 +392,20 @@ Run the 'up' tool first to create a GPU droplet."""
             source_path = Path(file_or_command)
             
             if not source_path.exists():
-                return f"❌ Source file '{file_or_command}' not found in local directory"
+                result += f"❌ Source file '{file_or_command}' not found in local directory\n"
+                return result
+            
+            result += f"📂 Syncing source file: {file_or_command}\n"
             
             # Sync the file
             with SuppressOutput():
                 success = ssh_manager.sync(str(source_path))
             
             if not success:
-                return f"❌ Failed to sync source file '{file_or_command}' to droplet"
+                result += f"❌ Failed to sync source file '{file_or_command}' to droplet\n"
+                return result
+            
+            result += "✅ File synced successfully\n"
             
             # Prepare compilation command
             remote_source = f"/root/chisel/{source_path.name}"
@@ -298,26 +422,34 @@ Run the 'up' tool first to create a GPU droplet."""
             compile_cmd = f"{compiler} {remote_source} -o {remote_binary}"
             command_to_profile = f"{compile_cmd} && {remote_binary}"
             
-            result = f"📂 Synced and will compile: {file_or_command}\n"
-            result += f"🔨 Compile command: {compile_cmd}\n\n"
+            result += f"🔨 Will compile with: {compile_cmd}\n"
+            result += f"🎯 Target binary: {remote_binary}\n\n"
         else:
-            result = f"🎯 Profiling command: {command_to_profile}\n\n"
+            result += f"🎯 Profiling command: {command_to_profile}\n\n"
         
         # Run profiling
-        with SuppressOutput():
-            output_dir = "/tmp/chisel_mcp_profile"
-            local_archive = ssh_manager.profile(
-                command_to_profile, 
-                trace=trace,
-                output_dir=output_dir,
-                open_result=False
-            )
+        result += "🚀 Executing profiling on droplet...\n"
         
-        if not local_archive:
-            return "❌ Profiling failed. Check the command and ensure the droplet is accessible."
-        
-        result += f"✅ Profiling completed successfully!\n"
-        result += f"📊 Results saved to: {local_archive}\n\n"
+        try:
+            with SuppressOutput():
+                output_dir = "/tmp/chisel_mcp_profile"
+                local_archive = ssh_manager.profile(
+                    command_to_profile, 
+                    trace=trace,
+                    output_dir=output_dir,
+                    open_result=False
+                )
+            
+            if not local_archive:
+                result += "❌ Profiling failed. Check the command and ensure the droplet is accessible.\n"
+                return result
+            
+            result += f"✅ Profiling completed successfully!\n"
+            result += f"📊 Results saved to: {local_archive}\n\n"
+            
+        except Exception as e:
+            result += f"❌ Profiling execution failed: {e}\n"
+            return result
         
         # Read and analyze results if requested
         if analyze:
@@ -415,92 +547,185 @@ Run the 'up' tool first to create a GPU droplet."""
         return result
         
     except Exception as e:
-        return f"❌ Error during profiling: {e}"
+        return f"❌ Unexpected error during profiling workflow: {e}"
 
 
 @mcp.tool()
 async def sync(
     source: str,
-    destination: Optional[str] = None
+    destination: Optional[str] = None,
+    auto_setup: bool = True
 ) -> str:
-    """Sync files or directories to the GPU droplet.
+    """Sync files or directories to the GPU droplet with automatic setup.
+    
+    This tool automatically ensures the droplet is configured and ready before syncing:
+    - Checks if API token is configured  
+    - Verifies droplet exists and is active
+    - Creates droplet if needed (when auto_setup=True)
+    - Then syncs the specified files
     
     Args:
         source: Local file or directory path to sync
         destination: Remote destination path (default: /root/chisel/)
+        auto_setup: Whether to automatically create droplet if needed (default: True)
     
     Examples:
         - sync("my_kernel.hip")
         - sync("./src", destination="/root/project/src")
+        - sync("data.txt", auto_setup=False)  # Don't auto-create droplet
     """
     try:
-        config = Config()
+        result = ""
         
-        # Check if configured
-        if not config.token:
-            return """❌ No API token configured.
-
-Run the 'configure' tool first to set up your DigitalOcean API token."""
+        # Step 1: Ensure droplet is ready
+        ready, status_msg = await ensure_droplet_ready()
+        
+        if not ready:
+            if not auto_setup:
+                return status_msg
+            
+            result += "🔧 Setting up environment for sync...\n\n"
+            result += f"Status: {status_msg}\n"
+            
+            # Check if we need to configure first
+            config = Config()
+            if not config.token:
+                result += "\n❌ Cannot proceed: No API token configured.\n"
+                result += "Please run the 'configure' tool first to set up your DigitalOcean API token."
+                return result
+            
+            # Try to create a droplet
+            result += "\n🚀 Creating GPU droplet...\n"
+            try:
+                with SuppressOutput():
+                    do_client = DOClient(config.token)
+                    droplet_manager = DropletManager(do_client)
+                    droplet = droplet_manager.up()
+                
+                # Format success message
+                name = droplet["name"]
+                ip = droplet.get("ip", "N/A")
+                result += f"✅ Droplet '{name}' created successfully! (IP: {ip})\n\n"
+            except Exception as e:
+                result += f"\n❌ Failed to create droplet: {e}\n"
+                return result
+            
+            # Verify droplet is now ready
+            ready, status_msg = await ensure_droplet_ready()
+            if not ready:
+                result += f"\n❌ Droplet still not ready after creation: {status_msg}\n"
+                return result
+        else:
+            result += f"🎯 {status_msg}\n\n"
+        
+        # Step 2: Proceed with sync
+        result += f"📂 Syncing '{source}' to droplet...\n"
         
         # Initialize SSH manager
         with SuppressOutput():
             ssh_manager = SSHManager()
             
-            # Check for active droplet
+            # Get droplet info
             droplet_info = ssh_manager.get_droplet_info()
             if not droplet_info:
-                return """❌ No active droplet found.
-
-Run the 'up' tool first to create a GPU droplet."""
+                result += "❌ Critical error: Cannot get droplet info after setup\n"
+                return result
             
             # Perform sync
             success = ssh_manager.sync(source, destination)
         
         if success:
             dest = destination or "/root/chisel/"
-            return f"""✅ Successfully synced '{source}' to droplet
+            result += f"""✅ Successfully synced '{source}' to droplet
 
 📁 Source: {source}
 📍 Destination: {dest}
 🖥️  Droplet: {droplet_info['name']} ({droplet_info['ip']})"""
         else:
-            return f"❌ Failed to sync '{source}' to droplet"
+            result += f"❌ Failed to sync '{source}' to droplet"
+        
+        return result
             
     except Exception as e:
-        return f"❌ Error during sync: {e}"
+        return f"❌ Unexpected error during sync workflow: {e}"
 
 
 @mcp.tool()
-async def run(command: str) -> str:
-    """Execute a command on the GPU droplet.
+async def run(command: str, auto_setup: bool = True) -> str:
+    """Execute a command on the GPU droplet with automatic setup.
+    
+    This tool automatically ensures the droplet is configured and ready before executing:
+    - Checks if API token is configured
+    - Verifies droplet exists and is active
+    - Creates droplet if needed (when auto_setup=True)
+    - Then executes the specified command
     
     Args:
         command: Command to execute on the remote droplet
+        auto_setup: Whether to automatically create droplet if needed (default: True)
     
     Examples:
         - run("ls -la")
         - run("hipcc my_kernel.hip -o my_kernel && ./my_kernel")
         - run("rocm-smi")
+        - run("nvidia-smi", auto_setup=False)  # Don't auto-create droplet
     """
     try:
-        config = Config()
+        result = ""
         
-        # Check if configured
-        if not config.token:
-            return """❌ No API token configured.
-
-Run the 'configure' tool first to set up your DigitalOcean API token."""
+        # Step 1: Ensure droplet is ready
+        ready, status_msg = await ensure_droplet_ready()
+        
+        if not ready:
+            if not auto_setup:
+                return status_msg
+            
+            result += "🔧 Setting up environment for command execution...\n\n"
+            result += f"Status: {status_msg}\n"
+            
+            # Check if we need to configure first
+            config = Config()
+            if not config.token:
+                result += "\n❌ Cannot proceed: No API token configured.\n"
+                result += "Please run the 'configure' tool first to set up your DigitalOcean API token."
+                return result
+            
+            # Try to create a droplet
+            result += "\n🚀 Creating GPU droplet...\n"
+            try:
+                with SuppressOutput():
+                    do_client = DOClient(config.token)
+                    droplet_manager = DropletManager(do_client)
+                    droplet = droplet_manager.up()
+                
+                # Format success message
+                name = droplet["name"]
+                ip = droplet.get("ip", "N/A")
+                result += f"✅ Droplet '{name}' created successfully! (IP: {ip})\n\n"
+            except Exception as e:
+                result += f"\n❌ Failed to create droplet: {e}\n"
+                return result
+            
+            # Verify droplet is now ready
+            ready, status_msg = await ensure_droplet_ready()
+            if not ready:
+                result += f"\n❌ Droplet still not ready after creation: {status_msg}\n"
+                return result
+        else:
+            result += f"🎯 {status_msg}\n\n"
+        
+        # Step 2: Execute command
+        result += f"⚡ Executing command: {command}\n\n"
         
         # Initialize SSH manager
         with SuppressOutput():
             ssh_manager = SSHManager()
             
-            # Check for active droplet
+            # Get droplet info
             droplet_info = ssh_manager.get_droplet_info()
             if not droplet_info:
-                return """❌ No active droplet found.
-
-Run the 'up' tool first to create a GPU droplet."""
+                result += "❌ Critical error: Cannot get droplet info after setup\n"
+                return result
         
         # Capture output
         import subprocess
@@ -515,7 +740,7 @@ Run the 'up' tool first to create a GPU droplet."""
         
         output = output_buffer.getvalue()
         
-        result = f"🖥️  Droplet: {droplet_info['name']} ({droplet_info['ip']})\n"
+        result += f"🖥️  Droplet: {droplet_info['name']} ({droplet_info['ip']})\n"
         result += f"📟 Command: {command}\n"
         result += f"{"─" * 60}\n"
         
@@ -534,43 +759,89 @@ Run the 'up' tool first to create a GPU droplet."""
         return result
         
     except Exception as e:
-        return f"❌ Error executing command: {e}"
+        return f"❌ Unexpected error during command execution workflow: {e}"
 
 
 @mcp.tool()
 async def pull(
     remote_path: str,
-    local_path: Optional[str] = None
+    local_path: Optional[str] = None,
+    auto_setup: bool = True
 ) -> str:
-    """Pull files or directories from the GPU droplet to local machine.
+    """Pull files or directories from the GPU droplet to local machine with automatic setup.
+    
+    This tool automatically ensures the droplet is configured and ready before pulling:
+    - Checks if API token is configured
+    - Verifies droplet exists and is active
+    - Creates droplet if needed (when auto_setup=True)
+    - Then pulls the specified files
     
     Args:
         remote_path: Remote file or directory path to pull
         local_path: Local destination path (default: current directory)
+        auto_setup: Whether to automatically create droplet if needed (default: True)
     
     Examples:
         - pull("/root/chisel/results.csv")
         - pull("/root/chisel/output/", local_path="./results/")
+        - pull("/tmp/profile_data", auto_setup=False)  # Don't auto-create droplet
     """
     try:
-        config = Config()
+        result = ""
         
-        # Check if configured
-        if not config.token:
-            return """❌ No API token configured.
-
-Run the 'configure' tool first to set up your DigitalOcean API token."""
+        # Step 1: Ensure droplet is ready
+        ready, status_msg = await ensure_droplet_ready()
+        
+        if not ready:
+            if not auto_setup:
+                return status_msg
+            
+            result += "🔧 Setting up environment for file pull...\n\n"
+            result += f"Status: {status_msg}\n"
+            
+            # Check if we need to configure first
+            config = Config()
+            if not config.token:
+                result += "\n❌ Cannot proceed: No API token configured.\n"
+                result += "Please run the 'configure' tool first to set up your DigitalOcean API token."
+                return result
+            
+            # Try to create a droplet
+            result += "\n🚀 Creating GPU droplet...\n"
+            try:
+                with SuppressOutput():
+                    do_client = DOClient(config.token)
+                    droplet_manager = DropletManager(do_client)
+                    droplet = droplet_manager.up()
+                
+                # Format success message
+                name = droplet["name"]
+                ip = droplet.get("ip", "N/A")
+                result += f"✅ Droplet '{name}' created successfully! (IP: {ip})\n\n"
+            except Exception as e:
+                result += f"\n❌ Failed to create droplet: {e}\n"
+                return result
+            
+            # Verify droplet is now ready
+            ready, status_msg = await ensure_droplet_ready()
+            if not ready:
+                result += f"\n❌ Droplet still not ready after creation: {status_msg}\n"
+                return result
+        else:
+            result += f"🎯 {status_msg}\n\n"
+        
+        # Step 2: Pull files
+        result += f"📥 Pulling '{remote_path}' from droplet...\n"
         
         # Initialize SSH manager
         with SuppressOutput():
             ssh_manager = SSHManager()
             
-            # Check for active droplet
+            # Get droplet info
             droplet_info = ssh_manager.get_droplet_info()
             if not droplet_info:
-                return """❌ No active droplet found.
-
-Run the 'up' tool first to create a GPU droplet."""
+                result += "❌ Critical error: Cannot get droplet info after setup\n"
+                return result
             
             # Perform pull
             success = ssh_manager.pull(remote_path, local_path)
@@ -585,16 +856,18 @@ Run the 'up' tool first to create a GPU droplet."""
             else:
                 actual_local = Path(local_path)
             
-            return f"""✅ Successfully pulled files from droplet
+            result += f"""✅ Successfully pulled files from droplet
 
 📍 Remote: {remote_path}
 📁 Local: {actual_local}
 🖥️  Droplet: {droplet_info['name']} ({droplet_info['ip']})"""
         else:
-            return f"❌ Failed to pull '{remote_path}' from droplet"
+            result += f"❌ Failed to pull '{remote_path}' from droplet"
+        
+        return result
             
     except Exception as e:
-        return f"❌ Error during pull: {e}"
+        return f"❌ Unexpected error during pull workflow: {e}"
 
 
 if __name__ == "__main__":

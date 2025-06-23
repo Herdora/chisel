@@ -366,5 +366,5 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 - [ ] concurrent runs (non-blocking sync and run)
 - [ ] multi-cloud
 - [ ] support NVIDIA (nsight-compute profiling)
-- [ ] support other cloud backends (through Modal)
+- [ ] support other cloud backends
 - [ ] add Grafana support
