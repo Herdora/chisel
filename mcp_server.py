@@ -77,22 +77,12 @@ Example: configure with token="your_token_here" """
                 status = account_data.get("status", "N/A")
                 droplet_limit = account_data.get("droplet_limit", "N/A")
 
-                # Get balance info
-                with SuppressOutput():
-                    balance_info = do_client.get_balance()
-                balance_text = ""
-                if balance_info:
-                    balance_data = balance_info.get("balance", {})
-                    account_balance = balance_data.get("account_balance", "N/A")
-                    mtd_usage = balance_data.get("month_to_date_usage", "N/A")
-                    balance_text = f"\nAccount Balance: ${account_balance}\nMonth-to-date Usage: ${mtd_usage}"
-
                 return f"""✅ Token validated and saved successfully!
 
 Account Information:
 - Email: {email}
 - Status: {status}
-- Droplet Limit: {droplet_limit}{balance_text}
+- Droplet Limit: {droplet_limit}
 
 Configuration saved to: {config.config_file}
 
