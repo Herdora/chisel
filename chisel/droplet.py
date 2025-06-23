@@ -9,21 +9,18 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .do_client import DOClient
+from .gpu_profiles import GPUProfile
 from .state import State
 
 console = Console()
 
 
 class DropletManager:
-    def __init__(self, client: DOClient):
+    def __init__(self, client: DOClient, gpu_profile: GPUProfile):
         self.client = client
+        self.gpu_profile = gpu_profile
         self.state = State()
         self.droplet_name = "chisel-dev"
-        self.droplet_size = "gpu-mi300x1-192gb"
-        self.droplet_image = "gpu-amd-base"
-        self.droplet_region = (
-            "atl1"  # TODO: check where AMD droplets available and default to that
-        )
 
     def get_ssh_keys(self) -> List[int]:
         """Get all SSH key IDs from DO account, including current droplet's key if on DO."""
@@ -128,9 +125,9 @@ echo "Setup completed"
 
         body = {
             "name": self.droplet_name,
-            "region": self.droplet_region,
-            "size": self.droplet_size,
-            "image": self.droplet_image,
+            "region": self.gpu_profile.region,
+            "size": self.gpu_profile.size,
+            "image": self.gpu_profile.image,
             "ssh_keys": ssh_keys,
             "user_data": user_data,
             "tags": ["chisel"],

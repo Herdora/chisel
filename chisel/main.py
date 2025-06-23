@@ -14,6 +14,7 @@ from rich.table import Table
 from chisel.config import Config
 from chisel.do_client import DOClient
 from chisel.droplet import DropletManager
+from chisel.gpu_profiles import AMD_MI300X, NVIDIA_H100, GPU_PROFILES
 from chisel.ssh_manager import SSHManager
 
 app = typer.Typer(
@@ -120,9 +121,19 @@ def configure(
 
 
 @app.command()
-def up():
+def up(
+    gpu_type: str = typer.Option(
+        ..., "--gpu-type", help="GPU type to use (amd-mi300x, nvidia-h100)"
+    ),
+):
     """Create or reuse a GPU droplet for development."""
     config = Config()
+
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
 
     # Check if configured
     if not config.token:
@@ -135,7 +146,8 @@ def up():
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client)
+        gpu_profile = GPU_PROFILES[gpu_type]
+        droplet_manager = DropletManager(do_client, gpu_profile)
 
         # Create or find droplet
         droplet = droplet_manager.up()
@@ -170,7 +182,7 @@ def down():
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client)
+        droplet_manager = DropletManager(do_client, AMD_MI300X)
 
         # Confirm destruction
         confirm = Prompt.ask(
@@ -207,7 +219,7 @@ def list():
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client)
+        droplet_manager = DropletManager(do_client, AMD_MI300X)
 
         # Get droplets
         droplets = droplet_manager.list_droplets()
@@ -423,7 +435,7 @@ def sweep(
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client)
+        droplet_manager = DropletManager(do_client, AMD_MI300X)
 
         # Get all droplets
         droplets = droplet_manager.list_droplets()

@@ -3,7 +3,7 @@
 	<h1>chisel</h1>
 </div>
 
-**TL;DR:** A CLI tool for developing and profiling GPU kernels locally. Spins up GPU droplets, syncs code, runs/profiles kernels, and pulls results back locally. Zero GPU hardware required—just write, test, and profile GPU code from your laptop. We currently support only AMD's GPU cloud, but quickly expanding to other clouds.
+**TL;DR:** A CLI tool for developing and profiling GPU kernels locally. Spins up GPU droplets, syncs code, runs/profiles kernels, and pulls results back locally. Zero GPU hardware required—just write, test, and profile GPU code from your laptop. Supports both AMD MI300X and NVIDIA H100 GPUs.
 
 ### Setup
 
@@ -62,16 +62,19 @@ pip install -e .
    **Usage:**
 
    ```bash
-   chisel up
+   # AMD MI300X GPU droplet
+   chisel up --gpu-type amd-mi300x
+
+   # NVIDIA H100 GPU droplet  
+   chisel up --gpu-type nvidia-h100
    ```
 
    **What it does:**
 
    - Checks for existing 'chisel-dev' droplet
    - If none exists, creates a new droplet with:
-     - Size: `gpu-mi300x1-192gb` (AMD MI300X GPU)
-     - Image: AMD AI/ML Ready (ROCm pre-installed)
-     - Region: ATL1 (where AMD GPUs are available)
+     - **AMD MI300X**: Size `gpu-mi300x1-192gb`, AMD AI/ML Ready image (ROCm pre-installed), ATL1 region
+     - **NVIDIA H100**: Size `gpu-h100x1-80gb`, NVIDIA AI/ML Ready image (CUDA pre-installed), NYC2 region
      - SSH keys: Automatically injects all keys from your DO account
    - Waits for droplet to be ready and SSH accessible
    - Displays connection information
@@ -124,14 +127,20 @@ pip install -e .
    **Usage:**
 
    ```bash
-   # Compile and run HIP kernel
+   # Compile and run HIP kernel (AMD)
    chisel run "hipcc /root/chisel/simple-mm.cpp -o /tmp/test && /tmp/test"
+
+   # Compile and run CUDA kernel (NVIDIA)
+   chisel run "nvcc /root/chisel/simple-mm.cu -o /tmp/test && /tmp/test"
 
    # Run multiple commands
    chisel run "make && ./bench.sh"
 
-   # Check GPU status
+   # Check GPU status (AMD)
    chisel run "rocm-smi"
+
+   # Check GPU status (NVIDIA)
+   chisel run "nvidia-smi"
    ```
 
    **What it does:**
@@ -148,8 +157,11 @@ pip install -e .
    **Usage:**
 
    ```bash
-   # Profile source file (auto-compiles with hipcc)
+   # Profile HIP source file (auto-compiles with hipcc on AMD)
    chisel profile simple-mm.cpp
+
+   # Profile CUDA source file (auto-compiles with nvcc on NVIDIA)
+   chisel profile simple-mm.cu
 
    # Profile with custom compiler flags
    chisel profile kernel.cpp --args "-O3 -DNDEBUG"
@@ -170,8 +182,8 @@ pip install -e .
    **What it does:**
 
    - Auto-syncs source files to droplet if needed
-   - Compiles source files with hipcc
-   - Runs rocprof with specified trace options
+   - Compiles source files with hipcc (.cpp, .hip) or nvcc (.cu) based on extension
+   - Runs rocprof (AMD) with specified trace options
    - Downloads profile results to local directory
    - Displays summary of top kernel hotspots
    - Optionally opens Chrome trace in Perfetto
@@ -244,7 +256,7 @@ pip install -e .
 **Cost Management:**
 
 - Cost warnings appear when droplets run longer than 12 hours
-- Estimated at $1.99/hour for AMD MI300X GPU droplets
+- Estimated costs: $1.99/hour for AMD MI300X, $4.89/hour for NVIDIA H100
 - Use `chisel sweep` to clean up old droplets automatically
 - Droplets self-destruct after 15 minutes of inactivity
 
@@ -320,10 +332,10 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 **Available tools:**
 
 - `configure` - Set up DigitalOcean API token
-- `up` - Create or reuse a GPU droplet
+- `up` - Create or reuse a GPU droplet (requires --gpu-type)
 - `down` - Destroy the current droplet
 - `status` - Check droplet status
-- `profile` - Profile HIP files or commands with rocprof
+- `profile` - Profile HIP/CUDA files or commands with rocprof
 - `sync` - Sync files to the droplet
 - `run` - Execute commands on the droplet
 - `pull` - Pull files from the droplet
@@ -331,15 +343,16 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 **Usage examples:**
 
 - "Configure my chisel setup with token xyz123"
-- "Start a GPU droplet for development"
+- "Start an AMD GPU droplet for development"
+- "Start an H100 GPU droplet for CUDA development"
 - "Profile my matrix_multiply.hip file"
-- "Run rocm-smi on the droplet"
-- "Sync my_kernel.cpp to the droplet"
+- "Run nvidia-smi on the H100 droplet"
+- "Sync my_kernel.cu to the droplet"
 - "Pull the results.csv file from the droplet"
 
 ### Architecture pieces
 
-- AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly
+- AMD's droplets ship with ROCm pre-installed, NVIDIA's with CUDA pre-installed
 - Use DigitalOcean's `pydo` to create / destroy nodes
 
 1. **Python CLI skeleton** – `typer` or `argparse`; single `main.py`.
@@ -348,7 +361,10 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
    ```python
    import pydo
    client = pydo.Client(token=token)
-   client.droplets.create(size='gpu-mi300x1-192gb', image='gpu-amd-base', ...)
+   # AMD GPU droplet
+   client.droplets.create(size='gpu-mi300x1-192gb', image='gpu-amd-base', region='atl1', ...)
+   # NVIDIA GPU droplet
+   client.droplets.create(size='gpu-h100x1-80gb', image='gpu-h100x1-base', region='nyc2', ...)
    ```
 
 3. **SSH/rsync layer** – Use `paramiko` for exec + `rsync`/`scp` shell out (simplest); later swap to async libraries if perf matters.
@@ -364,7 +380,8 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 ### Future
 
 - [x] MCP server
+- [x] support NVIDIA H100 (basic CUDA compilation)
 - [ ] concurrent runs (non-blocking sync and run)
-- [ ] support NVIDIA (nsight-compute profiling)
+- [ ] NVIDIA profiling (nsight-compute, nsight-systems)
 - [ ] support other cloud backends
 - [ ] add Grafana support
