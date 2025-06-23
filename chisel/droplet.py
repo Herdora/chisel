@@ -16,11 +16,14 @@ console = Console()
 
 
 class DropletManager:
-    def __init__(self, client: DOClient, gpu_profile: GPUProfile):
+    def __init__(self, client: DOClient, gpu_profile: GPUProfile, gpu_type: str):
         self.client = client
         self.gpu_profile = gpu_profile
+        self.gpu_type = gpu_type
         self.state = State()
-        self.droplet_name = "chisel-dev"
+        # Generate GPU-specific droplet name
+        gpu_suffix = "amd" if "amd" in gpu_type else "nvidia"
+        self.droplet_name = f"chisel-dev-{gpu_suffix}"
 
     def get_ssh_keys(self) -> List[int]:
         """Get all SSH key IDs from DO account, including current droplet's key if on DO."""
@@ -217,7 +220,8 @@ echo "Setup completed"
                     break
 
             # Save state with creation time from droplet info
-            self.state.save(
+            self.state.save_droplet(
+                self.gpu_type,
                 existing["id"],
                 existing.get("ip", ""),
                 existing["name"],
@@ -239,33 +243,33 @@ echo "Setup completed"
             console.print("[yellow]Warning: SSH may not be fully ready yet[/yellow]")
 
         # Save state with creation time
-        self.state.save(
-            droplet["id"], droplet["ip"], droplet["name"], droplet.get("created_at")
+        self.state.save_droplet(
+            self.gpu_type, droplet["id"], droplet["ip"], droplet["name"], droplet.get("created_at")
         )
 
         return droplet
 
     def down(self) -> bool:
-        """Destroy the current droplet."""
-        state_info = self.state.get_droplet_info()
+        """Destroy the current droplet for this GPU type."""
+        state_info = self.state.get_droplet_info(self.gpu_type)
 
         if not state_info:
-            console.print("[yellow]No active droplet found[/yellow]")
+            console.print(f"[yellow]No {self.gpu_type} droplet found[/yellow]")
             return False
 
         try:
             console.print(
-                f"[yellow]Destroying droplet {state_info['name']}...[/yellow]"
+                f"[yellow]Destroying {self.gpu_type} droplet {state_info['name']}...[/yellow]"
             )
             self.destroy_droplet(state_info["droplet_id"])
-            self.state.clear()
-            console.print("[green]Droplet destroyed[/green]")
+            self.state.clear_droplet(self.gpu_type)
+            console.print(f"[green]{self.gpu_type} droplet destroyed[/green]")
             return True
         except Exception as e:
             console.print(f"[red]Error destroying droplet: {e}[/red]")
             # Clear state anyway if droplet doesn't exist
             if "404" in str(e):
-                self.state.clear()
+                self.state.clear_droplet(self.gpu_type)
             return False
 
     def list_droplets(self) -> List[Dict[str, Any]]:

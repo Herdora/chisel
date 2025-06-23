@@ -49,9 +49,9 @@ class SSHManager:
         self.state = State()
         self._ensure_local_ssh_key()
 
-    def get_droplet_info(self) -> Optional[Dict[str, Any]]:
-        """Get droplet info from state."""
-        return self.state.get_droplet_info()
+    def get_droplet_info(self, gpu_type: str) -> Optional[Dict[str, Any]]:
+        """Get droplet info from state for specific GPU type."""
+        return self.state.get_droplet_info(gpu_type)
 
     def _ensure_local_ssh_key(self) -> Optional[str]:
         """Ensure local SSH key exists and return path to public key."""
@@ -155,29 +155,35 @@ class SSHManager:
                 f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]")
             return False
 
-    def _show_cost_warning(self) -> None:
+    def _show_cost_warning(self, gpu_type: str) -> None:
         """Show cost warning if droplet has been running for a while."""
-        should_warn, uptime_hours, estimated_cost = self.state.should_warn_cost()
+        # Use appropriate hourly rate based on GPU type
+        hourly_rate = 4.89 if "nvidia" in gpu_type else 1.99
+        should_warn, uptime_hours, estimated_cost = self.state.should_warn_cost(gpu_type, hourly_rate=hourly_rate)
 
         if should_warn:
             console.print(
-                f"\n[yellow]⚠️  Cost Warning: Droplet has been running for {uptime_hours:.1f} hours[/yellow]")
+                f"\n[yellow]⚠️  Cost Warning: {gpu_type} droplet has been running for {uptime_hours:.1f} hours[/yellow]")
             console.print(
-                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at $1.99/hour)[/yellow]")
+                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at ${hourly_rate}/hour)[/yellow]")
             console.print(
-                f"[yellow]   Run 'chisel down' to stop billing[/yellow]\n")
+                f"[yellow]   Run 'chisel down --gpu-type {gpu_type}' to stop billing[/yellow]\n")
 
-    def sync(self, source: str, destination: Optional[str] = None) -> bool:
+    def sync(self, source: str, destination: Optional[str] = None, gpu_type: str = None) -> bool:
         """Sync files to the droplet using rsync."""
-        droplet_info = self.get_droplet_info()
+        if not gpu_type:
+            console.print("[red]Error: GPU type is required[/red]")
+            return False
+            
+        droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print("[red]Error: No active droplet found[/red]")
+            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                "[yellow]Run 'chisel up' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
             return False
 
         # Show cost warning
-        self._show_cost_warning()
+        self._show_cost_warning(gpu_type)
 
         # Ensure SSH access
         ip = droplet_info["ip"]
@@ -229,17 +235,21 @@ class SSHManager:
                 "[red]Error: rsync not found. Please install rsync.[/red]")
             return False
 
-    def run(self, command: str) -> int:
+    def run(self, command: str, gpu_type: str = None) -> int:
         """Execute a command on the droplet and stream output."""
-        droplet_info = self.get_droplet_info()
+        if not gpu_type:
+            console.print("[red]Error: GPU type is required[/red]")
+            return 1
+            
+        droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print("[red]Error: No active droplet found[/red]")
+            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                "[yellow]Run 'chisel up' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
             return 1
 
         # Show cost warning
-        self._show_cost_warning()
+        self._show_cost_warning(gpu_type)
 
         ip = droplet_info["ip"]
 
@@ -333,17 +343,21 @@ class SSHManager:
             finally:
                 ssh.close()
 
-    def profile(self, command: str, trace: str = "hip,hsa", output_dir: str = "./out", open_result: bool = False) -> Optional[str]:
+    def profile(self, command: str, gpu_type: str = None, trace: str = "hip,hsa", output_dir: str = "./out", open_result: bool = False) -> Optional[str]:
         """Profile a command with rocprof and pull results locally."""
-        droplet_info = self.get_droplet_info()
+        if not gpu_type:
+            console.print("[red]Error: GPU type is required[/red]")
+            return None
+            
+        droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print("[red]Error: No active droplet found[/red]")
+            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                "[yellow]Run 'chisel up' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
             return None
 
         # Show cost warning
-        self._show_cost_warning()
+        self._show_cost_warning(gpu_type)
 
         ip = droplet_info["ip"]
 
@@ -496,17 +510,21 @@ class SSHManager:
             finally:
                 ssh.close()
 
-    def pull(self, remote_path: str, local_path: Optional[str] = None) -> bool:
+    def pull(self, remote_path: str, local_path: Optional[str] = None, gpu_type: str = None) -> bool:
         """Pull files or directories from the droplet to local machine."""
-        droplet_info = self.get_droplet_info()
+        if not gpu_type:
+            console.print("[red]Error: GPU type is required[/red]")
+            return False
+            
+        droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print("[red]Error: No active droplet found[/red]")
+            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                "[yellow]Run 'chisel up' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
             return False
 
         # Show cost warning
-        self._show_cost_warning()
+        self._show_cost_warning(gpu_type)
 
         ip = droplet_info["ip"]
 

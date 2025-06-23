@@ -147,7 +147,7 @@ def up(
         # Initialize clients
         do_client = DOClient(config.token)
         gpu_profile = GPU_PROFILES[gpu_type]
-        droplet_manager = DropletManager(do_client, gpu_profile)
+        droplet_manager = DropletManager(do_client, gpu_profile, gpu_type)
 
         # Create or find droplet
         droplet = droplet_manager.up()
@@ -167,7 +167,11 @@ def up(
 
 
 @app.command()
-def down():
+def down(
+    gpu_type: str = typer.Option(
+        ..., "--gpu-type", help="GPU type to destroy (amd-mi300x, nvidia-h100)"
+    ),
+):
     """Destroy the current droplet to stop billing."""
     config = Config()
 
@@ -179,10 +183,17 @@ def down():
         )
         raise typer.Exit(1)
 
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
+
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client, AMD_MI300X)
+        gpu_profile = GPU_PROFILES[gpu_type]
+        droplet_manager = DropletManager(do_client, gpu_profile, gpu_type)
 
         # Confirm destruction
         confirm = Prompt.ask(
@@ -219,7 +230,8 @@ def list():
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client, AMD_MI300X)
+        # For list command, we don't need a specific GPU type - use AMD as default for the manager
+        droplet_manager = DropletManager(do_client, AMD_MI300X, "amd-mi300x")
 
         # Get droplets
         droplets = droplet_manager.list_droplets()
@@ -231,30 +243,49 @@ def list():
         # Create table
         table = Table(title="Chisel Droplets")
         table.add_column("Name", style="cyan")
+        table.add_column("GPU Type", style="magenta")
         table.add_column("IP", style="green")
         table.add_column("Status", style="yellow")
         table.add_column("Region", style="blue")
-        table.add_column("Size", style="magenta")
+        table.add_column("Size", style="white")
+        table.add_column("Cost/Hour", style="red")
         table.add_column("Created", style="white")
 
         for droplet in droplets:
+            # Determine GPU type and cost from droplet size
+            size = droplet["size"]["slug"]
+            if "mi300x" in size:
+                gpu_type = "amd-mi300x"
+                cost_per_hour = "$1.99"
+            elif "h100" in size:
+                gpu_type = "nvidia-h100"
+                cost_per_hour = "$4.89"
+            else:
+                gpu_type = "unknown"
+                cost_per_hour = "N/A"
+                
             table.add_row(
                 droplet["name"],
+                gpu_type,
                 droplet.get("ip", "N/A"),
                 droplet["status"],
                 droplet["region"]["slug"],
-                droplet["size"]["slug"],
+                size,
+                cost_per_hour,
                 droplet["created_at"][:19].replace("T", " "),
             )
 
         console.print(table)
 
-        # Show state info
-        state_info = droplet_manager.state.get_droplet_info()
-        if state_info:
-            console.print(
-                f"\n[cyan]Active droplet from state:[/cyan] {state_info['name']} ({state_info['ip']})"
-            )
+        # Show state info for all tracked droplets
+        all_droplets = droplet_manager.state.get_all_droplets()
+        if all_droplets:
+            console.print("\n[cyan]Tracked droplets in local state:[/cyan]")
+            for gpu_type, state_info in all_droplets.items():
+                if state_info:
+                    console.print(
+                        f"  {gpu_type}: {state_info['name']} ({state_info['ip']})"
+                    )
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -264,6 +295,9 @@ def list():
 @app.command()
 def sync(
     source: str = typer.Argument(..., help="Source file or directory to sync"),
+    gpu_type: str = typer.Option(
+        ..., "--gpu-type", help="GPU type to sync to (amd-mi300x, nvidia-h100)"
+    ),
     destination: Optional[str] = typer.Option(
         None,
         "--dest",
@@ -272,9 +306,15 @@ def sync(
     ),
 ):
     """Sync files to the droplet."""
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
+
     try:
         ssh_manager = SSHManager()
-        success = ssh_manager.sync(source, destination)
+        success = ssh_manager.sync(source, destination, gpu_type)
         if not success:
             raise typer.Exit(1)
     except Exception as e:
@@ -283,11 +323,22 @@ def sync(
 
 
 @app.command()
-def run(command: str = typer.Argument(..., help="Command to execute on the droplet")):
+def run(
+    command: str = typer.Argument(..., help="Command to execute on the droplet"),
+    gpu_type: str = typer.Option(
+        ..., "--gpu-type", help="GPU type to run command on (amd-mi300x, nvidia-h100)"
+    ),
+):
     """Execute a command on the droplet."""
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
+
     try:
         ssh_manager = SSHManager()
-        exit_code = ssh_manager.run(command)
+        exit_code = ssh_manager.run(command, gpu_type)
         raise typer.Exit(exit_code)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -298,6 +349,9 @@ def run(command: str = typer.Argument(..., help="Command to execute on the dropl
 def profile(
     command_or_file: str = typer.Argument(
         ..., help="Command to profile, or source file (e.g., 'simple-mm.cpp')"
+    ),
+    gpu_type: str = typer.Option(
+        ..., "--gpu-type", help="GPU type to profile on (amd-mi300x, nvidia-h100)"
     ),
     trace: Optional[str] = typer.Option(
         "hip,hsa", "--trace", help="Trace options (hip,hsa,roctx)"
@@ -315,11 +369,17 @@ def profile(
     """Profile a command or source file with rocprof and pull results locally.
 
     Examples:
-        chisel profile simple-mm.cpp              # Auto-compile and profile
-        chisel profile "/tmp/my-binary"           # Profile existing binary
-        chisel profile "ls -la"                   # Profile any command
-        chisel profile kernel.cpp --args "-O3"   # Custom compiler flags
+        chisel profile simple-mm.cpp --gpu-type amd-mi300x              # Auto-compile and profile
+        chisel profile "/tmp/my-binary" --gpu-type nvidia-h100          # Profile existing binary
+        chisel profile "ls -la" --gpu-type amd-mi300x                   # Profile any command
+        chisel profile kernel.cpp --gpu-type amd-mi300x --args "-O3"   # Custom compiler flags
     """
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
+
     try:
         ssh_manager = SSHManager()
 
@@ -340,7 +400,7 @@ def profile(
 
             # Sync the source file
             console.print(f"[cyan]Syncing {command_or_file}...[/cyan]")
-            if not ssh_manager.sync(str(source_file)):
+            if not ssh_manager.sync(str(source_file), None, gpu_type):
                 console.print("[red]Error: Failed to sync source file[/red]")
                 raise typer.Exit(1)
 
@@ -370,7 +430,7 @@ def profile(
 
         # Profile the command
         local_archive = ssh_manager.profile(
-            full_command, trace, output_dir, open_result
+            full_command, gpu_type, trace, output_dir, open_result
         )
 
         if local_archive and open_result:
@@ -392,6 +452,9 @@ def pull(
     remote_path: str = typer.Argument(
         ..., help="Remote file or directory path to pull"
     ),
+    gpu_type: str = typer.Option(
+        ..., "--gpu-type", help="GPU type to pull from (amd-mi300x, nvidia-h100)"
+    ),
     local_path: Optional[str] = typer.Option(
         None,
         "--local",
@@ -400,9 +463,15 @@ def pull(
     ),
 ):
     """Pull files or directories from the droplet to local machine."""
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
+
     try:
         ssh_manager = SSHManager()
-        success = ssh_manager.pull(remote_path, local_path)
+        success = ssh_manager.pull(remote_path, local_path, gpu_type)
         if not success:
             raise typer.Exit(1)
     except Exception as e:
@@ -435,7 +504,8 @@ def sweep(
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        droplet_manager = DropletManager(do_client, AMD_MI300X)
+        # For sweep command, we don't need a specific GPU type - use AMD as default for the manager
+        droplet_manager = DropletManager(do_client, AMD_MI300X, "amd-mi300x")
 
         # Get all droplets
         droplets = droplet_manager.list_droplets()
@@ -545,16 +615,17 @@ def sweep(
             f"\n[green]Successfully destroyed {destroyed_count}/{len(old_droplets)} droplets[/green]"
         )
 
-        # Clear state if current droplet was destroyed
-        state_info = droplet_manager.state.get_droplet_info()
-        if state_info:
-            for item in old_droplets:
-                if item["droplet"]["id"] == state_info["droplet_id"]:
-                    droplet_manager.state.clear()
-                    console.print(
-                        "[yellow]Cleared local state (active droplet was destroyed)[/yellow]"
-                    )
-                    break
+        # Clear state for any destroyed droplets
+        all_droplets = droplet_manager.state.get_all_droplets()
+        for gpu_type, state_info in all_droplets.items():
+            if state_info:
+                for item in old_droplets:
+                    if item["droplet"]["id"] == state_info["droplet_id"]:
+                        droplet_manager.state.clear_droplet(gpu_type)
+                        console.print(
+                            f"[yellow]Cleared {gpu_type} droplet state (droplet was destroyed)[/yellow]"
+                        )
+                        break
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
