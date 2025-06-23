@@ -3,17 +3,18 @@
 	<h1>chisel</h1>
 </div>
 
-**TL;DR:** A CLI tool for developing AMD GPU kernels on DigitalOcean. Spins up GPU droplets, syncs code, runs/profiles HIP kernels with rocprof, and pulls results back locally. Zero GPU hardware required—just write, test, and profile AMD GPU code from your laptop.
+**TL;DR:** A CLI tool for developing and profiling GPU kernels locally. Spins up GPU droplets, syncs code, runs/profiles kernels, and pulls results back locally. Zero GPU hardware required—just write, test, and profile GPU code from your laptop. We currently support only AMD's GPU cloud, but quickly expanding to other clouds.
 
 ### Setup
 
-**From PyPI (recommended):**
+**Quick start:**
 
 ```bash
 pip install chisel-cli
+chisel --help
 ```
 
-**Development setup:**
+**Dev setup:**
 
 _With uv:_
 
