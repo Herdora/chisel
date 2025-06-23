@@ -221,6 +221,7 @@ $RECYCLE.BIN/
 out/
 .config/
 cursor/
+.cursor/
 logs/
 *.log
 
