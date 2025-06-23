@@ -291,6 +291,45 @@ chisel run "hipcc myfile.cpp && ./a.out"
 chisel profile kernel.cpp
 ```
 
+### MCP Server Integration
+
+**Claude Desktop Integration:**
+
+Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU droplets directly through Claude Desktop.
+
+**Setup:**
+
+1. **Install Claude Desktop** from [claude.ai/download](https://claude.ai/download)
+
+2. **Configure the MCP server** by editing `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+   ```json
+   {
+     "mcpServers": {
+       "chisel": {
+         "command": "/path/to/your/chisel/.venv/bin/python",
+         "args": ["/path/to/your/chisel/mcp_server.py"]
+       }
+     }
+   }
+   ```
+
+3. **Restart Claude Desktop**
+
+**Available tools:**
+
+- `configure` - Set up DigitalOcean API token
+- `up` - Create or reuse a GPU droplet
+- `down` - Destroy the current droplet
+- `status` - Check droplet status
+
+**Usage examples:**
+
+- "Configure my chisel setup with token xyz123"
+- "Start a GPU droplet for development"
+- "Check my current droplet status"
+- "Stop my droplet to save costs"
+
 ### Architecture pieces
 
 - AMD's droplets ship with ROCm pre-installed, so driver stack is available instantly
