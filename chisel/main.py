@@ -1,5 +1,3 @@
-"""Chisel CLI - A tool for managing DigitalOcean GPU droplets for HIP kernel development."""
-
 import os
 import subprocess
 import time
@@ -14,7 +12,7 @@ from rich.table import Table
 from chisel.config import Config
 from chisel.do_client import DOClient
 from chisel.droplet import DropletManager
-from chisel.gpu_profiles import AMD_MI300X, NVIDIA_H100, GPU_PROFILES
+from chisel.gpu_profiles import AMD_MI300X, GPU_PROFILES
 from chisel.ssh_manager import SSHManager
 
 app = typer.Typer(
@@ -49,20 +47,16 @@ def configure(
         if overwrite.lower() == "n":
             api_token = existing_token
         else:
-            api_token = Prompt.ask(
-                "Enter your DigitalOcean API token", password=True)
+            api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
     else:
         # No token found, prompt for it
         console.print("[yellow]No DigitalOcean API token found.[/yellow]")
         console.print("\nTo get your API token:")
-        console.print(
-            "1. Go to: https://amd.digitalocean.com/account/api/tokens")
+        console.print("1. Go to: https://amd.digitalocean.com/account/api/tokens")
         console.print("2. Generate a new token with read and write access")
-        console.print(
-            "3. Copy the token (you won't be able to see it again)\n")
+        console.print("3. Copy the token (you won't be able to see it again)\n")
 
-        api_token = Prompt.ask(
-            "Enter your DigitalOcean API token", password=True)
+        api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
 
     # Validate token
     console.print("\n[cyan]Validating API token...[/cyan]")
@@ -132,7 +126,9 @@ def up(
     # Validate GPU type
     if gpu_type not in GPU_PROFILES:
         console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print(
+            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+        )
         raise typer.Exit(1)
 
     # Check if configured
@@ -158,8 +154,7 @@ def up(
         console.print(f"[cyan]IP:[/cyan] {droplet.get('ip', 'N/A')}")
         console.print(f"[cyan]Region:[/cyan] {droplet['region']['slug']}")
         console.print(f"[cyan]Size:[/cyan] {droplet['size']['slug']}")
-        console.print(
-            f"\n[yellow]SSH:[/yellow] ssh root@{droplet.get('ip', 'N/A')}")
+        console.print(f"\n[yellow]SSH:[/yellow] ssh root@{droplet.get('ip', 'N/A')}")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -186,7 +181,9 @@ def down(
     # Validate GPU type
     if gpu_type not in GPU_PROFILES:
         console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print(
+            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+        )
         raise typer.Exit(1)
 
     try:
@@ -263,7 +260,7 @@ def list():
             else:
                 gpu_type = "unknown"
                 cost_per_hour = "N/A"
-                
+
             table.add_row(
                 droplet["name"],
                 gpu_type,
@@ -309,7 +306,9 @@ def sync(
     # Validate GPU type
     if gpu_type not in GPU_PROFILES:
         console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print(
+            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+        )
         raise typer.Exit(1)
 
     try:
@@ -333,7 +332,9 @@ def run(
     # Validate GPU type
     if gpu_type not in GPU_PROFILES:
         console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print(
+            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+        )
         raise typer.Exit(1)
 
     try:
@@ -377,7 +378,9 @@ def profile(
     # Validate GPU type
     if gpu_type not in GPU_PROFILES:
         console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print(
+            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+        )
         raise typer.Exit(1)
 
     try:
@@ -466,7 +469,9 @@ def pull(
     # Validate GPU type
     if gpu_type not in GPU_PROFILES:
         console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print(
+            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+        )
         raise typer.Exit(1)
 
     try:
@@ -602,14 +607,12 @@ def sweep(
         for item in old_droplets:
             droplet = item["droplet"]
             try:
-                console.print(
-                    f"[yellow]Destroying {droplet['name']}...[/yellow]")
+                console.print(f"[yellow]Destroying {droplet['name']}...[/yellow]")
                 droplet_manager.destroy_droplet(droplet["id"])
                 destroyed_count += 1
                 console.print(f"[green]✓ Destroyed {droplet['name']}[/green]")
             except Exception as e:
-                console.print(
-                    f"[red]✗ Failed to destroy {droplet['name']}: {e}[/red]")
+                console.print(f"[red]✗ Failed to destroy {droplet['name']}: {e}[/red]")
 
         console.print(
             f"\n[green]Successfully destroyed {destroyed_count}/{len(old_droplets)} droplets[/green]"
@@ -654,8 +657,7 @@ def ssh_setup():
             os.path.expanduser("~/.ssh/id_ed25519"),
             os.path.expanduser("~/.ssh/id_ed25519.pub"),
         ),
-        (os.path.expanduser("~/.ssh/id_rsa"),
-         os.path.expanduser("~/.ssh/id_rsa.pub")),
+        (os.path.expanduser("~/.ssh/id_rsa"), os.path.expanduser("~/.ssh/id_rsa.pub")),
         (
             os.path.expanduser("~/.ssh/id_ecdsa"),
             os.path.expanduser("~/.ssh/id_ecdsa.pub"),
@@ -695,26 +697,20 @@ def ssh_setup():
     try:
         import requests
 
-        response = requests.get(
-            "http://169.254.169.254/metadata/v1/id", timeout=1)
+        response = requests.get("http://169.254.169.254/metadata/v1/id", timeout=1)
         is_on_do_droplet = response.status_code == 200
     except:
         is_on_do_droplet = False
 
     if is_on_do_droplet:
-        console.print(
-            "\n[yellow]You're running on a DigitalOcean droplet![/yellow]")
+        console.print("\n[yellow]You're running on a DigitalOcean droplet![/yellow]")
         console.print("\n[cyan]To use chisel from this droplet:[/cyan]")
-        console.print(
-            "1. If automatic addition fails, manually add the SSH key:")
+        console.print("1. If automatic addition fails, manually add the SSH key:")
         console.print("   - Go to: https://amd.digitalocean.com/account/keys")
         console.print("   - Click 'Add SSH Key'")
-        console.print(
-            "   - Paste the key and give it a name (e.g., 'chisel-droplet')")
-        console.print(
-            "2. Run 'chisel down' to destroy any existing chisel-dev droplet")
-        console.print(
-            "3. Run 'chisel up' to create a new droplet with your key")
+        console.print("   - Paste the key and give it a name (e.g., 'chisel-droplet')")
+        console.print("2. Run 'chisel down' to destroy any existing chisel-dev droplet")
+        console.print("3. Run 'chisel up' to create a new droplet with your key")
         console.print(
             "\n[green]Then you'll be able to use chisel sync/run/profile from this droplet![/green]"
         )
@@ -754,8 +750,7 @@ def ssh_setup():
                     "[yellow]Future droplets created with 'chisel up' will include this key.[/yellow]"
                 )
         else:
-            console.print(
-                "[red]✗ Failed to add SSH key to DigitalOcean account[/red]")
+            console.print("[red]✗ Failed to add SSH key to DigitalOcean account[/red]")
             console.print(
                 "[yellow]Please add it manually using the instructions above.[/yellow]"
             )

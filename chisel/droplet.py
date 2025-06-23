@@ -1,5 +1,3 @@
-"""DigitalOcean droplet management for chisel."""
-
 import socket
 import time
 from typing import Any, Dict, List, Optional
@@ -244,7 +242,11 @@ echo "Setup completed"
 
         # Save state with creation time
         self.state.save_droplet(
-            self.gpu_type, droplet["id"], droplet["ip"], droplet["name"], droplet.get("created_at")
+            self.gpu_type,
+            droplet["id"],
+            droplet["ip"],
+            droplet["name"],
+            droplet.get("created_at"),
         )
 
         return droplet
