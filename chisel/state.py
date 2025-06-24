@@ -134,3 +134,20 @@ class State:
         """Clear the active GPU context."""
         if self.context_file.exists():
             self.context_file.unlink()
+
+    def get_droplet_id(self, gpu_type: str) -> Optional[str]:
+        """Get droplet name for specific GPU type."""
+        droplet_info = self.get_droplet_info(gpu_type)
+        return droplet_info["name"] if droplet_info else None
+
+    def get_all_tracked_droplets(self) -> Dict[str, Dict[str, str]]:
+        """Get all tracked droplets with basic info."""
+        state = self.load()
+        result = {}
+        for gpu_type, droplet_info in state["droplets"].items():
+            if droplet_info and all(k in droplet_info for k in ["name", "ip"]):
+                result[gpu_type] = {
+                    "name": droplet_info["name"],
+                    "ip": droplet_info["ip"]
+                }
+        return result

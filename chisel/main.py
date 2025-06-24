@@ -802,16 +802,34 @@ def switch(
 
 @app.command()
 def context():
-    """Show the current active GPU context."""
+    """Show the current active GPU context and available droplets."""
     state = State()
     active_context = state.get_active_context()
     
     if active_context:
         console.print(f"Active context: [cyan]{active_context}[/cyan]")
+        
+        # Show active droplet info if available
+        tracked_droplet = state.get_droplet_id(active_context)
+        if tracked_droplet:
+            console.print(f"Active droplet: [green]{tracked_droplet}[/green]")
+        else:
+            console.print("[yellow]No droplet running for this context[/yellow]")
+            console.print(f"[yellow]Use 'chisel up' to create a {active_context} droplet[/yellow]")
     else:
-        console.print("No active context set")
-        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
-        console.print("[yellow]Use 'chisel switch <type>' to set a context[/yellow]")
+        console.print("[yellow]No active context set[/yellow]")
+        
+        # Show available droplets and suggest how to use them
+        tracked_droplets = state.get_all_tracked_droplets()
+        if tracked_droplets:
+            console.print("\n[cyan]Available droplets:[/cyan]")
+            for gpu_type, droplet_info in tracked_droplets.items():
+                console.print(f"  {gpu_type}: [green]{droplet_info['name']}[/green] ({droplet_info['ip']})")
+            console.print(f"\n[yellow]Use 'chisel switch <gpu-type>' to set a context[/yellow]")
+        else:
+            console.print(f"\n[yellow]Available GPU types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+            console.print("[yellow]Use 'chisel switch <type>' to set a context[/yellow]")
+            console.print("[yellow]Use 'chisel up' to create a droplet[/yellow]")
 
 
 @app.command()

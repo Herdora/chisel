@@ -3,12 +3,19 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chisel"
-version = "0.1.0"
-description = "Add your description here"
+name = "chisel-cli"
+version = "0.1.5"
+description = "A CLI tool for developing and profiling GPU kernels on DigitalOcean droplets"
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = []
+dependencies = [
+    "typer>=0.16.0",
+    "rich>=14.0.0",
+    "paramiko>=3.5.0",
+    "requests>=2.32.0",
+    "toml>=0.10.0",
+    "pydo>=0.11.0"
+]
 
 [project.scripts]
 chisel = "chisel.main:main"
