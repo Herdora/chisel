@@ -65,6 +65,11 @@ class ProfileResult:
                 for rocprof_file in self.summary.get('att_files', []):
                     console.print(f"  • {rocprof_file}")
                 
+                # Show performance counter info if available
+                if self.summary.get("pmc_counters"):
+                    console.print(f"\n[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}")
+                    console.print("  • counter_collection.csv: Performance counter data")
+                
                 # Usage instructions
                 console.print("\n[cyan]Analysis tools:[/cyan]")
                 console.print("  • Open CSV files for detailed trace analysis")
@@ -120,13 +125,14 @@ class ProfileManager:
 
         self.state = ProfileState()
 
-    def profile(self, vendor: str, target: str) -> ProfileResult:
+    def profile(self, vendor: str, target: str, pmc_counters: Optional[str] = None) -> ProfileResult:
         """
         Execute a complete profiling workflow.
 
         Args:
             vendor: Either "nvidia" or "amd"
             target: File path or command to profile
+            pmc_counters: Comma-separated performance counters for AMD (optional)
 
         Returns:
             ProfileResult with profiling data and summary
@@ -154,7 +160,7 @@ class ProfileManager:
 
             # 4. Run profiling
             console.print("[cyan]Running profiler...[/cyan]")
-            profile_output = self._run_profiler(droplet_info, vendor, command)
+            profile_output = self._run_profiler(droplet_info, vendor, command, pmc_counters)
 
             # 5. Calculate cost
             elapsed_hours = (time.time() - start_time) / 3600
@@ -294,7 +300,7 @@ class ProfileManager:
         return f"{compile_cmd} && {remote_binary}"
 
     def _run_profiler(
-        self, droplet_info: Dict[str, any], vendor: str, command: str
+        self, droplet_info: Dict[str, any], vendor: str, command: str, pmc_counters: Optional[str] = None
     ) -> Dict[str, any]:
         """Run the profiler on the droplet."""
         ssh_manager = SSHManager()
@@ -307,7 +313,7 @@ class ProfileManager:
         if vendor == "amd":
             # AMD profiling with rocprofv3
             try:
-                return self._run_amd_profiler(droplet_info, command, output_dir)
+                return self._run_amd_profiler(droplet_info, command, output_dir, pmc_counters)
             except Exception as e:
                 console.print(f"[yellow]AMD rocprofv3 profiling failed: {e}[/yellow]")
                 console.print("[yellow]Falling back to legacy rocprof...[/yellow]")
@@ -613,7 +619,7 @@ class ProfileManager:
             raise RuntimeError(f"Failed to setup rocprofv3: {e}")
 
     def _run_amd_profiler(
-        self, droplet_info: Dict[str, any], command: str, output_dir: Path
+        self, droplet_info: Dict[str, any], command: str, output_dir: Path, pmc_counters: Optional[str] = None
     ) -> Dict[str, any]:
         """Run AMD rocprofv3 profiler with ATT traces on the droplet."""
         ssh_manager = SSHManager()
@@ -628,15 +634,24 @@ class ProfileManager:
         # Build rocprofv3 profiling command
         profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
 
+        # Build rocprofv3 command with optional PMC counters
+        pmc_args = ""
+        if pmc_counters:
+            # Validate and format counters
+            counters = [c.strip() for c in pmc_counters.split(",")]
+            if len(counters) > 8:
+                console.print(f"[yellow]Warning: {len(counters)} counters requested, but hardware typically supports max 7-8. Some may fail.[/yellow]")
+            pmc_args = f"--pmc {','.join(counters)}"
+
         # For AMD, we need to separate compilation from profiling
         if " && " in command:
             # Split compilation and execution
             compile_part, execute_part = command.split(" && ", 1)
             # Execute compilation first, then profile with rocprofv3
-            rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats -d {profile_dirname} -- {execute_part}"
+            rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats {pmc_args} -d {profile_dirname} -- {execute_part}"
         else:
             # Just profile the single command
-            rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats -d {profile_dirname} -- {command}"
+            rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats {pmc_args} -d {profile_dirname} -- {command}"
 
         # Full profiling command
         full_cmd = f"{profile_setup} && {rocprof_cmd}"
@@ -659,6 +674,7 @@ class ProfileManager:
             "att_files": rocprof_files,  # Keep same key for display compatibility
             "profile_type": "rocprofv3",
             "message": f"AMD rocprofv3 profiling completed. Generated {len(rocprof_files)} output files.",
+            "pmc_counters": pmc_counters,  # Include counter info for display
         }
 
         # Cleanup remote files

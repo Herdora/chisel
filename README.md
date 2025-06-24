@@ -73,6 +73,9 @@ Profile GPU kernels on AMD MI300X ($1.99/hour).
 chisel profile amd matrix.cpp
 chisel profile amd kernel.hip
 
+# Profile with performance counters
+chisel profile amd matrix.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES,SQ_BUSY_CYCLES"
+
 # Profile existing binaries or commands
 chisel profile amd "./my-hip-app --iterations=100"
 chisel profile amd "rocm-smi"
@@ -84,6 +87,7 @@ chisel profile amd "rocm-smi"
 - Auto-syncs source files to droplet
 - Compiles with `hipcc` for `.cpp/.hip` files
 - Runs `rocprofv3` profiler with comprehensive system tracing
+- Optionally collects performance counters with `--pmc` flag
 - Downloads profiling results (CSV, JSON, trace files) locally
 - Provides detailed GPU performance analysis
 
@@ -114,10 +118,14 @@ EOF
 # Profile it
 chisel profile amd simple.cpp
 
+# Profile with performance counters
+chisel profile amd simple.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"
+
 # The results include comprehensive CSV trace files:
 # - kernel_trace.csv: Kernel execution traces
-# - hip_api_trace.csv: HIP API call traces  
+# - hip_api_trace.csv: HIP API call traces
 # - memory_allocation_trace.csv: Memory allocation traces
+# - counter_collection.csv: Performance counter data (when --pmc used)
 # And statistics files for detailed analysis
 ```
 
@@ -153,10 +161,10 @@ chisel profile nvidia simple.cu
 
 ## GPU Support
 
-| GPU         | Size                | Region | Cost/Hour | Profiling              |
-| ----------- | ------------------- | ------ | --------- | ---------------------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | ✅ nsight-compute + nsight-systems |
-| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | ✅ rocprofv3           |
+| GPU         | Size                | Region | Cost/Hour | Profiling                       |
+| ----------- | ------------------- | ------ | --------- | ------------------------------- |
+| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | nsight-compute + nsight-systems |
+| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | rocprofv3                       |
 
 ## Development Setup
 
@@ -174,5 +182,5 @@ pip install -e .
 - [x] NVIDIA nsight-compute
 - [x] NVIDIA nsight-systems profiling
 - [x] Integrate the new ROCm profiling tools (rocprofiler-sdk/rocprofv3)
-- [ ] Add ATT (Address Translation Table) trace support for rocprof-compute-viewer
-- [ ] Performance counter collection with rocprofv3 --pmc
+- [x] Performance counter collection with rocprofv3 --pmc
+- [ ] (waiting for AMD to fix ATT traces in rocprofiler-sdk) Add ATT (Address Translation Table) trace support for rocprof-compute-viewer

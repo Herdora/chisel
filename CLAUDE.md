@@ -71,8 +71,9 @@ Chisel is a CLI tool for GPU kernel development on DigitalOcean droplets. The ar
 
 ## Important Implementation Notes
 
-- **No NVIDIA Profiling Yet**: While NVIDIA H100 is supported for compute, Nsight profiling tools are not yet implemented
-- **AMD-Focused Profiling**: Current `profile` command only supports `rocprof` for AMD GPUs
+- **NVIDIA Profiling**: Both nsight-compute (ncu) and nsight-systems (nsys) profiling implemented
+- **AMD Profiling**: Modern rocprofv3 with performance counter support via `--pmc` flag
+- **Performance Counters**: AMD supports custom counter collection (max ~7-8 counters simultaneously due to hardware limits)
 - **SSH Key Management**: Automatically uses all SSH keys from DigitalOcean account
 - **Cost Management**: Droplets self-destruct after 15 minutes of inactivity; warnings shown after 12 hours
 

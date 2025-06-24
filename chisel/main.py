@@ -116,17 +116,27 @@ def profile(
         ..., 
         help="File to compile and profile (e.g., kernel.cu) or command to run"
     ),
+    pmc: Optional[str] = typer.Option(
+        None,
+        "--pmc",
+        help="Performance counters to collect (AMD only). Comma-separated list, e.g., 'GRBM_GUI_ACTIVE,SQ_WAVES,SQ_BUSY_CYCLES'"
+    ),
 ):
     """Profile a GPU kernel or command on cloud infrastructure.
     
     Examples:
-        chisel profile amd matrix.cpp      # Compile and profile C++ file on AMD
-        chisel profile nvidia kernel.cu    # Compile and profile CUDA file on NVIDIA
-        chisel profile amd "./my-app"      # Profile existing binary on AMD
+        chisel profile amd matrix.cpp                              # Basic profiling
+        chisel profile nvidia kernel.cu                            # NVIDIA profiling  
+        chisel profile amd kernel.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"  # AMD with counters
     """
     # Validate vendor
     if vendor not in ["nvidia", "amd"]:
         console.print(f"[red]Error: vendor must be 'nvidia' or 'amd', not '{vendor}'[/red]")
+        raise typer.Exit(1)
+    
+    # Validate PMC option
+    if pmc and vendor != "amd":
+        console.print("[red]Error: --pmc flag is only supported for AMD profiling[/red]")
         raise typer.Exit(1)
     
     # Check configuration
@@ -139,7 +149,7 @@ def profile(
     try:
         # Use ProfileManager to handle everything
         manager = ProfileManager()
-        result = manager.profile(vendor, target)
+        result = manager.profile(vendor, target, pmc_counters=pmc)
         
         # Display results
         result.display_summary()
