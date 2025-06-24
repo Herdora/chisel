@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chisel-mcp"
+version = "0.1.0"
+description = "MCP server for Chisel GPU profiling tool"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "chisel-cli",
+    "mcp[cli]",
+]
+
+[project.scripts]
+chisel-mcp = "chisel_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv.sources]
+chisel-cli = { path = "../" }

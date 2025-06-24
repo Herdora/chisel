@@ -91,6 +91,24 @@ chisel profile amd "rocm-smi"
 - Downloads profiling results (CSV, JSON, trace files) locally
 - Provides detailed GPU performance analysis
 
+## MCP Server (LLM Integration)
+
+Chisel includes an MCP (Model Context Protocol) server that enables LLMs like Claude to use Chisel directly:
+
+```bash
+# Install MCP server
+cd chisel-mcp && uv sync
+
+# Configure in Claude Desktop (see chisel-mcp/README.md for details)
+```
+
+**Available tools for LLMs:**
+- `configure(token)` - Set DigitalOcean API token
+- `profile_nvidia(target, gpu_type)` - Profile on H100/L40S
+- `profile_amd(target, pmc)` - Profile on MI300X with optional counters
+
+See [`chisel-mcp/README.md`](chisel-mcp/README.md) for full setup and usage instructions.
+
 ## Examples
 
 ### AMD Profiling
