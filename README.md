@@ -166,6 +166,5 @@ pip install -e .
 ## Future
 
 - [x] NVIDIA nsight-compute
-- [ ] NVIDIA nsight-systems profiling
+- [x] NVIDIA nsight-systems profiling
 - [ ] Integrate the new ROCm profiling tools https://github.com/rocm/rocprofiler-sdk and https://github.com/rocm/rocprof-compute-viewer
-- [ ] Advanced profiling options and metrics selection
