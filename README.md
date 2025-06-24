@@ -59,9 +59,9 @@ chisel profile nvidia "nvidia-smi"
 
 - Creates H100 droplet if needed (reuses existing)
 - Auto-syncs source files to droplet
-- Compiles with `nvcc` for `.cu` files
-- Runs your code (profiling tools coming soon)
-- Downloads results locally
+- Compiles with `nvcc` for `.cu` files with `-lineinfo` for better profiling
+- Runs `nsight-compute` (ncu) profiler with comprehensive metrics
+- Downloads `.ncu-rep` files locally for analysis
 - Shows cost estimate
 
 ### `chisel profile amd <file_or_command>`
@@ -139,14 +139,18 @@ EOF
 
 # Profile it
 chisel profile nvidia simple.cu
+
+# The results include .ncu-rep files that can be analyzed with:
+# ncu --import profile_*.ncu-rep --page summary  # Text summary
+# ncu-ui profile_*.ncu-rep                       # GUI analysis (if available locally)
 ```
 
 ## GPU Support
 
-| GPU         | Size                | Region | Cost/Hour | Profiling   |
-| ----------- | ------------------- | ------ | --------- | ----------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | Coming soon |
-| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | ✅ rocprof  |
+| GPU         | Size                | Region | Cost/Hour | Profiling          |
+| ----------- | ------------------- | ------ | --------- | ------------------ |
+| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | ✅ nsight-compute   |
+| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | ✅ rocprof         |
 
 ## Development Setup
 
@@ -161,7 +165,7 @@ pip install -e .
 
 ## Future
 
-- [ ] NVIDIA profiling (nsight-compute, nsight-systems)
+- [ ] NVIDIA nsight-systems profiling
 - [ ] Support T4 GPUs
 - [ ] Integrate the new ROCm profiling tools https://github.com/rocm/rocprofiler-sdk and https://github.com/rocm/rocprof-compute-viewer
-- [ ] Advanced profiling options
+- [ ] Advanced profiling options and metrics selection

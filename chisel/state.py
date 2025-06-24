@@ -35,7 +35,12 @@ class State:
             return {"droplets": {}}
 
     def save_droplet(
-        self, gpu_type: str, droplet_id: int, ip: str, name: str, created_at: Optional[str] = None
+        self,
+        gpu_type: str,
+        droplet_id: int,
+        ip: str,
+        name: str,
+        created_at: Optional[str] = None,
     ) -> None:
         """Save droplet state for specific GPU type."""
         state = self.load()
@@ -68,7 +73,9 @@ class State:
         """Get droplet info for specific GPU type."""
         state = self.load()
         droplet_info = state["droplets"].get(gpu_type)
-        if droplet_info and all(k in droplet_info for k in ["droplet_id", "ip", "name"]):
+        if droplet_info and all(
+            k in droplet_info for k in ["droplet_id", "ip", "name"]
+        ):
             return droplet_info
         return None
 
@@ -117,7 +124,7 @@ class State:
         """Get the active GPU context."""
         if not self.context_file.exists():
             return None
-        
+
         try:
             with open(self.context_file, "r") as f:
                 context = f.read().strip()
@@ -148,6 +155,6 @@ class State:
             if droplet_info and all(k in droplet_info for k in ["name", "ip"]):
                 result[gpu_type] = {
                     "name": droplet_info["name"],
-                    "ip": droplet_info["ip"]
+                    "ip": droplet_info["ip"],
                 }
         return result

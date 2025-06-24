@@ -3,11 +3,9 @@
 import os
 import signal
 import subprocess
-import sys
 import tarfile
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import paramiko
 from rich.console import Console
@@ -56,12 +54,18 @@ class SSHManager:
     def _ensure_local_ssh_key(self) -> Optional[str]:
         """Ensure local SSH key exists and return path to public key."""
         ssh_key_paths = [
-            (os.path.expanduser("~/.ssh/id_ed25519"),
-             os.path.expanduser("~/.ssh/id_ed25519.pub")),
-            (os.path.expanduser("~/.ssh/id_rsa"),
-             os.path.expanduser("~/.ssh/id_rsa.pub")),
-            (os.path.expanduser("~/.ssh/id_ecdsa"),
-             os.path.expanduser("~/.ssh/id_ecdsa.pub")),
+            (
+                os.path.expanduser("~/.ssh/id_ed25519"),
+                os.path.expanduser("~/.ssh/id_ed25519.pub"),
+            ),
+            (
+                os.path.expanduser("~/.ssh/id_rsa"),
+                os.path.expanduser("~/.ssh/id_rsa.pub"),
+            ),
+            (
+                os.path.expanduser("~/.ssh/id_ecdsa"),
+                os.path.expanduser("~/.ssh/id_ecdsa.pub"),
+            ),
         ]
 
         # Check for existing keys
@@ -78,9 +82,11 @@ class SSHManager:
             os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
             # Generate key
-            subprocess.run([
-                "ssh-keygen", "-t", "ed25519", "-f", private_path, "-N", "", "-q"
-            ], check=True, capture_output=True)
+            subprocess.run(
+                ["ssh-keygen", "-t", "ed25519", "-f", private_path, "-N", "", "-q"],
+                check=True,
+                capture_output=True,
+            )
 
             console.print("[green]Generated new SSH key[/green]")
             return public_path
@@ -95,8 +101,7 @@ class SSHManager:
                 TextColumn("[progress.description]{task.description}"),
                 transient=True,
             ) as progress:
-                progress.add_task(
-                    description="Verifying SSH connection...", total=None)
+                progress.add_task(description="Verifying SSH connection...", total=None)
                 ssh = paramiko.SSHClient()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 ssh.connect(ip, username="root", timeout=10)
@@ -105,81 +110,94 @@ class SSHManager:
         except paramiko.AuthenticationException:
             console.print("\n[bold red]SSH Key Not Authorized[/bold red]")
             console.print(
-                f"The droplet at [cyan]{ip}[/cyan] did not accept your SSH key.")
+                f"The droplet at [cyan]{ip}[/cyan] did not accept your SSH key."
+            )
 
             public_key_path = self._ensure_local_ssh_key()
             if not public_key_path or not os.path.exists(public_key_path):
-                console.print(
-                    "[red]Could not find or generate a local SSH key.[/red]")
+                console.print("[red]Could not find or generate a local SSH key.[/red]")
                 return False
 
-            with open(public_key_path, 'r') as f:
+            with open(public_key_path, "r") as f:
                 public_key = f.read().strip()
 
             console.print(
-                f"\n[yellow]To fix this, you need to add your public SSH key to the droplet.[/yellow]")
+                "\n[yellow]To fix this, you need to add your public SSH key to the droplet.[/yellow]"
+            )
             console.print(
-                f"\n[bold cyan]Option 1: (Recommended) Add key to DigitalOcean and recreate[/bold cyan]")
+                "\n[bold cyan]Option 1: (Recommended) Add key to DigitalOcean and recreate[/bold cyan]"
+            )
             console.print(
-                f"1. Go to your DigitalOcean account settings: [link=https://cloud.digitalocean.com/account/security]https://cloud.digitalocean.com/account/security[/link]")
-            console.print(f"2. Click 'Add SSH Key'.")
-            console.print(f"3. Paste the following key:")
-            console.print(
-                f"\n[white on black] {public_key} [/white on black]\n")
-            console.print(
-                f"4. Once added, destroy and recreate the droplet with:")
-            console.print(f"   [bold]chisel down && chisel up[/bold]")
+                "1. Go to your DigitalOcean account settings: [link=https://cloud.digitalocean.com/account/security]https://cloud.digitalocean.com/account/security[/link]"
+            )
+            console.print("2. Click 'Add SSH Key'.")
+            console.print("3. Paste the following key:")
+            console.print(f"\n[white on black] {public_key} [/white on black]\n")
+            console.print("4. Once added, destroy and recreate the droplet with:")
+            console.print("   [bold]chisel down && chisel up[/bold]")
 
             console.print(
-                f"\n[bold cyan]Option 2: Manually add the key to the running droplet[/bold cyan]")
+                "\n[bold cyan]Option 2: Manually add the key to the running droplet[/bold cyan]"
+            )
             console.print(
-                f"1. Log in to the droplet using a different machine or the web console.")
-            console.print(f"2. Run this command to add your key:")
+                "1. Log in to the droplet using a different machine or the web console."
+            )
+            console.print("2. Run this command to add your key:")
             console.print(
-                f"   [bold]echo '{public_key}' >> ~/.ssh/authorized_keys[/bold]")
+                f"   [bold]echo '{public_key}' >> ~/.ssh/authorized_keys[/bold]"
+            )
 
             return False
         except (paramiko.SSHException, TimeoutError) as e:
             console.print("\n[bold red]SSH Connection Failed[/bold red]")
-            console.print(
-                f"Could not connect to the droplet at [cyan]{ip}[/cyan].")
+            console.print(f"Could not connect to the droplet at [cyan]{ip}[/cyan].")
             console.print(f"Reason: {e}")
             console.print("\n[yellow]Please check the following:[/yellow]")
             console.print(
-                "1. Is the droplet running? Check the DigitalOcean dashboard.")
+                "1. Is the droplet running? Check the DigitalOcean dashboard."
+            )
             console.print("2. Is your internet connection working?")
             console.print("3. Are there any firewalls blocking port 22?")
             return False
         except Exception as e:
             console.print(
-                f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]")
+                f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]"
+            )
             return False
 
     def _show_cost_warning(self, gpu_type: str) -> None:
         """Show cost warning if droplet has been running for a while."""
         # Use appropriate hourly rate based on GPU type
         hourly_rate = 4.89 if "nvidia" in gpu_type else 1.99
-        should_warn, uptime_hours, estimated_cost = self.state.should_warn_cost(gpu_type, hourly_rate=hourly_rate)
+        should_warn, uptime_hours, estimated_cost = self.state.should_warn_cost(
+            gpu_type, hourly_rate=hourly_rate
+        )
 
         if should_warn:
             console.print(
-                f"\n[yellow]⚠️  Cost Warning: {gpu_type} droplet has been running for {uptime_hours:.1f} hours[/yellow]")
+                f"\n[yellow]⚠️  Cost Warning: {gpu_type} droplet has been running for {uptime_hours:.1f} hours[/yellow]"
+            )
             console.print(
-                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at ${hourly_rate}/hour)[/yellow]")
+                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at ${hourly_rate}/hour)[/yellow]"
+            )
             console.print(
-                f"[yellow]   Run 'chisel down --gpu-type {gpu_type}' to stop billing[/yellow]\n")
+                f"[yellow]   Run 'chisel down --gpu-type {gpu_type}' to stop billing[/yellow]\n"
+            )
 
-    def sync(self, source: str, destination: Optional[str] = None, gpu_type: str = None) -> bool:
+    def sync(
+        self, source: str, destination: Optional[str] = None, gpu_type: str = None
+    ) -> bool:
         """Sync files to the droplet using rsync."""
         if not gpu_type:
             console.print("[red]Error: GPU type is required[/red]")
             return False
-            
+
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
             console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
+            )
             return False
 
         # Show cost warning
@@ -197,16 +215,15 @@ class SSHManager:
         # Ensure source exists
         source_path = Path(source).resolve()
         if not source_path.exists():
-            console.print(
-                f"[red]Error: Source path '{source}' does not exist[/red]")
+            console.print(f"[red]Error: Source path '{source}' does not exist[/red]")
             return False
 
         # Build rsync command
         ip = droplet_info["ip"]
 
         # Add trailing slash for directories to sync contents
-        if source_path.is_dir() and not source.endswith('/'):
-            source = str(source_path) + '/'
+        if source_path.is_dir() and not source.endswith("/"):
+            source = str(source_path) + "/"
         else:
             source = str(source_path)
 
@@ -214,9 +231,10 @@ class SSHManager:
             "rsync",
             "-avz",  # archive, verbose, compress
             "--progress",
-            "-e", "ssh -o StrictHostKeyChecking=no",
+            "-e",
+            "ssh -o StrictHostKeyChecking=no",
             source,
-            f"root@{ip}:{destination}"
+            f"root@{ip}:{destination}",
         ]
 
         console.print(f"[cyan]Syncing {source} to {ip}:{destination}[/cyan]")
@@ -227,12 +245,10 @@ class SSHManager:
             console.print("[green]✓ Sync completed successfully[/green]")
             return True
         except subprocess.CalledProcessError as e:
-            console.print(
-                f"[red]Error: Sync failed with code {e.returncode}[/red]")
+            console.print(f"[red]Error: Sync failed with code {e.returncode}[/red]")
             return False
         except FileNotFoundError:
-            console.print(
-                "[red]Error: rsync not found. Please install rsync.[/red]")
+            console.print("[red]Error: rsync not found. Please install rsync.[/red]")
             return False
 
     def run(self, command: str, gpu_type: str = None) -> int:
@@ -240,12 +256,13 @@ class SSHManager:
         if not gpu_type:
             console.print("[red]Error: GPU type is required[/red]")
             return 1
-            
+
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
             console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
+            )
             return 1
 
         # Show cost warning
@@ -281,16 +298,16 @@ class SSHManager:
 
                     # Check if there's data to read
                     if channel.recv_ready():
-                        data = channel.recv(1024).decode(
-                            'utf-8', errors='replace')
+                        data = channel.recv(1024).decode("utf-8", errors="replace")
                         if data:
-                            console.print(data, end='')
+                            console.print(data, end="")
 
                     if channel.recv_stderr_ready():
                         data = channel.recv_stderr(1024).decode(
-                            'utf-8', errors='replace')
+                            "utf-8", errors="replace"
+                        )
                         if data:
-                            console.print(f"[red]{data}[/red]", end='')
+                            console.print(f"[red]{data}[/red]", end="")
 
                     # Check if command is done
                     if channel.exit_status_ready():
@@ -300,42 +317,42 @@ class SSHManager:
                 exit_code = channel.recv_exit_status()
 
                 # Read any remaining output
-                remaining_stdout = stdout.read().decode('utf-8', errors='replace')
-                remaining_stderr = stderr.read().decode('utf-8', errors='replace')
+                remaining_stdout = stdout.read().decode("utf-8", errors="replace")
+                remaining_stderr = stderr.read().decode("utf-8", errors="replace")
 
                 if remaining_stdout:
-                    console.print(remaining_stdout, end='')
+                    console.print(remaining_stdout, end="")
                 if remaining_stderr:
-                    console.print(f"[red]{remaining_stderr}[/red]", end='')
+                    console.print(f"[red]{remaining_stderr}[/red]", end="")
 
                 if exit_code != 0:
-                    console.print(
-                        f"\n[red]Command exited with code {exit_code}[/red]")
+                    console.print(f"\n[red]Command exited with code {exit_code}[/red]")
                 else:
-                    console.print(
-                        "\n[green]✓ Command completed successfully[/green]")
+                    console.print("\n[green]✓ Command completed successfully[/green]")
 
                 return exit_code
 
             except KeyboardInterrupt:
-                console.print(
-                    "\n[yellow]Operation interrupted by user[/yellow]")
+                console.print("\n[yellow]Operation interrupted by user[/yellow]")
                 # Terminate the remote command if possible
                 try:
-                    if 'channel' in locals() and not channel.closed:
+                    if "channel" in locals() and not channel.closed:
                         channel.close()
                 except:
                     pass
                 return 130  # Standard exit code for Ctrl+C
             except paramiko.AuthenticationException:
                 console.print(
-                    "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]")
+                    "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]"
+                )
                 console.print(
-                    "This can happen if the droplet's SSH keys were changed after the connection was established.")
+                    "This can happen if the droplet's SSH keys were changed after the connection was established."
+                )
                 return 1
             except paramiko.SSHException as e:
                 console.print(
-                    f"[bold red]Error: SSH connection lost during command execution: {e}[/bold red]")
+                    f"[bold red]Error: SSH connection lost during command execution: {e}[/bold red]"
+                )
                 return 1
             except Exception as e:
                 console.print(f"[red]An unexpected error occurred: {e}[/red]")
@@ -343,17 +360,25 @@ class SSHManager:
             finally:
                 ssh.close()
 
-    def profile(self, command: str, gpu_type: str = None, trace: str = "hip,hsa", output_dir: str = "./out", open_result: bool = False) -> Optional[str]:
+    def profile(
+        self,
+        command: str,
+        gpu_type: str = None,
+        trace: str = "hip,hsa",
+        output_dir: str = "./out",
+        open_result: bool = False,
+    ) -> Optional[str]:
         """Profile a command with rocprof and pull results locally."""
         if not gpu_type:
             console.print("[red]Error: GPU type is required[/red]")
             return None
-            
+
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
             console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
+            )
             return None
 
         # Show cost warning
@@ -384,7 +409,7 @@ class SSHManager:
         rm -rf {remote_profile_dir} && 
         mkdir -p {remote_profile_dir} && 
         cd {remote_profile_dir} && 
-        rocprof -d {remote_profile_dir} {' '.join(trace_flags)} -o results.csv {command}
+        rocprof -d {remote_profile_dir} {" ".join(trace_flags)} -o results.csv {command}
         """
 
         console.print(f"[cyan]Profiling on {ip}: {command}[/cyan]")
@@ -400,8 +425,7 @@ class SSHManager:
                 ssh.connect(ip, username="root", timeout=10)
 
                 # Run profiling command
-                stdin, stdout, stderr = ssh.exec_command(
-                    profile_cmd, get_pty=True)
+                stdin, stdout, stderr = ssh.exec_command(profile_cmd, get_pty=True)
 
                 # Stream output
                 channel = stdout.channel
@@ -410,16 +434,16 @@ class SSHManager:
                     interrupt_handler.check_interrupted()
 
                     if channel.recv_ready():
-                        data = channel.recv(1024).decode(
-                            'utf-8', errors='replace')
+                        data = channel.recv(1024).decode("utf-8", errors="replace")
                         if data:
-                            console.print(data, end='')
+                            console.print(data, end="")
 
                     if channel.recv_stderr_ready():
                         data = channel.recv_stderr(1024).decode(
-                            'utf-8', errors='replace')
+                            "utf-8", errors="replace"
+                        )
                         if data:
-                            console.print(f"[yellow]{data}[/yellow]", end='')
+                            console.print(f"[yellow]{data}[/yellow]", end="")
 
                     if channel.exit_status_ready():
                         break
@@ -428,13 +452,14 @@ class SSHManager:
 
                 if exit_code != 0:
                     console.print(
-                        f"\n[red]Profiling failed with exit code {exit_code}[/red]")
+                        f"\n[red]Profiling failed with exit code {exit_code}[/red]"
+                    )
                     return None
 
                 console.print("\n[green]✓ Profiling completed[/green]")
 
                 # Create archive on remote
-                archive_cmd = f"cd /tmp && tar -czf chisel_profile.tgz chisel_profile"
+                archive_cmd = "cd /tmp && tar -czf chisel_profile.tgz chisel_profile"
                 stdin, stdout, stderr = ssh.exec_command(archive_cmd)
 
                 archive_exit_code = stdout.channel.recv_exit_status()
@@ -442,8 +467,7 @@ class SSHManager:
                     console.print("[red]Error: Failed to create archive[/red]")
                     return None
 
-                console.print(
-                    "[cyan]Pulling results to local machine...[/cyan]")
+                console.print("[cyan]Pulling results to local machine...[/cyan]")
 
                 # Pull archive using scp
                 local_output_dir = Path(output_dir)
@@ -454,20 +478,21 @@ class SSHManager:
                 # Use scp to download
                 scp_cmd = [
                     "scp",
-                    "-o", "StrictHostKeyChecking=no",
+                    "-o",
+                    "StrictHostKeyChecking=no",
                     f"root@{ip}:/tmp/chisel_profile.tgz",
-                    str(local_archive_path)
+                    str(local_archive_path),
                 ]
 
-                result = subprocess.run(
-                    scp_cmd, capture_output=True, text=True)
+                result = subprocess.run(scp_cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     console.print(
-                        f"[red]Error: Failed to download archive: {result.stderr}[/red]")
+                        f"[red]Error: Failed to download archive: {result.stderr}[/red]"
+                    )
                     return None
 
                 # Extract archive
-                with tarfile.open(local_archive_path, 'r:gz') as tar:
+                with tarfile.open(local_archive_path, "r:gz") as tar:
                     tar.extractall(local_output_dir)
 
                 # Clean up archive
@@ -478,12 +503,15 @@ class SSHManager:
                 ssh.exec_command(cleanup_cmd)
 
                 console.print(
-                    f"[green]✓ Profile results saved to {local_output_dir / 'chisel_profile'}[/green]")
+                    f"[green]✓ Profile results saved to {local_output_dir / 'chisel_profile'}[/green]"
+                )
 
                 # Show summary if results files exist (try JSON first, then CSV)
                 json_file = local_output_dir / "chisel_profile" / "results.json"
                 csv_file = local_output_dir / "chisel_profile" / "results.csv"
-                stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
+                stats_csv_file = (
+                    local_output_dir / "chisel_profile" / "results.stats.csv"
+                )
 
                 if json_file.exists():
                     self._show_profile_summary(json_file)
@@ -495,8 +523,7 @@ class SSHManager:
                 return str(local_output_dir / "chisel_profile")
 
             except KeyboardInterrupt:
-                console.print(
-                    "\n[yellow]Profiling interrupted by user[/yellow]")
+                console.print("\n[yellow]Profiling interrupted by user[/yellow]")
                 # Clean up remote files
                 try:
                     cleanup_cmd = f"rm -rf {remote_profile_dir} /tmp/chisel_profile.tgz"
@@ -510,17 +537,20 @@ class SSHManager:
             finally:
                 ssh.close()
 
-    def pull(self, remote_path: str, local_path: Optional[str] = None, gpu_type: str = None) -> bool:
+    def pull(
+        self, remote_path: str, local_path: Optional[str] = None, gpu_type: str = None
+    ) -> bool:
         """Pull files or directories from the droplet to local machine."""
         if not gpu_type:
             console.print("[red]Error: GPU type is required[/red]")
             return False
-            
+
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
             console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
-                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]")
+                f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
+            )
             return False
 
         # Show cost warning
@@ -534,7 +564,7 @@ class SSHManager:
 
         # Default local path is current directory with remote filename
         if local_path is None:
-            remote_basename = os.path.basename(remote_path.rstrip('/'))
+            remote_basename = os.path.basename(remote_path.rstrip("/"))
             if not remote_basename:
                 remote_basename = "pulled_files"
             local_path = f"./{remote_basename}"
@@ -542,8 +572,7 @@ class SSHManager:
         # Resolve local path
         local_path_obj = Path(local_path).resolve()
 
-        console.print(
-            f"[cyan]Pulling {remote_path} from {ip} to {local_path}[/cyan]")
+        console.print(f"[cyan]Pulling {remote_path} from {ip} to {local_path}[/cyan]")
 
         # First check if remote path exists and get info
         ssh = paramiko.SSHClient()
@@ -554,17 +583,20 @@ class SSHManager:
 
             # Check if remote path exists and if it's a file or directory
             stdin, stdout, stderr = ssh.exec_command(
-                f"test -e '{remote_path}' && echo 'exists' || echo 'missing'")
+                f"test -e '{remote_path}' && echo 'exists' || echo 'missing'"
+            )
             exists_result = stdout.read().decode().strip()
 
-            if exists_result == 'missing':
+            if exists_result == "missing":
                 console.print(
-                    f"[red]Error: Remote path '{remote_path}' does not exist[/red]")
+                    f"[red]Error: Remote path '{remote_path}' does not exist[/red]"
+                )
                 return False
 
             # Check if it's a directory
             stdin, stdout, stderr = ssh.exec_command(
-                f"test -d '{remote_path}' && echo 'dir' || echo 'file'")
+                f"test -d '{remote_path}' && echo 'dir' || echo 'file'"
+            )
             path_type = stdout.read().decode().strip()
 
             ssh.close()
@@ -575,19 +607,21 @@ class SSHManager:
                 scp_cmd = [
                     "scp",
                     "-r",
-                    "-o", "StrictHostKeyChecking=no",
+                    "-o",
+                    "StrictHostKeyChecking=no",
                     f"root@{ip}:{remote_path}",
                     # scp -r will create the directory
-                    str(local_path_obj.parent)
+                    str(local_path_obj.parent),
                 ]
             else:
                 # For files, create parent directory if needed
                 local_path_obj.parent.mkdir(parents=True, exist_ok=True)
                 scp_cmd = [
                     "scp",
-                    "-o", "StrictHostKeyChecking=no",
+                    "-o",
+                    "StrictHostKeyChecking=no",
                     f"root@{ip}:{remote_path}",
-                    str(local_path_obj)
+                    str(local_path_obj),
                 ]
 
             # Execute scp
@@ -595,33 +629,33 @@ class SSHManager:
 
             if result.returncode != 0:
                 console.print(
-                    f"[red]Error: Failed to pull files: {result.stderr}[/red]")
+                    f"[red]Error: Failed to pull files: {result.stderr}[/red]"
+                )
                 return False
 
-            console.print(
-                f"[green]✓ Successfully pulled to {local_path}[/green]")
+            console.print(f"[green]✓ Successfully pulled to {local_path}[/green]")
             return True
 
         except paramiko.AuthenticationException:
             console.print(
-                "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]")
+                "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]"
+            )
             return False
         except paramiko.SSHException as e:
             console.print(
-                f"[bold red]Error: SSH connection failed while checking remote path: {e}[/bold red]")
+                f"[bold red]Error: SSH connection failed while checking remote path: {e}[/bold red]"
+            )
             return False
         except subprocess.CalledProcessError as e:
-            console.print(
-                f"[red]Error: SCP failed with code {e.returncode}[/red]")
+            console.print(f"[red]Error: SCP failed with code {e.returncode}[/red]")
             if e.stderr:
                 console.print(f"[red]Stderr: {e.stderr}[/red]")
             return False
         except Exception as e:
-            console.print(
-                f"[red]An unexpected error occurred while pulling: {e}[/red]")
+            console.print(f"[red]An unexpected error occurred while pulling: {e}[/red]")
             return False
         finally:
-            if 'ssh' in locals():
+            if "ssh" in locals():
                 ssh.close()
 
     def _show_profile_summary(self, stats_file: Path) -> None:
@@ -632,87 +666,97 @@ class SSHManager:
             console.print("\n[cyan]Top GPU Kernels by Total Time:[/cyan]")
 
             # Try to parse as JSON trace format
-            if stats_file.suffix == '.json' or stats_file.name == 'results.json':
-                with open(stats_file, 'r') as f:
+            if stats_file.suffix == ".json" or stats_file.name == "results.json":
+                with open(stats_file, "r") as f:
                     data = json.load(f)
 
                 kernels = []
-                for event in data.get('traceEvents', []):
-                    if (event.get('ph') == 'X' and
-                        'pid' in event and
-                        event.get('pid') in [6, 7] and  # GPU pids
-                            'DurationNs' in event.get('args', {})):
+                for event in data.get("traceEvents", []):
+                    if (
+                        event.get("ph") == "X"
+                        and "pid" in event
+                        and event.get("pid") in [6, 7]  # GPU pids
+                        and "DurationNs" in event.get("args", {})
+                    ):
+                        kernel_name = event.get("name", "")
+                        duration_ns = int(event["args"]["DurationNs"])
 
-                        kernel_name = event.get('name', '')
-                        duration_ns = int(event['args']['DurationNs'])
-
-                        kernels.append({
-                            'name': kernel_name,
-                            'total_time': duration_ns / 1_000_000,  # Convert to ms
-                            'duration_ns': duration_ns
-                        })
+                        kernels.append(
+                            {
+                                "name": kernel_name,
+                                "total_time": duration_ns / 1_000_000,  # Convert to ms
+                                "duration_ns": duration_ns,
+                            }
+                        )
 
                 # Sort by total time
-                kernels.sort(key=lambda x: x['total_time'], reverse=True)
+                kernels.sort(key=lambda x: x["total_time"], reverse=True)
 
                 # Show kernels
                 for i, kernel in enumerate(kernels):
                     console.print(
-                        f"  {i+1:2d}. {kernel['name'][:60]:<60} {kernel['total_time']:8.3f} ms")
+                        f"  {i + 1:2d}. {kernel['name'][:60]:<60} {kernel['total_time']:8.3f} ms"
+                    )
 
                 # Also show top HIP API calls
                 hip_calls = []
-                for event in data.get('traceEvents', []):
-                    if (event.get('ph') == 'X' and
-                        event.get('pid') == 2 and  # CPU HIP API pid
-                            'DurationNs' in event.get('args', {})):
+                for event in data.get("traceEvents", []):
+                    if (
+                        event.get("ph") == "X"
+                        and event.get("pid") == 2  # CPU HIP API pid
+                        and "DurationNs" in event.get("args", {})
+                    ):
+                        api_name = event.get("name", "")
+                        duration_ns = int(event["args"]["DurationNs"])
 
-                        api_name = event.get('name', '')
-                        duration_ns = int(event['args']['DurationNs'])
-
-                        hip_calls.append({
-                            'name': api_name,
-                            'total_time': duration_ns / 1_000_000,  # Convert to ms
-                            'duration_ns': duration_ns
-                        })
+                        hip_calls.append(
+                            {
+                                "name": api_name,
+                                "total_time": duration_ns / 1_000_000,  # Convert to ms
+                                "duration_ns": duration_ns,
+                            }
+                        )
 
                 # Sort by total time
-                hip_calls.sort(key=lambda x: x['total_time'], reverse=True)
+                hip_calls.sort(key=lambda x: x["total_time"], reverse=True)
 
                 if hip_calls:
-                    console.print(
-                        "\n[cyan]Top HIP API Calls by Total Time:[/cyan]")
+                    console.print("\n[cyan]Top HIP API Calls by Total Time:[/cyan]")
                     for i, call in enumerate(hip_calls[:5]):
                         console.print(
-                            f"  {i+1:2d}. {call['name'][:60]:<60} {call['total_time']:8.3f} ms")
+                            f"  {i + 1:2d}. {call['name'][:60]:<60} {call['total_time']:8.3f} ms"
+                        )
 
             else:
                 # Try CSV format
                 import csv
+
                 kernels = []
-                with open(stats_file, 'r') as f:
+                with open(stats_file, "r") as f:
                     reader = csv.DictReader(f)
                     for row in reader:
-                        if 'KernelName' in row and 'TotalDurationNs' in row:
-                            kernels.append({
-                                'name': row['KernelName'],
-                                # Convert to ms
-                                'total_time': float(row['TotalDurationNs']) / 1_000_000,
-                                'calls': int(row.get('Calls', 0))
-                            })
+                        if "KernelName" in row and "TotalDurationNs" in row:
+                            kernels.append(
+                                {
+                                    "name": row["KernelName"],
+                                    # Convert to ms
+                                    "total_time": float(row["TotalDurationNs"])
+                                    / 1_000_000,
+                                    "calls": int(row.get("Calls", 0)),
+                                }
+                            )
 
                 # Sort by total time
-                kernels.sort(key=lambda x: x['total_time'], reverse=True)
+                kernels.sort(key=lambda x: x["total_time"], reverse=True)
 
                 # Show top 10
                 for i, kernel in enumerate(kernels[:10]):
                     console.print(
-                        f"  {i+1:2d}. {kernel['name'][:60]:<60} {kernel['total_time']:8.2f} ms ({kernel['calls']} calls)")
+                        f"  {i + 1:2d}. {kernel['name'][:60]:<60} {kernel['total_time']:8.2f} ms ({kernel['calls']} calls)"
+                    )
 
                 if len(kernels) > 10:
-                    console.print(
-                        f"  ... and {len(kernels) - 10} more kernels")
+                    console.print(f"  ... and {len(kernels) - 10} more kernels")
 
         except Exception as e:
-            console.print(
-                f"[yellow]Could not parse profile summary: {e}[/yellow]")
+            console.print(f"[yellow]Could not parse profile summary: {e}[/yellow]")
