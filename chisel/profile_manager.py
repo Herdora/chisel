@@ -58,11 +58,31 @@ class ProfileResult:
 
             # Show NVIDIA profiling results
             if "profile_files" in self.summary:
-                console.print(
-                    f"\n[cyan]Profile files generated:[/cyan] {len(self.summary['profile_files'])}"
-                )
-                for profile_file in self.summary["profile_files"]:
-                    console.print(f"  • {profile_file}")
+                ncu_count = len(self.summary.get('ncu_files', []))
+                nsys_count = len(self.summary.get('nsys_files', []))
+                total_count = len(self.summary['profile_files'])
+                
+                console.print(f"\n[cyan]Profile files generated:[/cyan] {total_count} total ({ncu_count} ncu, {nsys_count} nsys)")
+                
+                # Show ncu files
+                if ncu_count > 0:
+                    console.print("[cyan]Kernel profiling (ncu):[/cyan]")
+                    for ncu_file in self.summary.get('ncu_files', []):
+                        console.print(f"  • {ncu_file}")
+                
+                # Show nsys files
+                if nsys_count > 0:
+                    console.print("[cyan]System timeline (nsys):[/cyan]")
+                    for nsys_file in self.summary.get('nsys_files', []):
+                        console.print(f"  • {nsys_file}")
+                
+                # Usage instructions
+                console.print("\n[cyan]Analysis tools:[/cyan]")
+                if ncu_count > 0:
+                    console.print("  • ncu --import <file>.ncu-rep --page summary  # Text summary")
+                    console.print("  • ncu-ui <file>.ncu-rep                      # GUI analysis")
+                if nsys_count > 0:
+                    console.print("  • nsys-ui <file>.nsys-rep                    # Timeline analysis")
         else:
             console.print("\n[red]✗ Profiling failed[/red]")
             if self.stderr:
@@ -351,11 +371,11 @@ class ProfileManager:
     def _run_nvidia_profiler(
         self, droplet_info: Dict[str, any], command: str, output_dir: Path
     ) -> Dict[str, any]:
-        """Run NVIDIA nsight-compute profiler on the droplet."""
+        """Run NVIDIA profilers (nsight-compute + nsight-systems) on the droplet."""
         ssh_manager = SSHManager()
 
-        # Ensure nsight-compute is available
-        self._ensure_nsight_compute(droplet_info)
+        # Ensure NVIDIA profilers are available
+        self._ensure_nvidia_profilers(droplet_info)
 
         # Setup remote profiling environment
         remote_profile_dir = "/tmp/chisel_nvidia_profile"
@@ -369,31 +389,55 @@ class ProfileManager:
         if " && " in command:
             # Split compilation and execution
             compile_part, execute_part = command.split(" && ", 1)
-            # Execute compilation first, then profile the execution
+            # Execute compilation first, then profile with both tools
             ncu_cmd = f"{compile_part} && ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {execute_part}"
+            nsys_cmd = f"nsys profile --output={profile_filename}.nsys-rep {execute_part}"
         else:
-            # Just profile the single command
+            # Just profile the single command with both tools
             ncu_cmd = f"ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {command}"
+            nsys_cmd = f"nsys profile --output={profile_filename}.nsys-rep {command}"
 
-        full_cmd = f"{profile_setup} && {ncu_cmd}"
+        # Run both profilers - ncu first (more likely to fail), then nsys
+        full_cmd = f"{profile_setup} && {ncu_cmd} && {nsys_cmd}"
 
-        console.print(f"[cyan]Running NVIDIA profiler: {command}[/cyan]")
+        console.print(f"[cyan]Running NVIDIA profilers (ncu + nsys): {command}[/cyan]")
 
-        # Execute profiling command
+        # Execute profiling command - try both profilers with graceful degradation
         exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
 
+        # If both profilers failed, try them individually for better error reporting
         if exit_code != 0:
-            raise RuntimeError(f"NVIDIA profiling failed with exit code {exit_code}")
+            console.print("[yellow]Both profilers failed, trying individually...[/yellow]")
+            
+            # Try ncu alone
+            ncu_only_cmd = f"{profile_setup} && {ncu_cmd}"
+            ncu_exit = ssh_manager.run(ncu_only_cmd, droplet_info["gpu_type"])
+            
+            # Try nsys alone  
+            nsys_only_cmd = f"{profile_setup} && {nsys_cmd}"
+            nsys_exit = ssh_manager.run(nsys_only_cmd, droplet_info["gpu_type"])
+            
+            if ncu_exit != 0 and nsys_exit != 0:
+                raise RuntimeError(f"Both NVIDIA profilers failed: ncu={ncu_exit}, nsys={nsys_exit}")
+            elif ncu_exit != 0:
+                console.print("[yellow]ncu profiling failed, but nsys succeeded[/yellow]")
+            elif nsys_exit != 0:
+                console.print("[yellow]nsys profiling failed, but ncu succeeded[/yellow]")
 
         # Download results without parsing - let users analyze .ncu-rep files with proper tools
         profile_files = self._download_nvidia_results(
             droplet_info, remote_profile_dir, output_dir
         )
 
-        # Create basic summary
+        # Create basic summary with both profiler types
+        ncu_files = [f for f in profile_files if f.endswith('.ncu-rep')]
+        nsys_files = [f for f in profile_files if f.endswith('.nsys-rep')]
+        
         summary = {
             "profile_files": profile_files,
-            "message": "NVIDIA profiling completed. Use ncu-ui or ncu --import to analyze the .ncu-rep files.",
+            "ncu_files": ncu_files,
+            "nsys_files": nsys_files,
+            "message": f"NVIDIA profiling completed. Generated {len(ncu_files)} ncu files and {len(nsys_files)} nsys files.",
         }
 
         # Cleanup remote files
@@ -406,26 +450,26 @@ class ProfileManager:
             "summary": summary,
         }
 
-    def _ensure_nsight_compute(self, droplet_info: Dict[str, any]):
-        """Ensure nsight-compute is installed on the droplet."""
+    def _ensure_nvidia_profilers(self, droplet_info: Dict[str, any]):
+        """Ensure both nsight-compute and nsight-systems are installed on the droplet."""
         ssh_manager = SSHManager()
 
         try:
-            # Check if ncu is already available
-            check_cmd = "which ncu && ncu --version"
+            # Check if both profilers are already available
+            check_cmd = "which ncu && ncu --version && which nsys && nsys --version"
             exit_code = ssh_manager.run(check_cmd, droplet_info["gpu_type"])
 
             if exit_code == 0:
-                console.print("[green]✓ nsight-compute already available[/green]")
+                console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
                 return
 
-            console.print("[yellow]Installing nsight-compute...[/yellow]")
+            console.print("[yellow]Installing NVIDIA profilers (nsight-compute + nsight-systems)...[/yellow]")
 
-            # Install nsight-compute with timeout
+            # Install both profilers with timeout
             install_cmd = """
-            timeout 300 bash -c '
+            timeout 600 bash -c '
             apt-get update -y && 
-            apt-get install -y nvidia-nsight-compute
+            apt-get install -y nvidia-nsight-compute nvidia-nsight-systems
             '
             """
 
@@ -433,23 +477,27 @@ class ProfileManager:
 
             if exit_code != 0:
                 raise RuntimeError(
-                    "Failed to install nsight-compute. This may be due to package repository issues or network connectivity."
+                    "Failed to install NVIDIA profilers. This may be due to package repository issues or network connectivity."
                 )
 
-            # Verify installation
-            exit_code = ssh_manager.run(
-                "which ncu && ncu --version", droplet_info["gpu_type"]
-            )
+            # Verify both installations
+            verify_ncu = ssh_manager.run("which ncu && ncu --version", droplet_info["gpu_type"])
+            verify_nsys = ssh_manager.run("which nsys && nsys --version", droplet_info["gpu_type"])
 
-            if exit_code != 0:
+            if verify_ncu != 0:
                 raise RuntimeError(
                     "nsight-compute installation verification failed. The ncu command is not available after installation."
                 )
 
-            console.print("[green]✓ nsight-compute installed successfully[/green]")
+            if verify_nsys != 0:
+                raise RuntimeError(
+                    "nsight-systems installation verification failed. The nsys command is not available after installation."
+                )
+
+            console.print("[green]✓ NVIDIA profilers installed successfully (ncu + nsys)[/green]")
 
         except Exception as e:
-            raise RuntimeError(f"Failed to setup nsight-compute: {e}")
+            raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
 
     def _download_nvidia_results(
         self, droplet_info: Dict[str, any], remote_dir: str, local_output_dir: Path
@@ -463,13 +511,13 @@ class ProfileManager:
 
         console.print("[cyan]Downloading NVIDIA profiling results...[/cyan]")
 
-        # Create archive on remote
-        archive_cmd = f"cd {remote_dir} && tar -czf nvidia_profile.tgz *.ncu-rep"
+        # Create archive on remote - include both .ncu-rep and .nsys-rep files
+        archive_cmd = f"cd {remote_dir} && tar -czf nvidia_profile.tgz *.ncu-rep *.nsys-rep 2>/dev/null || tar -czf nvidia_profile.tgz *.ncu-rep *.nsys-rep *.rep 2>/dev/null || echo 'No profile files found'"
         exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
 
         if exit_code != 0:
             console.print(
-                "[yellow]Warning: No .ncu-rep files found or archive creation failed[/yellow]"
+                "[yellow]Warning: No profile files (.ncu-rep or .nsys-rep) found or archive creation failed[/yellow]"
             )
             return []
 
@@ -513,16 +561,20 @@ class ProfileManager:
 
             # Verify extraction and return file list
             ncu_files = list(nvidia_results_dir.glob("*.ncu-rep"))
-            if not ncu_files:
+            nsys_files = list(nvidia_results_dir.glob("*.nsys-rep"))
+            all_profile_files = ncu_files + nsys_files
+            
+            if not all_profile_files:
                 console.print(
-                    "[yellow]Warning: No .ncu-rep files found in extracted archive[/yellow]"
+                    "[yellow]Warning: No profile files (.ncu-rep or .nsys-rep) found in extracted archive[/yellow]"
                 )
                 return []
             else:
+                file_summary = f"{len(ncu_files)} ncu files, {len(nsys_files)} nsys files"
                 console.print(
-                    f"[green]✓ NVIDIA profile results saved to {nvidia_results_dir} ({len(ncu_files)} files)[/green]"
+                    f"[green]✓ NVIDIA profile results saved to {nvidia_results_dir} ({file_summary})[/green]"
                 )
-                return [f.name for f in ncu_files]
+                return [f.name for f in all_profile_files]
 
         except subprocess.TimeoutExpired:
             console.print("[yellow]Warning: Download timed out[/yellow]")
