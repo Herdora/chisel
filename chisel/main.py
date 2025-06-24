@@ -357,7 +357,8 @@ def run(
     try:
         ssh_manager = SSHManager()
         exit_code = ssh_manager.run(command, resolved_gpu_type)
-        raise typer.Exit(exit_code)
+        if exit_code != 0:
+            raise typer.Exit(exit_code)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
