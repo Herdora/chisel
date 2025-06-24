@@ -3,7 +3,35 @@
 	<h1>chisel</h1>
 </div>
 
-**TL;DR:** A CLI tool for developing and profiling GPU kernels locally. Spins up GPU droplets, syncs code, runs/profiles kernels, and pulls results back locally. Zero GPU hardware required—just write, test, and profile GPU code from your laptop. Supports both AMD MI300X and NVIDIA H100 GPUs with concurrent multi-droplet workflows.
+**TL;DR:** A CLI tool for developing and profiling GPU kernels locally. Spins up GPU droplets, syncs code, runs/profiles kernels, and pulls results back locally. Zero GPU hardware required—just write, test, and profile GPU code from your laptop. Supports both AMD MI300X and NVIDIA H100 GPUs with concurrent multi-droplet workflows and context switching for seamless GPU target switching.
+
+## Quick Start
+
+Get up and running in 2 minutes:
+
+```bash
+# 1. Install chisel
+pip install chisel-cli
+
+# 2. Configure with your DigitalOcean API token
+chisel configure
+
+# 3. Set your target GPU and spin up droplet
+chisel switch nvidia-h100      # or amd-mi300x
+chisel up
+
+# 4. Write, sync, and run GPU code
+echo 'int main() { return 0; }' > kernel.cu
+chisel sync kernel.cu
+chisel run "nvcc kernel.cu && ./a.out"
+
+# 5. Clean up when done
+chisel down
+```
+
+**That's it!** 🚀 No GPU hardware needed—develop and test GPU kernels from any machine.
+
+> **Need a DigitalOcean API token?** Get one [here](https://amd.digitalocean.com/account/api/tokens) (requires read/write access).
 
 ### Setup
 
@@ -55,18 +83,35 @@ pip install -e .
 
    For detailed instructions, see the [official guide](https://docs.digitalocean.com/reference/api/create-personal-access-token/).
 
-2. **Spin up GPU droplet**
+2. **GPU Context Management**
+
+   - `chisel switch` - Set active GPU context for seamless workflows
+   - `chisel context` - Show current active context
+
+   **Usage:**
+
+   ```bash
+   # Set active GPU context
+   chisel switch nvidia-h100
+   chisel switch amd-mi300x
+
+   # Check current context
+   chisel context
+   ```
+
+3. **Spin up GPU droplet**
 
    - `chisel up` - Create or reuse a GPU-accelerated droplet
 
    **Usage:**
 
    ```bash
-   # AMD MI300X GPU droplet
-   chisel up --gpu-type amd-mi300x
+   # Using active context (recommended)
+   chisel switch nvidia-h100
+   chisel up
 
-   # NVIDIA H100 GPU droplet  
-   chisel up --gpu-type nvidia-h100
+   # Or specify explicitly
+   chisel up --gpu-type amd-mi300x
    ```
 
    **What it does:**
@@ -79,7 +124,7 @@ pip install -e .
    - Waits for droplet to be ready and SSH accessible
    - Displays connection information
 
-3. **List droplets**
+4. **List droplets**
 
    - `chisel list` - Show all chisel droplets
 
@@ -96,21 +141,25 @@ pip install -e .
    - Region, size, cost per hour, and creation time
    - Tracked droplets from local state
 
-4. **Sync code**
+5. **Sync code**
 
    - `chisel sync` - Push local files to droplet (only changed files)
 
    **Usage:**
 
    ```bash
-   # Sync a file to /root/chisel/ (default)
-   chisel sync simple-mm.cpp --gpu-type amd-mi300x
+   # Using active context (recommended)
+   chisel switch amd-mi300x
+   chisel sync simple-mm.cpp
 
    # Sync directory contents
-   chisel sync ./src/ --gpu-type nvidia-h100
+   chisel sync ./src/
 
    # Sync to custom destination
-   chisel sync myfile.cpp --gpu-type amd-mi300x --dest /tmp/
+   chisel sync myfile.cpp --dest /tmp/
+
+   # Override context with explicit GPU type
+   chisel sync simple-mm.cpp --gpu-type nvidia-h100
    ```
 
    **What it does:**
@@ -120,27 +169,25 @@ pip install -e .
    - Shows progress during transfer
    - Creates destination directory if needed
 
-5. **Run commands**
+6. **Run commands**
 
    - `chisel run` - Execute commands remotely with live output streaming
 
    **Usage:**
 
    ```bash
-   # Compile and run HIP kernel (AMD)
-   chisel run "hipcc /root/chisel/simple-mm.cpp -o /tmp/test && /tmp/test" --gpu-type amd-mi300x
+   # Using active context (recommended)
+   chisel switch amd-mi300x
+   chisel run "hipcc /root/chisel/simple-mm.cpp -o /tmp/test && /tmp/test"
+   chisel run "rocm-smi"
 
-   # Compile and run CUDA kernel (NVIDIA)
-   chisel run "nvcc /root/chisel/simple-mm.cu -o /tmp/test && /tmp/test" --gpu-type nvidia-h100
+   # Switch context for different GPU
+   chisel switch nvidia-h100
+   chisel run "nvcc /root/chisel/simple-mm.cu -o /tmp/test && /tmp/test"
+   chisel run "nvidia-smi"
 
-   # Run multiple commands
+   # Override context with explicit GPU type
    chisel run "make && ./bench.sh" --gpu-type amd-mi300x
-
-   # Check GPU status (AMD)
-   chisel run "rocm-smi" --gpu-type amd-mi300x
-
-   # Check GPU status (NVIDIA)
-   chisel run "nvidia-smi" --gpu-type nvidia-h100
    ```
 
    **What it does:**
@@ -150,32 +197,25 @@ pip install -e .
    - Handles both stdout and stderr
    - Works with interactive commands
 
-6. **Profile kernels**
+7. **Profile kernels**
 
    - `chisel profile` - Profile commands or source files with rocprof and pull results locally
 
    **Usage:**
 
    ```bash
-   # Profile HIP source file (auto-compiles with hipcc on AMD)
-   chisel profile simple-mm.cpp --gpu-type amd-mi300x
+   # Using active context (recommended)
+   chisel switch amd-mi300x
+   chisel profile simple-mm.cpp
+   chisel profile kernel.cpp --args "-O3 -DNDEBUG"
+   chisel profile simple-mm.cpp --trace hip,hsa,roctx --out ./results
 
-   # Profile CUDA source file (auto-compiles with nvcc on NVIDIA)
-   chisel profile simple-mm.cu --gpu-type nvidia-h100
+   # Switch context for NVIDIA profiling
+   chisel switch nvidia-h100
+   chisel profile simple-mm.cu
+   chisel profile "/tmp/my-binary"
 
-   # Profile with custom compiler flags
-   chisel profile kernel.cpp --gpu-type amd-mi300x --args "-O3 -DNDEBUG"
-
-   # Profile existing binary
-   chisel profile "/tmp/my-binary" --gpu-type nvidia-h100
-
-   # Profile any command
-   chisel profile "ls -la" --gpu-type amd-mi300x
-
-   # Custom trace options and output directory
-   chisel profile simple-mm.cpp --gpu-type amd-mi300x --trace hip,hsa,roctx --out ./results
-
-   # Auto-open results in Perfetto
+   # Override context with explicit GPU type
    chisel profile kernel.cpp --gpu-type amd-mi300x --open
    ```
 
@@ -188,21 +228,20 @@ pip install -e .
    - Displays summary of top kernel hotspots
    - Optionally opens Chrome trace in Perfetto
 
-7. **Pull artifacts**
+8. **Pull artifacts**
 
    - `chisel pull` - Pull files or directories from the droplet to local machine
 
    **Usage:**
 
    ```bash
-   # Pull a specific file to current directory
-   chisel pull /tmp/results.txt --gpu-type nvidia-h100
+   # Using active context (recommended)
+   chisel switch nvidia-h100
+   chisel pull /tmp/results.txt
+   chisel pull /root/chisel/my-binary --local ./my-binary
 
-   # Pull to a specific local path
+   # Override context with explicit GPU type
    chisel pull /tmp/logs/ --gpu-type amd-mi300x --local ./local_logs/
-
-   # Pull compiled binary
-   chisel pull /root/chisel/my-binary --gpu-type nvidia-h100 --local ./my-binary
    ```
 
    **What it does:**
@@ -212,7 +251,7 @@ pip install -e .
    - Creates local destination directories as needed
    - Shows progress and confirmation
 
-8. **Clean up old droplets**
+9. **Clean up old droplets**
 
    - `chisel sweep` - Clean up droplets that have been running too long
 
@@ -236,26 +275,45 @@ pip install -e .
    - Prompts for confirmation before destroying old droplets
    - Clears local state if active droplet was destroyed
 
-9. **Stop billing**
+10. **Stop billing**
 
-   - `chisel down` - Destroy the droplet to stop charges
+    - `chisel down` - Destroy the droplet to stop charges
 
-   **Usage:**
+    **Usage:**
 
-   ```bash
-   # Destroy specific GPU droplet
-   chisel down --gpu-type nvidia-h100
-   
-   # Destroy AMD droplet
-   chisel down --gpu-type amd-mi300x
-   ```
+    ```bash
+    # Destroy active context droplet (recommended)
+    chisel down
 
-   **What it does:**
+    # Destroy specific GPU droplet
+    chisel down --gpu-type nvidia-h100
+    ```
 
-   - Prompts for confirmation before destroying
-   - Completely removes the specified droplet (not just powered off)
-   - Clears local state cache for that GPU type
-   - Stops billing immediately for that droplet
+    **What it does:**
+
+    - Prompts for confirmation before destroying
+    - Completely removes the specified droplet (not just powered off)
+    - Clears local state cache for that GPU type
+    - Automatically clears active context if destroying the active droplet
+    - Stops billing immediately for that droplet
+
+**Context Switching Workflow:**
+
+```bash
+# Set context once, then run multiple commands
+chisel switch nvidia-h100
+chisel up
+chisel sync kernel.cu
+chisel run "nvcc kernel.cu -o test && ./test"
+chisel profile kernel.cu
+chisel down
+
+# Switch to different GPU type seamlessly
+chisel switch amd-mi300x
+chisel up
+chisel sync kernel.cpp
+chisel run "hipcc kernel.cpp -o test && ./test"
+```
 
 **Cost Management:**
 
@@ -264,6 +322,7 @@ pip install -e .
 - Use `chisel sweep` to clean up old droplets automatically
 - Droplets self-destruct after 15 minutes of inactivity
 - **Multi-droplet support**: Run both AMD and NVIDIA droplets simultaneously for cross-platform development
+- **Context switching**: Eliminates repetitive `--gpu-type` flags for smoother workflows
 
 ### Using chisel from DigitalOcean droplets
 
@@ -299,14 +358,15 @@ Now run 'chisel down' then 'chisel up' to recreate any existing droplets with th
 **After setup:**
 
 ```bash
-# Recreate any existing droplets to include your new key
-chisel down --gpu-type amd-mi300x
-chisel up --gpu-type amd-mi300x
+# Set context and recreate droplet to include your new key
+chisel switch amd-mi300x
+chisel down
+chisel up
 
 # Now these commands will work from your droplet
-chisel sync myfile.cpp --gpu-type amd-mi300x
-chisel run "hipcc myfile.cpp && ./a.out" --gpu-type amd-mi300x
-chisel profile kernel.cpp --gpu-type amd-mi300x
+chisel sync myfile.cpp
+chisel run "hipcc myfile.cpp && ./a.out"
+chisel profile kernel.cpp
 ```
 
 ### MCP Server Integration
@@ -337,8 +397,10 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 **Available tools:**
 
 - `configure` - Set up DigitalOcean API token
-- `up` - Create or reuse a GPU droplet (requires --gpu-type)
-- `down` - Destroy the current droplet
+- `switch` - Set active GPU context
+- `context` - Show current active context
+- `up` - Create or reuse a GPU droplet (uses active context or requires --gpu-type)
+- `down` - Destroy the current droplet (uses active context or requires --gpu-type)
 - `status` - Check droplet status
 - `profile` - Profile HIP/CUDA files or commands with rocprof
 - `sync` - Sync files to the droplet
@@ -348,12 +410,12 @@ Chisel includes an MCP (Model Context Protocol) server that lets you manage GPU 
 **Usage examples:**
 
 - "Configure my chisel setup with token xyz123"
-- "Start an AMD GPU droplet for development"
-- "Start an H100 GPU droplet for CUDA development"
-- "Profile my matrix_multiply.hip file on the AMD droplet"
+- "Switch to AMD context and start a droplet for development"
+- "Switch to H100 context and start a droplet for CUDA development"
+- "Profile my matrix_multiply.hip file on the active droplet"
 - "Run nvidia-smi on the H100 droplet"
-- "Sync my_kernel.cu to the NVIDIA droplet"
-- "Pull the results.csv file from the AMD droplet"
+- "Sync my_kernel.cu to the active droplet"
+- "Pull the results.csv file from the active droplet"
 
 ### Architecture pieces
 

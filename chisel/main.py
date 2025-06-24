@@ -14,6 +14,7 @@ from chisel.do_client import DOClient
 from chisel.droplet import DropletManager
 from chisel.gpu_profiles import AMD_MI300X, GPU_PROFILES
 from chisel.ssh_manager import SSHManager
+from chisel.state import State
 
 app = typer.Typer(
     name="chisel",
@@ -21,6 +22,37 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def resolve_gpu_type(explicit_gpu_type: Optional[str]) -> str:
+    """Resolve GPU type from explicit flag or active context."""
+    if explicit_gpu_type:
+        # Validate explicit GPU type
+        if explicit_gpu_type not in GPU_PROFILES:
+            console.print(f"[red]Error: Invalid GPU type '{explicit_gpu_type}'[/red]")
+            console.print(
+                f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
+            )
+            raise typer.Exit(1)
+        return explicit_gpu_type
+    
+    # Try to get from active context
+    state = State()
+    active_context = state.get_active_context()
+    
+    if active_context:
+        # Validate context still exists in profiles
+        if active_context not in GPU_PROFILES:
+            console.print(f"[red]Error: Active context '{active_context}' no longer exists[/red]")
+            console.print("Please switch to a valid context: chisel switch <type>")
+            console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+            raise typer.Exit(1)
+        return active_context
+    
+    # No explicit type and no context
+    console.print("[red]Error: No GPU context set. Use 'chisel switch <type>' or '--gpu-type' flag.[/red]")
+    console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+    raise typer.Exit(1)
 
 
 @app.command()
@@ -116,20 +148,15 @@ def configure(
 
 @app.command()
 def up(
-    gpu_type: str = typer.Option(
-        ..., "--gpu-type", help="GPU type to use (amd-mi300x, nvidia-h100)"
+    gpu_type: Optional[str] = typer.Option(
+        None, "--gpu-type", help="GPU type to use (amd-mi300x, nvidia-h100)"
     ),
 ):
     """Create or reuse a GPU droplet for development."""
     config = Config()
 
-    # Validate GPU type
-    if gpu_type not in GPU_PROFILES:
-        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(
-            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
-        )
-        raise typer.Exit(1)
+    # Resolve GPU type from flag or context
+    resolved_gpu_type = resolve_gpu_type(gpu_type)
 
     # Check if configured
     if not config.token:
@@ -142,8 +169,8 @@ def up(
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        gpu_profile = GPU_PROFILES[gpu_type]
-        droplet_manager = DropletManager(do_client, gpu_profile, gpu_type)
+        gpu_profile = GPU_PROFILES[resolved_gpu_type]
+        droplet_manager = DropletManager(do_client, gpu_profile, resolved_gpu_type)
 
         # Create or find droplet
         droplet = droplet_manager.up()
@@ -163,8 +190,8 @@ def up(
 
 @app.command()
 def down(
-    gpu_type: str = typer.Option(
-        ..., "--gpu-type", help="GPU type to destroy (amd-mi300x, nvidia-h100)"
+    gpu_type: Optional[str] = typer.Option(
+        None, "--gpu-type", help="GPU type to destroy (amd-mi300x, nvidia-h100)"
     ),
 ):
     """Destroy the current droplet to stop billing."""
@@ -178,29 +205,29 @@ def down(
         )
         raise typer.Exit(1)
 
-    # Validate GPU type
-    if gpu_type not in GPU_PROFILES:
-        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(
-            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
-        )
-        raise typer.Exit(1)
+    # Resolve GPU type from flag or context
+    resolved_gpu_type = resolve_gpu_type(gpu_type)
 
     try:
         # Initialize clients
         do_client = DOClient(config.token)
-        gpu_profile = GPU_PROFILES[gpu_type]
-        droplet_manager = DropletManager(do_client, gpu_profile, gpu_type)
+        gpu_profile = GPU_PROFILES[resolved_gpu_type]
+        droplet_manager = DropletManager(do_client, gpu_profile, resolved_gpu_type)
 
         # Confirm destruction
         confirm = Prompt.ask(
-            "[yellow]Are you sure you want to destroy the droplet?[/yellow]",
+            f"[yellow]Are you sure you want to destroy the {resolved_gpu_type} droplet?[/yellow]",
             choices=["y", "n"],
             default="n",
         )
 
         if confirm.lower() == "y":
             success = droplet_manager.down()
+            if success and not gpu_type:  # Only clear context if using active context (not explicit --gpu-type)
+                state = State()
+                if state.get_active_context() == resolved_gpu_type:
+                    state.clear_active_context()
+                    console.print(f"[yellow]Cleared active context (destroyed {resolved_gpu_type} droplet)[/yellow]")
             if not success:
                 raise typer.Exit(1)
         else:
@@ -292,8 +319,8 @@ def list():
 @app.command()
 def sync(
     source: str = typer.Argument(..., help="Source file or directory to sync"),
-    gpu_type: str = typer.Option(
-        ..., "--gpu-type", help="GPU type to sync to (amd-mi300x, nvidia-h100)"
+    gpu_type: Optional[str] = typer.Option(
+        None, "--gpu-type", help="GPU type to sync to (amd-mi300x, nvidia-h100)"
     ),
     destination: Optional[str] = typer.Option(
         None,
@@ -303,17 +330,12 @@ def sync(
     ),
 ):
     """Sync files to the droplet."""
-    # Validate GPU type
-    if gpu_type not in GPU_PROFILES:
-        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(
-            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
-        )
-        raise typer.Exit(1)
+    # Resolve GPU type from flag or context
+    resolved_gpu_type = resolve_gpu_type(gpu_type)
 
     try:
         ssh_manager = SSHManager()
-        success = ssh_manager.sync(source, destination, gpu_type)
+        success = ssh_manager.sync(source, destination, resolved_gpu_type)
         if not success:
             raise typer.Exit(1)
     except Exception as e:
@@ -324,22 +346,17 @@ def sync(
 @app.command()
 def run(
     command: str = typer.Argument(..., help="Command to execute on the droplet"),
-    gpu_type: str = typer.Option(
-        ..., "--gpu-type", help="GPU type to run command on (amd-mi300x, nvidia-h100)"
+    gpu_type: Optional[str] = typer.Option(
+        None, "--gpu-type", help="GPU type to run command on (amd-mi300x, nvidia-h100)"
     ),
 ):
     """Execute a command on the droplet."""
-    # Validate GPU type
-    if gpu_type not in GPU_PROFILES:
-        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(
-            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
-        )
-        raise typer.Exit(1)
+    # Resolve GPU type from flag or context
+    resolved_gpu_type = resolve_gpu_type(gpu_type)
 
     try:
         ssh_manager = SSHManager()
-        exit_code = ssh_manager.run(command, gpu_type)
+        exit_code = ssh_manager.run(command, resolved_gpu_type)
         raise typer.Exit(exit_code)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -351,8 +368,8 @@ def profile(
     command_or_file: str = typer.Argument(
         ..., help="Command to profile, or source file (e.g., 'simple-mm.cpp')"
     ),
-    gpu_type: str = typer.Option(
-        ..., "--gpu-type", help="GPU type to profile on (amd-mi300x, nvidia-h100)"
+    gpu_type: Optional[str] = typer.Option(
+        None, "--gpu-type", help="GPU type to profile on (amd-mi300x, nvidia-h100)"
     ),
     trace: Optional[str] = typer.Option(
         "hip,hsa", "--trace", help="Trace options (hip,hsa,roctx)"
@@ -370,18 +387,13 @@ def profile(
     """Profile a command or source file with rocprof and pull results locally.
 
     Examples:
-        chisel profile simple-mm.cpp --gpu-type amd-mi300x              # Auto-compile and profile
+        chisel profile simple-mm.cpp                                     # Auto-compile and profile (uses context)
         chisel profile "/tmp/my-binary" --gpu-type nvidia-h100          # Profile existing binary
-        chisel profile "ls -la" --gpu-type amd-mi300x                   # Profile any command
-        chisel profile kernel.cpp --gpu-type amd-mi300x --args "-O3"   # Custom compiler flags
+        chisel profile "ls -la"                                          # Profile any command (uses context)
+        chisel profile kernel.cpp --args "-O3"                          # Custom compiler flags (uses context)
     """
-    # Validate GPU type
-    if gpu_type not in GPU_PROFILES:
-        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(
-            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
-        )
-        raise typer.Exit(1)
+    # Resolve GPU type from flag or context
+    resolved_gpu_type = resolve_gpu_type(gpu_type)
 
     try:
         ssh_manager = SSHManager()
@@ -403,7 +415,7 @@ def profile(
 
             # Sync the source file
             console.print(f"[cyan]Syncing {command_or_file}...[/cyan]")
-            if not ssh_manager.sync(str(source_file), None, gpu_type):
+            if not ssh_manager.sync(str(source_file), None, resolved_gpu_type):
                 console.print("[red]Error: Failed to sync source file[/red]")
                 raise typer.Exit(1)
 
@@ -433,7 +445,7 @@ def profile(
 
         # Profile the command
         local_archive = ssh_manager.profile(
-            full_command, gpu_type, trace, output_dir, open_result
+            full_command, resolved_gpu_type, trace, output_dir, open_result
         )
 
         if local_archive and open_result:
@@ -455,8 +467,8 @@ def pull(
     remote_path: str = typer.Argument(
         ..., help="Remote file or directory path to pull"
     ),
-    gpu_type: str = typer.Option(
-        ..., "--gpu-type", help="GPU type to pull from (amd-mi300x, nvidia-h100)"
+    gpu_type: Optional[str] = typer.Option(
+        None, "--gpu-type", help="GPU type to pull from (amd-mi300x, nvidia-h100)"
     ),
     local_path: Optional[str] = typer.Option(
         None,
@@ -466,17 +478,12 @@ def pull(
     ),
 ):
     """Pull files or directories from the droplet to local machine."""
-    # Validate GPU type
-    if gpu_type not in GPU_PROFILES:
-        console.print(f"[red]Error: Invalid GPU type '{gpu_type}'[/red]")
-        console.print(
-            f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]"
-        )
-        raise typer.Exit(1)
+    # Resolve GPU type from flag or context
+    resolved_gpu_type = resolve_gpu_type(gpu_type)
 
     try:
         ssh_manager = SSHManager()
-        success = ssh_manager.pull(remote_path, local_path, gpu_type)
+        success = ssh_manager.pull(remote_path, local_path, resolved_gpu_type)
         if not success:
             raise typer.Exit(1)
     except Exception as e:
@@ -773,6 +780,38 @@ def ssh_setup():
             console.print(
                 "[yellow]Please add it manually using the instructions above.[/yellow]"
             )
+
+
+@app.command()
+def switch(
+    gpu_type: str = typer.Argument(..., help="GPU type to switch to (amd-mi300x, nvidia-h100)")
+):
+    """Switch to a specific GPU context."""
+    # Validate GPU type
+    if gpu_type not in GPU_PROFILES:
+        console.print(f"[red]Error: Unknown GPU type '{gpu_type}'[/red]")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        raise typer.Exit(1)
+    
+    # Set active context
+    state = State()
+    state.set_active_context(gpu_type)
+    
+    console.print(f"[green]✓ Switched to {gpu_type} context[/green]")
+
+
+@app.command()
+def context():
+    """Show the current active GPU context."""
+    state = State()
+    active_context = state.get_active_context()
+    
+    if active_context:
+        console.print(f"Active context: [cyan]{active_context}[/cyan]")
+    else:
+        console.print("No active context set")
+        console.print(f"[yellow]Available types: {', '.join(GPU_PROFILES.keys())}[/yellow]")
+        console.print("[yellow]Use 'chisel switch <type>' to set a context[/yellow]")
 
 
 @app.command()

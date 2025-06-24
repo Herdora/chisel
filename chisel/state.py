@@ -8,6 +8,7 @@ class State:
     def __init__(self):
         self.state_dir = Path.home() / ".cache" / "chisel"
         self.state_file = self.state_dir / "state.json"
+        self.context_file = self.state_dir / "context.txt"
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
     def load(self) -> Dict[str, Any]:
@@ -111,3 +112,25 @@ class State:
         should_warn = uptime_hours >= warning_hours
 
         return should_warn, uptime_hours, estimated_cost
+
+    def get_active_context(self) -> Optional[str]:
+        """Get the active GPU context."""
+        if not self.context_file.exists():
+            return None
+        
+        try:
+            with open(self.context_file, "r") as f:
+                context = f.read().strip()
+                return context if context else None
+        except IOError:
+            return None
+
+    def set_active_context(self, gpu_type: str) -> None:
+        """Set the active GPU context."""
+        with open(self.context_file, "w") as f:
+            f.write(gpu_type)
+
+    def clear_active_context(self) -> None:
+        """Clear the active GPU context."""
+        if self.context_file.exists():
+            self.context_file.unlink()
