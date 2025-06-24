@@ -125,7 +125,7 @@ class ProfileManager:
 
         self.state = ProfileState()
 
-    def profile(self, vendor: str, target: str, pmc_counters: Optional[str] = None) -> ProfileResult:
+    def profile(self, vendor: str, target: str, pmc_counters: Optional[str] = None, gpu_type: Optional[str] = None) -> ProfileResult:
         """
         Execute a complete profiling workflow.
 
@@ -133,6 +133,7 @@ class ProfileManager:
             vendor: Either "nvidia" or "amd"
             target: File path or command to profile
             pmc_counters: Comma-separated performance counters for AMD (optional)
+            gpu_type: GPU type override - "h100" or "l40s" for NVIDIA (optional)
 
         Returns:
             ProfileResult with profiling data and summary
@@ -140,12 +141,16 @@ class ProfileManager:
         start_time = time.time()
 
         # Map vendor to GPU type
-        gpu_type = "nvidia-h100" if vendor == "nvidia" else "amd-mi300x"
+        if vendor == "nvidia":
+            # Default to H100, allow override to L40S
+            resolved_gpu_type = f"nvidia-{gpu_type}" if gpu_type else "nvidia-h100"
+        else:
+            resolved_gpu_type = "amd-mi300x"
 
         try:
             # 1. Ensure droplet exists
             console.print(f"[cyan]Ensuring {vendor.upper()} droplet is ready...[/cyan]")
-            droplet_info = self._ensure_droplet(gpu_type)
+            droplet_info = self._ensure_droplet(resolved_gpu_type)
 
             # 2. Analyze the target
             target_info = self._analyze_target(target)

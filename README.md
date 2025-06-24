@@ -43,12 +43,12 @@ chisel configure --token YOUR_TOKEN
 
 ### `chisel profile nvidia <file_or_command>`
 
-Profile GPU kernels on NVIDIA H100 ($4.89/hour).
+Profile GPU kernels on NVIDIA H100 ($4.89/hour) or L40S ($2.21/hour).
 
 ```bash
 # Compile and profile CUDA source files
-chisel profile nvidia matrix.cu
-chisel profile nvidia kernel.cu
+chisel profile nvidia matrix.cu              # Default: H100
+chisel profile nvidia kernel.cu --gpu-type l40s  # L40S GPU
 
 # Profile existing binaries or commands
 chisel profile nvidia "./my-cuda-app --size=1024"
@@ -57,7 +57,7 @@ chisel profile nvidia "nvidia-smi"
 
 **What it does:**
 
-- Creates H100 droplet if needed (reuses existing)
+- Creates H100 (default) or L40S droplet if needed (reuses existing)
 - Auto-syncs source files to droplet
 - Compiles with `nvcc` for `.cu` files with `-lineinfo` for better profiling
 - Runs `nsight-compute` (ncu) profiler with comprehensive metrics
@@ -164,6 +164,7 @@ chisel profile nvidia simple.cu
 | GPU         | Size                | Region | Cost/Hour | Profiling                       |
 | ----------- | ------------------- | ------ | --------- | ------------------------------- |
 | NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | nsight-compute + nsight-systems |
+| NVIDIA L40S | `gpu-l40sx1-48gb`   | TOR1   | $2.21     | nsight-compute + nsight-systems |
 | AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | rocprofv3                       |
 
 ## Development Setup
@@ -183,4 +184,5 @@ pip install -e .
 - [x] NVIDIA nsight-systems profiling
 - [x] Integrate the new ROCm profiling tools (rocprofiler-sdk/rocprofv3)
 - [x] Performance counter collection with rocprofv3 --pmc
+- [x] NVIDIA L40S support
 - [ ] (waiting for AMD to fix ATT traces in rocprofiler-sdk) Add ATT (Address Translation Table) trace support for rocprof-compute-viewer

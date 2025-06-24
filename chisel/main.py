@@ -110,7 +110,7 @@ def configure(
 def profile(
     vendor: str = typer.Argument(
         ..., 
-        help="GPU vendor: 'nvidia' for H100 or 'amd' for MI300X"
+        help="GPU vendor: 'nvidia' for H100/L40s or 'amd' for MI300X"
     ),
     target: str = typer.Argument(
         ..., 
@@ -121,13 +121,19 @@ def profile(
         "--pmc",
         help="Performance counters to collect (AMD only). Comma-separated list, e.g., 'GRBM_GUI_ACTIVE,SQ_WAVES,SQ_BUSY_CYCLES'"
     ),
+    gpu_type: Optional[str] = typer.Option(
+        None,
+        "--gpu-type",
+        help="GPU type: 'h100' (default) or 'l40s' (NVIDIA only)"
+    ),
 ):
     """Profile a GPU kernel or command on cloud infrastructure.
     
     Examples:
-        chisel profile amd matrix.cpp                              # Basic profiling
-        chisel profile nvidia kernel.cu                            # NVIDIA profiling  
-        chisel profile amd kernel.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"  # AMD with counters
+        chisel profile amd matrix.cpp                                       # Basic profiling
+        chisel profile nvidia kernel.cu                                     # NVIDIA H100 profiling  
+        chisel profile nvidia kernel.cu --gpu-type l40s                     # NVIDIA L40s profiling
+        chisel profile amd kernel.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"     # AMD with counters
     """
     # Validate vendor
     if vendor not in ["nvidia", "amd"]:
@@ -137,6 +143,15 @@ def profile(
     # Validate PMC option
     if pmc and vendor != "amd":
         console.print("[red]Error: --pmc flag is only supported for AMD profiling[/red]")
+        raise typer.Exit(1)
+    
+    # Validate GPU type option
+    if gpu_type and vendor != "nvidia":
+        console.print("[red]Error: --gpu-type flag is only supported for NVIDIA profiling[/red]")
+        raise typer.Exit(1)
+    
+    if gpu_type and gpu_type not in ["h100", "l40s"]:
+        console.print(f"[red]Error: --gpu-type must be 'h100' or 'l40s', not '{gpu_type}'[/red]")
         raise typer.Exit(1)
     
     # Check configuration
@@ -149,7 +164,7 @@ def profile(
     try:
         # Use ProfileManager to handle everything
         manager = ProfileManager()
-        result = manager.profile(vendor, target, pmc_counters=pmc)
+        result = manager.profile(vendor, target, pmc_counters=pmc, gpu_type=gpu_type)
         
         # Display results
         result.display_summary()
