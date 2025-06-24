@@ -60,8 +60,8 @@ chisel profile nvidia "nvidia-smi"
 - Creates H100 droplet if needed (reuses existing)
 - Auto-syncs source files to droplet
 - Compiles with `nvcc` for `.cu` files with `-lineinfo` for better profiling
-- Runs both `nsight-compute` (ncu) and `nsight-systems` (nsys) profilers
-- Downloads `.ncu-rep` and `.nsys-rep` files locally for analysis
+- Runs `nsight-compute` (ncu) profiler with comprehensive metrics
+- Downloads `.ncu-rep` files locally for analysis
 - Shows cost estimate
 
 ### `chisel profile amd <file_or_command>`
@@ -140,17 +140,16 @@ EOF
 # Profile it
 chisel profile nvidia simple.cu
 
-# The results include both .ncu-rep and .nsys-rep files that can be analyzed with:
-# ncu --import profile_*.ncu-rep --page summary  # Kernel analysis (text)
-# ncu-ui profile_*.ncu-rep                       # Kernel analysis (GUI)
-# nsys-ui profile_*.nsys-rep                     # Timeline analysis (GUI)
+# The results include .ncu-rep files that can be analyzed with:
+# ncu --import profile_*.ncu-rep --page summary  # Text summary
+# ncu-ui profile_*.ncu-rep                       # GUI analysis (if available locally)
 ```
 
 ## GPU Support
 
-| GPU         | Size                | Region | Cost/Hour | Profiling                           |
-| ----------- | ------------------- | ------ | --------- | ----------------------------------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | ✅ nsight-compute + nsight-systems |
+| GPU         | Size                | Region | Cost/Hour | Profiling         |
+| ----------- | ------------------- | ------ | --------- | ----------------- |
+| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | ✅ nsight-compute |
 | AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | ✅ rocprof        |
 
 ## Development Setup
@@ -167,7 +166,6 @@ pip install -e .
 ## Future
 
 - [x] NVIDIA nsight-compute
-- [x] NVIDIA nsight-systems profiling
-- [ ] Support L40S GPUs
+- [ ] NVIDIA nsight-systems profiling
 - [ ] Integrate the new ROCm profiling tools https://github.com/rocm/rocprofiler-sdk and https://github.com/rocm/rocprof-compute-viewer
 - [ ] Advanced profiling options and metrics selection
