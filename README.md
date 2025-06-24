@@ -83,9 +83,9 @@ chisel profile amd "rocm-smi"
 - Creates MI300X droplet if needed (reuses existing)
 - Auto-syncs source files to droplet
 - Compiles with `hipcc` for `.cpp/.hip` files
-- Runs `rocprof` profiler with hip,hsa traces
-- Downloads profiling results locally
-- Shows summary of top GPU kernels
+- Runs `rocprofv3` profiler with comprehensive system tracing
+- Downloads profiling results (CSV, JSON, trace files) locally
+- Provides detailed GPU performance analysis
 
 ## Examples
 
@@ -113,6 +113,12 @@ EOF
 
 # Profile it
 chisel profile amd simple.cpp
+
+# The results include comprehensive CSV trace files:
+# - kernel_trace.csv: Kernel execution traces
+# - hip_api_trace.csv: HIP API call traces  
+# - memory_allocation_trace.csv: Memory allocation traces
+# And statistics files for detailed analysis
 ```
 
 ### NVIDIA Profiling
@@ -147,10 +153,10 @@ chisel profile nvidia simple.cu
 
 ## GPU Support
 
-| GPU         | Size                | Region | Cost/Hour | Profiling         |
-| ----------- | ------------------- | ------ | --------- | ----------------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | ✅ nsight-compute |
-| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | ✅ rocprof        |
+| GPU         | Size                | Region | Cost/Hour | Profiling              |
+| ----------- | ------------------- | ------ | --------- | ---------------------- |
+| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | ✅ nsight-compute + nsight-systems |
+| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | ✅ rocprofv3           |
 
 ## Development Setup
 
@@ -167,4 +173,6 @@ pip install -e .
 
 - [x] NVIDIA nsight-compute
 - [x] NVIDIA nsight-systems profiling
-- [ ] Integrate the new ROCm profiling tools https://github.com/rocm/rocprofiler-sdk and https://github.com/rocm/rocprof-compute-viewer
+- [x] Integrate the new ROCm profiling tools (rocprofiler-sdk/rocprofv3)
+- [ ] Add ATT (Address Translation Table) trace support for rocprof-compute-viewer
+- [ ] Performance counter collection with rocprofv3 --pmc

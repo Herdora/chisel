@@ -48,13 +48,29 @@ class ProfileResult:
             # Show cost estimate
             console.print(f"[yellow]Estimated cost:[/yellow] ${self.cost_estimate:.2f}")
 
-            # Show top kernels if available (AMD profiling)
+            # Show top kernels if available (AMD legacy profiling)
             if "top_kernels" in self.summary:
                 console.print("\n[cyan]Top GPU Kernels:[/cyan]")
                 for i, kernel in enumerate(self.summary["top_kernels"][:5], 1):
                     console.print(
                         f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms"
                     )
+
+            # Show AMD rocprofv3 profiling results
+            if "att_files" in self.summary:
+                rocprof_count = len(self.summary.get('att_files', []))
+                console.print(f"\n[cyan]AMD rocprofv3 profile files generated:[/cyan] {rocprof_count} files")
+                
+                # Show rocprofv3 files
+                for rocprof_file in self.summary.get('att_files', []):
+                    console.print(f"  • {rocprof_file}")
+                
+                # Usage instructions
+                console.print("\n[cyan]Analysis tools:[/cyan]")
+                console.print("  • Open CSV files for detailed trace analysis")
+                console.print("  • kernel_trace.csv: GPU kernel execution data")
+                console.print("  • hip_api_trace.csv: HIP API call traces")
+                console.print("  • memory_allocation_trace.csv: Memory operations")
 
             # Show NVIDIA profiling results
             if "profile_files" in self.summary:
@@ -289,24 +305,31 @@ class ProfileManager:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if vendor == "amd":
-            # Use existing profile method for AMD
-            ssh_manager.profile(
-                command,
-                droplet_info["gpu_type"],
-                trace="hip,hsa",
-                output_dir=str(output_dir),
-                open_result=False,
-            )
+            # AMD profiling with rocprofv3
+            try:
+                return self._run_amd_profiler(droplet_info, command, output_dir)
+            except Exception as e:
+                console.print(f"[yellow]AMD rocprofv3 profiling failed: {e}[/yellow]")
+                console.print("[yellow]Falling back to legacy rocprof...[/yellow]")
 
-            # Parse results
-            summary = self._parse_amd_results(output_dir)
+                # Fallback to legacy rocprof
+                ssh_manager.profile(
+                    command,
+                    droplet_info["gpu_type"],
+                    trace="hip,hsa",
+                    output_dir=str(output_dir),
+                    open_result=False,
+                )
 
-            return {
-                "output_dir": output_dir,
-                "stdout": "",
-                "stderr": "",
-                "summary": summary,
-            }
+                # Parse results
+                summary = self._parse_amd_results(output_dir)
+
+                return {
+                    "output_dir": output_dir,
+                    "stdout": "",
+                    "stderr": "",
+                    "summary": summary,
+                }
         else:
             # NVIDIA profiling with nsight-compute
             try:
@@ -498,6 +521,254 @@ class ProfileManager:
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
+
+    def _ensure_rocprofv3(self, droplet_info: Dict[str, any]):
+        """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
+        ssh_manager = SSHManager()
+
+        try:
+            # Check if rocprofv3 is already available
+            check_cmd = "which rocprofv3 && echo 'rocprofv3 available'"
+            exit_code = ssh_manager.run(check_cmd, droplet_info["gpu_type"])
+
+            if exit_code == 0:
+                console.print("[green]✓ rocprofv3 already available[/green]")
+                return
+
+            console.print("[yellow]Installing rocprofv3 and dependencies...[/yellow]")
+
+            # Install build dependencies and build tools
+            setup_cmd = """
+            timeout 1800 bash -c '
+            apt-get update -y && 
+            apt-get install -y git cmake build-essential python3 python3-pip wget
+            '
+            """
+
+            exit_code = ssh_manager.run(setup_cmd, droplet_info["gpu_type"])
+            if exit_code != 0:
+                raise RuntimeError("Failed to install build dependencies")
+
+            # Build aqlprofile from mainline
+            build_aqlprofile_cmd = """
+            cd /tmp && 
+            git clone https://github.com/ROCm/aqlprofile.git && 
+            cd aqlprofile && 
+            mkdir build && cd build && 
+            cmake .. && make -j$(nproc) && make install
+            """
+            
+            console.print("[cyan]Building aqlprofile...[/cyan]")
+            exit_code = ssh_manager.run(build_aqlprofile_cmd, droplet_info["gpu_type"])
+            if exit_code != 0:
+                raise RuntimeError("Failed to build aqlprofile")
+
+            # Build rocprofiler-sdk from mainline
+            build_rocprofiler_cmd = """
+            cd /tmp && 
+            git clone https://github.com/ROCm/rocprofiler-sdk.git && 
+            cd rocprofiler-sdk && 
+            mkdir build && cd build && 
+            cmake .. && make -j$(nproc) && make install
+            """
+            
+            console.print("[cyan]Building rocprofiler-sdk...[/cyan]")
+            exit_code = ssh_manager.run(build_rocprofiler_cmd, droplet_info["gpu_type"])
+            if exit_code != 0:
+                raise RuntimeError("Failed to build rocprofiler-sdk")
+
+            # Download rocprof-trace-decoder binary
+            download_decoder_cmd = """
+            cd /tmp && 
+            wget -O /opt/rocm/lib/rocprof-trace-decoder https://github.com/ROCm/rocprof-trace-decoder/releases/latest/download/rocprof-trace-decoder && 
+            chmod +x /opt/rocm/lib/rocprof-trace-decoder &&
+            ln -sf /opt/rocm/lib/rocprof-trace-decoder /opt/rocm/lib/libatt_decoder_trace.so
+            """
+            
+            console.print("[cyan]Installing rocprof-trace-decoder...[/cyan]")
+            exit_code = ssh_manager.run(download_decoder_cmd, droplet_info["gpu_type"])
+            if exit_code != 0:
+                raise RuntimeError("Failed to install rocprof-trace-decoder")
+
+            # Set up environment
+            env_setup_cmd = """
+            echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc &&
+            export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/
+            """
+            
+            exit_code = ssh_manager.run(env_setup_cmd, droplet_info["gpu_type"])
+            if exit_code != 0:
+                raise RuntimeError("Failed to set up environment")
+
+            # Verify installation
+            verify_cmd = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && which rocprofv3 && rocprofv3 --help"
+            exit_code = ssh_manager.run(verify_cmd, droplet_info["gpu_type"])
+
+            if exit_code != 0:
+                raise RuntimeError("rocprofv3 installation verification failed")
+
+            console.print("[green]✓ rocprofv3 and dependencies installed successfully[/green]")
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to setup rocprofv3: {e}")
+
+    def _run_amd_profiler(
+        self, droplet_info: Dict[str, any], command: str, output_dir: Path
+    ) -> Dict[str, any]:
+        """Run AMD rocprofv3 profiler with ATT traces on the droplet."""
+        ssh_manager = SSHManager()
+
+        # Ensure rocprofv3 is available
+        self._ensure_rocprofv3(droplet_info)
+
+        # Setup remote profiling environment
+        remote_profile_dir = "/tmp/chisel_amd_profile"
+        profile_dirname = f"att_trace_{int(time.time())}"
+
+        # Build rocprofv3 profiling command
+        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+
+        # For AMD, we need to separate compilation from profiling
+        if " && " in command:
+            # Split compilation and execution
+            compile_part, execute_part = command.split(" && ", 1)
+            # Execute compilation first, then profile with rocprofv3
+            rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats -d {profile_dirname} -- {execute_part}"
+        else:
+            # Just profile the single command
+            rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats -d {profile_dirname} -- {command}"
+
+        # Full profiling command
+        full_cmd = f"{profile_setup} && {rocprof_cmd}"
+
+        console.print(f"[cyan]Running AMD rocprofv3 with ATT traces: {command}[/cyan]")
+
+        # Execute profiling command
+        exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
+
+        if exit_code != 0:
+            raise RuntimeError(f"rocprofv3 profiling failed with exit code {exit_code}")
+
+        # Download results
+        rocprof_files = self._download_amd_att_results(
+            droplet_info, remote_profile_dir, profile_dirname, output_dir
+        )
+
+        # Create summary
+        summary = {
+            "att_files": rocprof_files,  # Keep same key for display compatibility
+            "profile_type": "rocprofv3",
+            "message": f"AMD rocprofv3 profiling completed. Generated {len(rocprof_files)} output files.",
+        }
+
+        # Cleanup remote files
+        self._cleanup_amd_remote(droplet_info, remote_profile_dir)
+
+        return {
+            "output_dir": output_dir,
+            "stdout": "AMD rocprofv3 profiling completed successfully",
+            "stderr": "",
+            "summary": summary,
+        }
+
+    def _download_amd_att_results(
+        self, droplet_info: Dict[str, any], remote_dir: str, profile_dirname: str, local_output_dir: Path
+    ) -> list:
+        """Download AMD ATT profiling results and return list of files."""
+        import subprocess
+        import tarfile
+
+        ssh_manager = SSHManager()
+        ip = droplet_info["ip"]
+
+        console.print("[cyan]Downloading AMD ATT profiling results...[/cyan]")
+
+        # Create archive on remote - include ATT trace files
+        archive_cmd = f"cd {remote_dir} && tar -czf amd_att_profile.tgz {profile_dirname}/ 2>/dev/null || echo 'No ATT files found'"
+        exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
+
+        if exit_code != 0:
+            console.print("[yellow]Warning: No ATT trace files found or archive creation failed[/yellow]")
+            return []
+
+        # Download archive
+        local_archive_path = local_output_dir / "amd_att_profile.tgz"
+
+        scp_cmd = [
+            "scp",
+            "-o",
+            "StrictHostKeyChecking=no",
+            f"root@{ip}:{remote_dir}/amd_att_profile.tgz",
+            str(local_archive_path),
+        ]
+
+        try:
+            result = subprocess.run(
+                scp_cmd, capture_output=True, text=True, timeout=120
+            )
+            if result.returncode != 0:
+                console.print(
+                    f"[yellow]Warning: Failed to download AMD ATT results: {result.stderr}[/yellow]"
+                )
+                return []
+
+            # Verify archive was downloaded
+            if (
+                not local_archive_path.exists()
+                or local_archive_path.stat().st_size == 0
+            ):
+                console.print(
+                    "[yellow]Warning: Downloaded archive is empty or missing[/yellow]"
+                )
+                return []
+
+            # Extract archive
+            amd_results_dir = local_output_dir / "amd_att_profile"
+            amd_results_dir.mkdir(exist_ok=True)
+
+            with tarfile.open(local_archive_path, "r:gz") as tar:
+                tar.extractall(amd_results_dir)
+
+            # Find all rocprofv3 output files (JSON, CSV, or other trace files)
+            rocprof_files = list(amd_results_dir.rglob("*"))
+            # Filter to actual files (not directories)
+            rocprof_files = [f for f in rocprof_files if f.is_file()]
+            
+            if not rocprof_files:
+                console.print(
+                    "[yellow]Warning: No rocprofv3 output files found in extracted archive[/yellow]"
+                )
+                return []
+            else:
+                console.print(
+                    f"[green]✓ AMD rocprofv3 results saved to {amd_results_dir} ({len(rocprof_files)} files)[/green]"
+                )
+                return [str(f.relative_to(amd_results_dir)) for f in rocprof_files]
+
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]Warning: Download timed out[/yellow]")
+            return []
+        except tarfile.TarError as e:
+            console.print(f"[yellow]Warning: Failed to extract archive: {e}[/yellow]")
+            return []
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Unexpected error during download: {e}[/yellow]"
+            )
+            return []
+        finally:
+            # Clean up archive if it exists
+            if local_archive_path.exists():
+                local_archive_path.unlink()
+
+    def _cleanup_amd_remote(self, droplet_info: Dict[str, any], remote_dir: str):
+        """Clean up remote AMD profiling files."""
+        ssh_manager = SSHManager()
+
+        cleanup_cmd = f"rm -rf {remote_dir}"
+        ssh_manager.run(cleanup_cmd, droplet_info["gpu_type"])
+
+        console.print("[green]✓ Remote cleanup completed[/green]")
 
     def _download_nvidia_results(
         self, droplet_info: Dict[str, any], remote_dir: str, local_output_dir: Path
