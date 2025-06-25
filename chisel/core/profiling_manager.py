@@ -154,18 +154,18 @@ class ProfilingManager:
 
             all_results = []
             if rocprofv3_flag:
-                result = self._run_rocprofv3(droplet_info, command, output_path, rocprofv3_flag)
+                result = self.run_rocprofv3(droplet_info, command, output_path, rocprofv3_flag)
                 all_results.append(result)
             if rocprof_compute_flag:
-                result = self._run_rocprof_compute(
+                result = self.run_rocprof_compute(
                     droplet_info, command, output_path, rocprof_compute_flag
                 )
                 all_results.append(result)
             if nsys_flag:
-                result = self._run_nsys(droplet_info, command, output_path, nsys_flag)
+                result = self.run_nsys(droplet_info, command, output_path, nsys_flag)
                 all_results.append(result)
             if ncompute_flag:
-                result = self._run_ncompute(droplet_info, command, output_path, ncompute_flag)
+                result = self.run_ncompute(droplet_info, command, output_path, ncompute_flag)
                 all_results.append(result)
 
             elapsed_hours = (time.time() - start_time) / 3600
@@ -212,22 +212,13 @@ class ProfilingManager:
 
         remote_profile_dir = "/tmp/chisel-rocprofv3"
 
-        def make_profile_setup_cmd(remote_profile_dir: str):
-            return f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+        # Combine setup and profiling into a single atomic command to ensure cd works properly
+        def make_full_cmd(remote_profile_dir: str, extra_flags: str):
+            return f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {command}"
 
-        profile_setup_results = ssh_manager.run(
-            make_profile_setup_cmd(remote_profile_dir),
-            droplet_info["gpu_type"],
-        )
-        if profile_setup_results != 0:
-            raise RuntimeError(f"Failed to setup remote profile directory: {profile_setup_results}")
-
-        def make_rocprof_cmd(remote_profile_dir: str, extra_flags: str):
-            return f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {command}"
-
-        rocprof_cmd = make_rocprof_cmd(remote_profile_dir, extra_flags or "--sys-trace")
-        console.print(f"[cyan]Running AMD rocprofv3 with flags '{rocprof_cmd}'[/cyan]")
-        rocprof_exit_code = ssh_manager.run(rocprof_cmd, droplet_info["gpu_type"])
+        full_cmd = make_full_cmd(remote_profile_dir, extra_flags or "--sys-trace")
+        console.print(f"[cyan]Running AMD rocprofv3 with flags '{full_cmd}'[/cyan]")
+        rocprof_exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
         if rocprof_exit_code != 0:
             raise RuntimeError(f"rocprofv3 profiling failed with exit code {rocprof_exit_code}")
 
@@ -274,24 +265,15 @@ class ProfilingManager:
 
         remote_profile_dir = "/tmp/chisel-nsys"
 
-        def make_profile_setup_cmd(remote_profile_dir: str):
-            return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+        # Combine setup and profiling into a single atomic command to ensure cd works properly
+        def make_full_cmd(remote_profile_dir: str, extra_flags: str):
+            return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command}"
 
-        profile_setup_results = ssh_manager.run(
-            make_profile_setup_cmd(remote_profile_dir),
-            droplet_info["gpu_type"],
-        )
-        if profile_setup_results != 0:
-            raise RuntimeError(f"Failed to setup remote profile directory: {profile_setup_results}")
-
-        def make_nsys_cmd(remote_profile_dir: str, extra_flags: str):
-            return f"nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command}"
-
-        nsys_cmd = make_nsys_cmd(
+        full_cmd = make_full_cmd(
             remote_profile_dir, extra_flags or "--stats=true --force-overwrite=true"
         )
-        console.print(f"[cyan]Running NVIDIA nsys with flags '{nsys_cmd}'[/cyan]")
-        nsys_exit_code = ssh_manager.run(nsys_cmd, droplet_info["gpu_type"])
+        console.print(f"[cyan]Running NVIDIA nsys with flags '{full_cmd}'[/cyan]")
+        nsys_exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
         if nsys_exit_code != 0:
             raise RuntimeError(f"nsys profiling failed with exit code {nsys_exit_code}")
 
@@ -326,22 +308,13 @@ class ProfilingManager:
 
         remote_profile_dir = "/tmp/chisel-ncompute"
 
-        def make_profile_setup_cmd(remote_profile_dir: str):
-            return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+        # Combine setup and profiling into a single atomic command to ensure cd works properly
+        def make_full_cmd(remote_profile_dir: str, extra_flags: str):
+            return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command}"
 
-        profile_setup_results = ssh_manager.run(
-            make_profile_setup_cmd(remote_profile_dir),
-            droplet_info["gpu_type"],
-        )
-        if profile_setup_results != 0:
-            raise RuntimeError(f"Failed to setup remote profile directory: {profile_setup_results}")
-
-        def make_ncu_cmd(remote_profile_dir: str, extra_flags: str):
-            return f"ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command}"
-
-        ncu_cmd = make_ncu_cmd(remote_profile_dir, extra_flags or "--set full --force-overwrite")
-        console.print(f"[cyan]Running NVIDIA ncu with flags '{ncu_cmd}'[/cyan]")
-        ncu_exit_code = ssh_manager.run(ncu_cmd, droplet_info["gpu_type"])
+        full_cmd = make_full_cmd(remote_profile_dir, extra_flags or "--set full --force-overwrite")
+        console.print(f"[cyan]Running NVIDIA ncu with flags '{full_cmd}'[/cyan]")
+        ncu_exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
         if ncu_exit_code != 0:
             raise RuntimeError(f"ncu profiling failed with exit code {ncu_exit_code}")
 
