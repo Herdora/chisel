@@ -124,7 +124,6 @@ class ProfilingManager:
 
         # TODO: resolved_gpu_type will be phased out when heterogenous profiling is implemented
         if vendor == "nvidia":
-            # Default to H100, allow override to L40S
             resolved_gpu_type = f"nvidia-{gpu_type}" if gpu_type else "nvidia-h100"
         else:
             resolved_gpu_type = "amd-mi300x"
@@ -200,7 +199,7 @@ class ProfilingManager:
                 cost_estimate=0.0,
             )
 
-    def _run_rocprofv3(
+    def run_rocprofv3(
         self,
         droplet_info: Dict[str, Any],
         command: str,
@@ -249,7 +248,7 @@ class ProfilingManager:
             },
         }
 
-    def _run_rocprof_compute(
+    def run_rocprof_compute(
         self,
         droplet_info: Dict[str, Any],
         command: str,
@@ -262,7 +261,7 @@ class ProfilingManager:
         console.print("[yellow]rocprof-compute support not yet implemented[/yellow]")
         raise RuntimeError("rocprof-compute is not yet supported")
 
-    def _run_nsys(
+    def run_nsys(
         self,
         droplet_info: Dict[str, Any],
         command: str,
@@ -314,7 +313,7 @@ class ProfilingManager:
             },
         }
 
-    def _run_ncompute(
+    def run_ncompute(
         self,
         droplet_info: Dict[str, Any],
         command: str,
