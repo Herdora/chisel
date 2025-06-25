@@ -55,15 +55,6 @@ chisel profile nvidia "./my-cuda-app --size=1024"
 chisel profile nvidia "nvidia-smi"
 ```
 
-**What it does:**
-
-- Creates H100 (default) or L40S droplet if needed (reuses existing)
-- Auto-syncs source files to droplet
-- Compiles with `nvcc` for `.cu` files with `-lineinfo` for better profiling
-- Runs `nsight-compute` (ncu) profiler with comprehensive metrics
-- Downloads `.ncu-rep` files locally for analysis
-- Shows cost estimate
-
 ### `chisel profile amd <file_or_command>`
 
 Profile GPU kernels on AMD MI300X ($1.99/hour).
@@ -111,12 +102,10 @@ chisel profile amd simple.cpp
 # Profile with performance counters
 chisel profile amd simple.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"
 
-# The results include comprehensive CSV trace files:
-# - kernel_trace.csv: Kernel execution traces
-# - hip_api_trace.csv: HIP API call traces
-# - memory_allocation_trace.csv: Memory allocation traces
+# The results include focused CSV files for kernel optimization:
+# - *_kernel_stats.csv: Per-kernel timing and call count statistics
+# - *_memory_copy_stats.csv: Memory copy and bandwidth analysis
 # - counter_collection.csv: Performance counter data (when --pmc used)
-# And statistics files for detailed analysis
 ```
 
 ### NVIDIA Profiling
@@ -144,9 +133,9 @@ EOF
 # Profile it
 chisel profile nvidia simple.cu
 
-# The results include .ncu-rep files that can be analyzed with:
-# ncu --import profile_*.ncu-rep --page summary  # Text summary
-# ncu-ui profile_*.ncu-rep                       # GUI analysis (if available locally)
+# The results include focused CSV files for kernel optimization:
+# - *_cuda_gpu_kern_sum.csv: Kernel hotspot analysis with timing stats
+# - *_cuda_gpu_mem_time_sum.csv: Memory copy timing and bandwidth analysis
 ```
 
 ## GPU Support
@@ -167,12 +156,3 @@ uv run chisel <command>
 # With pip
 pip install -e .
 ```
-
-## Future
-
-- [x] NVIDIA nsight-compute
-- [x] NVIDIA nsight-systems profiling
-- [x] Integrate the new ROCm profiling tools (rocprofiler-sdk/rocprofv3)
-- [x] Performance counter collection with rocprofv3 --pmc
-- [x] NVIDIA L40S support
-- [ ] (waiting for AMD to fix ATT traces in rocprofiler-sdk) Add ATT (Address Translation Table) trace support for rocprof-compute-viewer
