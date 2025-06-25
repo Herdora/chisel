@@ -23,15 +23,11 @@ def handle_configure(token: Optional[str] = None) -> int:
         Exit code (0 for success, 1 for failure)
     """
     config = Config()
-
-    # Check if token already exists
     existing_token = config.token
 
     if token:
-        # Token provided via command line
         api_token = token
     elif existing_token:
-        # Token exists in config/env
         console.print("[green]Found existing DigitalOcean API token.[/green]")
         overwrite = Prompt.ask("Do you want to update the token?", choices=["y", "n"], default="n")
         if overwrite.lower() == "n":
@@ -39,16 +35,15 @@ def handle_configure(token: Optional[str] = None) -> int:
         else:
             api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
     else:
-        # No token found, prompt for it
-        console.print("[yellow]No DigitalOcean API token found.[/yellow]")
-        console.print("\nTo get your API token:")
-        console.print("1. Go to: https://amd.digitalocean.com/account/api/tokens")
-        console.print("2. Generate a new token with read and write access")
-        console.print("3. Copy the token (you won't be able to see it again)\n")
-
+        console.print(
+            "[yellow]No DigitalOcean API token found.[/yellow]\n"
+            "To get your API token:\n"
+            "1. Go to: https://amd.digitalocean.com/account/api/tokens\n"
+            "2. Generate a new token with read and write access\n"
+            "3. Copy the token (you won't be able to see it again)\n"
+        )
         api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
 
-    # Validate token
     console.print("\n[cyan]Validating API token...[/cyan]")
 
     try:
@@ -56,13 +51,19 @@ def handle_configure(token: Optional[str] = None) -> int:
         valid, account_info = do_client.validate_token()
 
         if valid and account_info:
-            # Save token to config
             config.token = api_token
 
-            # Display account info
-            console.print("[green]✓ Token validated successfully![/green]\n")
+            console.print(
+                "[green]✓ Token validated successfully![/green]\n"
+                "\n[green]Configuration saved to:[/green] {}\n"
+                "\n[green]✓ Chisel is now configured and ready to use![/green]\n"
+                "\n[cyan]Usage:[/cyan]\n"
+                "  chisel profile nvidia <file_or_command>  # Profile on NVIDIA H100\n"
+                "  chisel profile amd <file_or_command>     # Profile on AMD MI300X".format(
+                    config.config_file
+                )
+            )
 
-            # Create account info table
             table = Table(title="Account Information", show_header=False)
             table.add_column("Field", style="cyan")
             table.add_column("Value", style="white")
@@ -74,12 +75,6 @@ def handle_configure(token: Optional[str] = None) -> int:
 
             console.print(table)
 
-            console.print(f"\n[green]Configuration saved to:[/green] {config.config_file}")
-            console.print("\n[green]✓ Chisel is now configured and ready to use![/green]")
-            console.print("\n[cyan]Usage:[/cyan]")
-            console.print("  chisel profile nvidia <file_or_command>  # Profile on NVIDIA H100")
-            console.print("  chisel profile amd <file_or_command>     # Profile on AMD MI300X")
-
             return 0
 
         else:
@@ -87,8 +82,8 @@ def handle_configure(token: Optional[str] = None) -> int:
             return 1
 
     except Exception as e:
-        console.print(f"[red]Error validating token: {e}[/red]")
         console.print(
+            f"[red]Error validating token: {e}[/red]\n"
             "[yellow]Please ensure you have a valid DigitalOcean API token with read and write permissions.[/yellow]"
         )
         return 1
@@ -108,40 +103,29 @@ def handle_profile(
     Returns:
         Exit code (0 for success, 1 for failure)
     """
-    # Validate vendor
+
     if vendor not in ["nvidia", "amd"]:
         console.print(f"[red]Error: vendor must be 'nvidia' or 'amd', not '{vendor}'[/red]")
         return 1
-
-    # Validate PMC option
     if pmc and vendor != "amd":
         console.print("[red]Error: --pmc flag is only supported for AMD profiling[/red]")
         return 1
-
-    # Validate GPU type option
     if gpu_type and vendor != "nvidia":
         console.print("[red]Error: --gpu-type flag is only supported for NVIDIA profiling[/red]")
         return 1
-
     if gpu_type and gpu_type not in ["h100", "l40s"]:
         console.print(f"[red]Error: --gpu-type must be 'h100' or 'l40s', not '{gpu_type}'[/red]")
         return 1
-
-    # Check configuration
-    config = Config()
-    if not config.token:
-        console.print("[red]Error: No API token configured.[/red]")
+    if not Config().token:
         console.print(
+            "[red]Error: No API token configured.[/red]\n"
             "[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]"
         )
         return 1
 
     try:
-        # Use ProfileManager to handle everything
         manager = ProfileManager()
         result = manager.profile(vendor, target, pmc_counters=pmc, gpu_type=gpu_type)
-
-        # Display results
         result.display_summary()
 
         return 0 if result.success else 1
@@ -173,7 +157,6 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
     console.print("[cyan]Installing shell completion for Chisel...[/cyan]")
 
     if shell:
-        # Install for specific shell
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "chisel.main", "--install-completion", shell],
@@ -182,8 +165,8 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
             )
 
             if result.returncode == 0:
-                console.print(f"[green]✓ Shell completion installed for {shell}[/green]")
                 console.print(
+                    f"[green]✓ Shell completion installed for {shell}[/green]\n"
                     f"[yellow]Restart your {shell} session or run 'source ~/.{shell}rc' to enable completion[/yellow]"
                 )
                 return 0
@@ -197,7 +180,6 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
             console.print(f"[red]Error installing completion: {e}[/red]")
             return 1
     else:
-        # Auto-detect shell and install
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "chisel.main", "--install-completion"],
@@ -206,12 +188,14 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
             )
 
             if result.returncode == 0:
-                console.print("[green]✓ Shell completion installed![/green]")
-                console.print("[yellow]Restart your shell session to enable completion[/yellow]")
-                console.print("\n[cyan]Usage examples with completion:[/cyan]")
-                console.print("  chisel prof<TAB>        # Completes to 'profile'")
-                console.print("  chisel profile <TAB>    # Shows 'nvidia' and 'amd'")
-                console.print("  chisel profile nvidia --gpu<TAB>  # Shows '--gpu-type'")
+                console.print(
+                    "[green]✓ Shell completion installed![/green]\n"
+                    "[yellow]Restart your shell session to enable completion[/yellow]\n"
+                    "\n[cyan]Usage examples with completion:[/cyan]\n"
+                    "  chisel prof<TAB>        # Completes to 'profile'\n"
+                    "  chisel profile <TAB>    # Shows 'nvidia' and 'amd'\n"
+                    "  chisel profile nvidia --gpu<TAB>  # Shows '--gpu-type'"
+                )
                 return 0
             else:
                 console.print(f"[red]Failed to install completion: {result.stderr}[/red]")

@@ -60,18 +60,18 @@ class ProfileResult:
                 console.print(
                     f"\n[cyan]AMD rocprofv3 profile files generated:[/cyan] {rocprof_count} files"
                 )
-
+                
                 # Show rocprofv3 files
                 for rocprof_file in self.summary.get("att_files", []):
                     console.print(f"  • {rocprof_file}")
-
+                
                 # Show performance counter info if available
                 if self.summary.get("pmc_counters"):
                     console.print(
                         f"\n[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}"
                     )
                     console.print("  • counter_collection.csv: Performance counter data")
-
+                
                 # Usage instructions
                 console.print("\n[cyan]Analysis tools:[/cyan]")
                 console.print("  • Open CSV files for detailed trace analysis")
@@ -82,15 +82,15 @@ class ProfileResult:
             # Show NVIDIA profiling results
             if "profile_files" in self.summary:
                 csv_count = len(self.summary.get("csv_files", []))
-
+                
                 console.print(f"\n[cyan]Profile files generated:[/cyan] {csv_count} CSV files")
-
+                
                 # Show CSV files (only output format)
                 if csv_count > 0:
                     console.print("[cyan]GPU kernel trace (CSV):[/cyan]")
                     for csv_file in self.summary.get("csv_files", []):
                         console.print(f"  • {csv_file}")
-
+                
                 # Usage instructions
                 console.print("\n[cyan]Analysis tools:[/cyan]")
                 if csv_count > 0:
@@ -244,7 +244,7 @@ class ProfileManager:
         """Analyze the target to determine if it's a file or command."""
         target_path = Path(target)
         extension = target_path.suffix.lower()
-
+        
         # Determine compiler based on extension
         compiler_map = {
             ".cpp": "hipcc",
@@ -253,12 +253,12 @@ class ProfileManager:
             ".c": "gcc",
             ".py": "python",
         }
-
+        
         # Check if it's a source file by extension or if it exists as a file
         # This handles cases where chisel is called as a library with relative paths
         is_source_extension = extension in compiler_map
         file_exists = target_path.exists() and target_path.is_file()
-
+        
         if file_exists or is_source_extension:
             return TargetInfo(
                 raw_target=target,
@@ -456,15 +456,15 @@ class ProfileManager:
         # If both profilers failed, try them individually for better error reporting
         if exit_code != 0:
             console.print("[yellow]Both profilers failed, trying individually...[/yellow]")
-
+            
             # Try ncu alone
             ncu_only_cmd = f"{profile_setup} && {ncu_cmd}"
             ncu_exit = ssh_manager.run(ncu_only_cmd, droplet_info["gpu_type"])
-
-            # Try nsys alone
+            
+            # Try nsys alone  
             nsys_only_cmd = f"{profile_setup} && {nsys_cmd}"
             nsys_exit = ssh_manager.run(nsys_only_cmd, droplet_info["gpu_type"])
-
+            
             if ncu_exit != 0 and nsys_exit != 0:
                 raise RuntimeError(
                     f"Both NVIDIA profilers failed: ncu={ncu_exit}, nsys={nsys_exit}"
@@ -479,7 +479,7 @@ class ProfileManager:
 
         # Create basic summary with CSV files only
         csv_files = [f for f in profile_files if f.endswith(".csv")]
-
+        
         summary = {
             "profile_files": profile_files,
             "csv_files": csv_files,
@@ -625,7 +625,7 @@ class ProfileManager:
             mkdir build && cd build && 
             cmake .. && make -j$(nproc) && make install
             """
-
+            
             console.print("[cyan]Building aqlprofile...[/cyan]")
             exit_code = ssh_manager.run(build_aqlprofile_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
@@ -639,7 +639,7 @@ class ProfileManager:
             mkdir build && cd build && 
             cmake .. && make -j$(nproc) && make install
             """
-
+            
             console.print("[cyan]Building rocprofiler-sdk...[/cyan]")
             exit_code = ssh_manager.run(build_rocprofiler_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
@@ -652,7 +652,7 @@ class ProfileManager:
             chmod +x /opt/rocm/lib/rocprof-trace-decoder &&
             ln -sf /opt/rocm/lib/rocprof-trace-decoder /opt/rocm/lib/libatt_decoder_trace.so
             """
-
+            
             console.print("[cyan]Installing rocprof-trace-decoder...[/cyan]")
             exit_code = ssh_manager.run(download_decoder_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
@@ -663,7 +663,7 @@ class ProfileManager:
             echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc &&
             export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/
             """
-
+            
             exit_code = ssh_manager.run(env_setup_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
                 raise RuntimeError("Failed to set up environment")
@@ -830,7 +830,7 @@ done"""
             csv_files = list(amd_results_dir.rglob("*_kernel_stats.csv")) + list(
                 amd_results_dir.rglob("*_memory_copy_stats.csv")
             )
-
+            
             if not csv_files:
                 console.print(
                     "[yellow]Warning: No essential CSV files found in extracted archive[/yellow]"
@@ -876,7 +876,7 @@ done"""
         ip = droplet_info["ip"]
 
         console.print("[cyan]Converting profiles to CSV format...[/cyan]")
-
+        
         # Convert nsys-rep files to CSV on remote before downloading
         convert_cmd = f"""cd {remote_dir} && 
 reports=(cuda_gpu_kern_sum cuda_gpu_mem_time_sum)
@@ -934,11 +934,11 @@ done"""
 
             # Verify extraction and return file list - only CSV files
             csv_files = list(nvidia_results_dir.glob("*.csv"))
-
+            
             if not csv_files:
                 console.print("[yellow]Warning: No CSV files found in extracted archive[/yellow]")
                 return []
-
+            
             # Return only CSV files
             csv_file_names = [f.name for f in csv_files]
             console.print(
