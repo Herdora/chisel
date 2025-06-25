@@ -236,25 +236,28 @@ class ProfileManager:
 
     def _analyze_target(self, target: str) -> TargetInfo:
         """Analyze the target to determine if it's a file or command."""
-        # Check if it's a file that exists
         target_path = Path(target)
-
-        if target_path.exists() and target_path.is_file():
-            extension = target_path.suffix.lower()
-
-            # Determine compiler based on extension
-            compiler_map = {
-                ".cpp": "hipcc",
-                ".hip": "hipcc",
-                ".cu": "nvcc",
-                ".c": "gcc",
-                ".py": "python",
-            }
-
+        extension = target_path.suffix.lower()
+        
+        # Determine compiler based on extension
+        compiler_map = {
+            ".cpp": "hipcc",
+            ".hip": "hipcc",
+            ".cu": "nvcc",
+            ".c": "gcc",
+            ".py": "python",
+        }
+        
+        # Check if it's a source file by extension or if it exists as a file
+        # This handles cases where chisel is called as a library with relative paths
+        is_source_extension = extension in compiler_map
+        file_exists = target_path.exists() and target_path.is_file()
+        
+        if file_exists or is_source_extension:
             return TargetInfo(
                 raw_target=target,
                 is_source_file=True,
-                file_path=target_path.resolve(),
+                file_path=target_path,  # Don't resolve() for relative paths when called as library
                 file_extension=extension,
                 compiler=compiler_map.get(extension, "gcc"),
             )
@@ -267,10 +270,11 @@ class ProfileManager:
         ssh_manager = SSHManager()
 
         # For the new system, we'll sync to /tmp for simplicity
+        # Use the original path string to handle relative paths when called as library
         success = ssh_manager.sync(str(file_path), "/tmp/", droplet_info["gpu_type"])
 
         if not success:
-            raise RuntimeError(f"Failed to sync {file_path}")
+            raise RuntimeError(f"Failed to sync {file_path}. Ensure the file exists and is accessible.")
 
     def _build_command(self, vendor: str, target_info: TargetInfo) -> str:
         """Build the compilation and execution command."""
