@@ -3,7 +3,7 @@
 Main entry point for the chisel CLI application.
 """
 
-from chisel.cli import run_cli
+from chisel.cli.cli import run_cli
 
 
 def main():

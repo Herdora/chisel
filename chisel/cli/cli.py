@@ -4,7 +4,7 @@ from typing import Optional
 
 import typer
 
-from chisel.commands import (
+from chisel.cli.commands import (
     handle_configure,
     handle_profile,
     handle_version,

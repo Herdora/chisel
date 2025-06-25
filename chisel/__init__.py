@@ -8,9 +8,9 @@ CLI usage:
     chisel profile amd kernel.hip
 
 Programmatic usage:
-    from chisel.core import ProfileManager
-    
-    manager = ProfileManager()
+    from chisel.core import ProfilingManager
+
+    manager = ProfilingManager()
     result = manager.profile("nvidia", "kernel.cu")
 """
 
@@ -23,9 +23,8 @@ from chisel.core import (
     DropletManager,
     GPU_PROFILES,
     GPUProfile,
-    ProfileManager,
-    ProfileResult,
-    ProfileState,
+    ProfilingManager,
+    ProfilingState,
     SSHManager,
     State,
 )
@@ -39,12 +38,11 @@ __all__ = [
     # Core API
     "Config",
     "DOClient",
-    "DropletManager", 
+    "DropletManager",
     "GPU_PROFILES",
     "GPUProfile",
-    "ProfileManager",
-    "ProfileResult",
-    "ProfileState",
+    "ProfilingManager",
+    "ProfilingState",
     "SSHManager",
     "State",
     # CLI
