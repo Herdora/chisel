@@ -4,7 +4,24 @@ from typing import Optional
 
 import typer
 
-from chisel.commands import handle_configure, handle_profile, handle_version
+from chisel.commands import (
+    handle_configure,
+    handle_profile,
+    handle_version,
+    handle_install_completion,
+)
+
+
+def vendor_completer(incomplete: str):
+    """Custom completer for vendor argument."""
+    vendors = ["nvidia", "amd"]
+    return [vendor for vendor in vendors if vendor.startswith(incomplete)]
+
+
+def gpu_type_completer(incomplete: str):
+    """Custom completer for gpu-type option."""
+    gpu_types = ["h100", "l40s"]
+    return [gpu_type for gpu_type in gpu_types if gpu_type.startswith(incomplete)]
 
 
 def create_app() -> typer.Typer:
@@ -12,7 +29,7 @@ def create_app() -> typer.Typer:
     app = typer.Typer(
         name="chisel",
         help="Seamless GPU kernel profiling on cloud infrastructure",
-        add_completion=False,
+        add_completion=True,
     )
 
     @app.command()
@@ -26,7 +43,9 @@ def create_app() -> typer.Typer:
     @app.command()
     def profile(
         vendor: str = typer.Argument(
-            ..., help="GPU vendor: 'nvidia' for H100/L40s or 'amd' for MI300X"
+            ...,
+            help="GPU vendor: 'nvidia' for H100/L40s or 'amd' for MI300X",
+            autocompletion=vendor_completer,
         ),
         target: str = typer.Argument(
             ..., help="File to compile and profile (e.g., kernel.cu) or command to run"
@@ -37,7 +56,10 @@ def create_app() -> typer.Typer:
             help="Performance counters to collect (AMD only). Comma-separated list, e.g., 'GRBM_GUI_ACTIVE,SQ_WAVES,SQ_BUSY_CYCLES'",
         ),
         gpu_type: Optional[str] = typer.Option(
-            None, "--gpu-type", help="GPU type: 'h100' (default) or 'l40s' (NVIDIA only)"
+            None,
+            "--gpu-type",
+            help="GPU type: 'h100' (default) or 'l40s' (NVIDIA only)",
+            autocompletion=gpu_type_completer,
         ),
     ):
         """Profile a GPU kernel or command on cloud infrastructure.
@@ -49,6 +71,18 @@ def create_app() -> typer.Typer:
             chisel profile amd kernel.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"     # AMD with counters
         """
         exit_code = handle_profile(vendor=vendor, target=target, pmc=pmc, gpu_type=gpu_type)
+        raise typer.Exit(exit_code)
+
+    @app.command("install-completion")
+    def install_completion(
+        shell: Optional[str] = typer.Option(
+            None,
+            "--shell",
+            help="Shell to install completion for: bash, zsh, fish, powershell. Auto-detects if not specified.",
+        ),
+    ):
+        """Install shell completion for the chisel command."""
+        exit_code = handle_install_completion(shell=shell)
         raise typer.Exit(exit_code)
 
     @app.command()

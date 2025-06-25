@@ -157,6 +157,71 @@ def handle_profile(
         return 1
 
 
+def handle_install_completion(shell: Optional[str] = None) -> int:
+    """Handle the install-completion command logic.
+
+    Args:
+        shell: Shell type to install completion for (bash, zsh, fish, powershell)
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    console.print("[cyan]Installing shell completion for Chisel...[/cyan]")
+
+    if shell:
+        # Install for specific shell
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "chisel.main", "--install-completion", shell],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode == 0:
+                console.print(f"[green]✓ Shell completion installed for {shell}[/green]")
+                console.print(
+                    f"[yellow]Restart your {shell} session or run 'source ~/.{shell}rc' to enable completion[/yellow]"
+                )
+                return 0
+            else:
+                console.print(
+                    f"[red]Failed to install completion for {shell}: {result.stderr}[/red]"
+                )
+                return 1
+
+        except Exception as e:
+            console.print(f"[red]Error installing completion: {e}[/red]")
+            return 1
+    else:
+        # Auto-detect shell and install
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "chisel.main", "--install-completion"],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode == 0:
+                console.print("[green]✓ Shell completion installed![/green]")
+                console.print("[yellow]Restart your shell session to enable completion[/yellow]")
+                console.print("\n[cyan]Usage examples with completion:[/cyan]")
+                console.print("  chisel prof<TAB>        # Completes to 'profile'")
+                console.print("  chisel profile <TAB>    # Shows 'nvidia' and 'amd'")
+                console.print("  chisel profile nvidia --gpu<TAB>  # Shows '--gpu-type'")
+                return 0
+            else:
+                console.print(f"[red]Failed to install completion: {result.stderr}[/red]")
+                return 1
+
+        except Exception as e:
+            console.print(f"[red]Error installing completion: {e}[/red]")
+            return 1
+
+
 def handle_version() -> int:
     """Handle the version command logic.
 
