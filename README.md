@@ -140,34 +140,6 @@ chisel profile nvidia simple.cu
 # - API call timing breakdown
 ```
 
-## Profiling Output
-
-Chisel generates **human-readable summary tables** that are easy to analyze:
-
-### Sample NVIDIA Output
-
-```
- ** CUDA Summary (API/Kernels/MemOps) (cuda_api_gpu_sum):
-
- Time (%)  Total Time (ns)  Instances   Avg (ns)   Med (ns)  Min (ns)  Max (ns)   StdDev (ns)   Category      Operation
- --------  ---------------  ---------  ----------  --------  --------  ---------  -----------  -----------  -------------
-     99.0        181321127          3  60440375.7  213009.0    194613  180913505  104332790.9  CUDA_API     cudaMalloc
-      0.4           660237          2    330118.5  330118.5    318682     341555      16173.7  CUDA_API     cudaMemcpy
-      0.1           198058         10     19805.8    3733.5      3006     163066      50342.9  CUDA_API     cudaLaunchKernel
-      0.0            45472         10      4547.2    4512.0      4352       4992        183.8  CUDA_KERNEL  simple_kernel(float *, float *, float *, int)
-```
-
-### Sample AMD Output
-
-```
-|                    NAME                    |      DOMAIN       |      CALLS      | DURATION (nsec) | AVERAGE (nsec)  | PERCENT (INC) |
-|--------------------------------------------|-------------------|-----------------|-----------------|-----------------|---------------|
-| hipMemcpy                                  | HIP_API           |               2 |       200447591 |       1.002e+08 |     75.334795 |
-| hipMalloc                                  | HIP_API           |               3 |        23377126 |       7.792e+06 |      8.785892 |
-| hipLaunchKernel                            | HIP_API           |              10 |          429928 |       4.299e+04 |      0.161581 |
-| simple_kernel(float*, float*, float*, int) | KERNEL_DISPATCH   |              10 |           41615 |       4.162e+03 |      0.015640 |
-```
-
 **Results are saved to:** `chisel-results/TIMESTAMP/profile_summary.txt`
 
 ## GPU Support

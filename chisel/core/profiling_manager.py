@@ -813,9 +813,22 @@ class ProfilingManager:
 
         ssh_manager = SSHManager()
         ip = droplet_info["ip"]
-        console.print("[cyan]Generating profile summary...[/cyan]")
+        console.print("[cyan]Generating comprehensive profile summary...[/cyan]")
         convert_cmd = f"""cd {remote_dir} && \
-for nsys_file in *.nsys-rep; do\n    [ -f \"$nsys_file\" ] || continue\n    nsys stats --report cuda_api_gpu_sum \"$nsys_file\" > nvidia_profile_summary.txt 2>/dev/null || true\n    break\ndone"""
+for nsys_file in *.nsys-rep; do
+    [ -f \"$nsys_file\" ] || continue
+    {{
+        echo "=== CUDA API Summary ==="
+        nsys stats --report cuda_api_sum \"$nsys_file\" 2>/dev/null || true
+        echo -e \"\\n=== GPU Kernel Summary ===\"
+        nsys stats --report cuda_gpu_kern_sum \"$nsys_file\" 2>/dev/null || true
+        echo -e \"\\n=== Memory Operations Summary ===\"
+        nsys stats --report cuda_gpu_mem_time_sum \"$nsys_file\" 2>/dev/null || true
+        echo -e \"\\n=== CUDA GPU Summary (Combined) ===\"
+        nsys stats --report cuda_api_gpu_sum \"$nsys_file\" 2>/dev/null || true
+    }} > nvidia_profile_summary.txt
+    break
+done"""
         ssh_manager.run(convert_cmd, droplet_info["gpu_type"])
         console.print("[cyan]Downloading NVIDIA profiling results...[/cyan]")
         local_summary_path = local_output_dir / "nvidia_profile_summary.txt"
