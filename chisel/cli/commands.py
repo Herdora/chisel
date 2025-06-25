@@ -112,87 +112,30 @@ def handle_profile(
     Returns:
         Exit code (0 for success, 1 for failure)
     """
-
-    # Handle the case where target is None but a profiler flag has the target value
-    # This happens when Typer interprets the target as a value for a profiler flag
-    if target is None:
-        # Check if any profiler flag has a value that looks like a file path
-        potential_targets = []
-        for profiler_name, profiler_value in [
-            ("rocprofv3", rocprofv3),
-            ("rocprof_compute", rocprof_compute),
-            ("nsys", nsys),
-            ("ncompute", ncompute),
-        ]:
-            if (
-                profiler_value
-                and profiler_value != "None"
-                and (
-                    "/" in profiler_value
-                    or profiler_value.endswith((".hip", ".cu", ".cpp", ".c", ".py"))
-                )
-            ):
-                potential_targets.append((profiler_name, profiler_value))
-
-        if len(potential_targets) == 1:
-            # Found exactly one potential target, use it
-            profiler_name, target_value = potential_targets[0]
-            console.print(
-                f"[yellow]Warning: Target '{target_value}' was interpreted as value for --{profiler_name}. Using it as target.[/yellow]"
-            )
-            target = target_value
-            # Clear the profiler flag
-            if profiler_name == "rocprofv3":
-                rocprofv3 = ""
-            elif profiler_name == "rocprof_compute":
-                rocprof_compute = ""
-            elif profiler_name == "nsys":
-                nsys = ""
-            elif profiler_name == "ncompute":
-                ncompute = ""
-        elif len(potential_targets) > 1:
-            console.print(
-                "[red]Error: Multiple potential targets found. Please specify the target explicitly.[/red]"
-            )
-            return 1
-        else:
-            console.print("[red]Error: Target file or command is required[/red]")
-            return 1
-
-    # Validate target parameter
+    if rocprof_compute is not None:
+        console.print("[red]Error: --rocprof-compute support is not yet implemented[/red]")
+        return 1
     if target is None:
         console.print("[red]Error: Target file or command is required[/red]")
         return 1
 
-    # At this point, target is guaranteed to be a string
+    # TODO: add some cleaning to flags to interact with target.
+
     assert target is not None
     target_str = target
-
-    # Check that at least one profiler is specified
     profilers_enabled = [p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None]
     if not profilers_enabled:
         console.print(
             "[red]Error: No profiler specified.[/red]\n"
-            "[yellow]Use one or more of: --rocprofv3, --rocprof-compute, --nsys, --ncompute[/yellow]"
+            "[yellow]Use one or more of: --rocprofv3, --nsys, --ncompute[/yellow]"
         )
         return 1
 
-    # Determine vendor based on profiler flags
-    amd_profilers = [p for p in [rocprofv3, rocprof_compute] if p is not None]
-    nvidia_profilers = [p for p in [nsys, ncompute] if p is not None]
-
-    if amd_profilers and nvidia_profilers:
-        console.print("[red]Error: Cannot mix AMD and NVIDIA profilers in the same command[/red]")
-        return 1
-
-    vendor = "amd" if amd_profilers else "nvidia"
-
-    if gpu_type and vendor != "nvidia":
+    # check gpu_type is valid
+    if gpu_type and gpu_type not in ["h100", "l40s"]:
         console.print("[red]Error: --gpu-type flag is only supported for NVIDIA profiling[/red]")
         return 1
-    if gpu_type and gpu_type not in ["h100", "l40s"]:
-        console.print(f"[red]Error: --gpu-type must be 'h100' or 'l40s', not '{gpu_type}'[/red]")
-        return 1
+
     if not Config().token:
         console.print(
             "[red]Error: No API token configured.[/red]\n"
@@ -200,10 +143,10 @@ def handle_profile(
         )
         return 1
 
+    vendor = "amd" if rocprofv3 else "nvidia"
     try:
         manager = ProfilingManager()
 
-        # Build profiler commands - if string is provided, use target + extra flags, otherwise just target
         def build_cmd(base_target: str, profiler_value: Optional[str]) -> Optional[str]:
             if profiler_value is None:
                 return None
