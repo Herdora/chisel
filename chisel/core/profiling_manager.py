@@ -61,47 +61,25 @@ class ProfilingResults:
                 for i, kernel in enumerate(self.summary["top_kernels"][:5], 1):
                     console.print(f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms")
 
-            # Show AMD rocprofv3 profiling results
-            if "att_files" in self.summary:
-                rocprof_count = len(self.summary.get("att_files", []))
-                console.print(
-                    f"\n[cyan]AMD rocprofv3 profile files generated:[/cyan] {rocprof_count} files"
-                )
-
-                # Show rocprofv3 files
-                for rocprof_file in self.summary.get("att_files", []):
-                    console.print(f"  • {rocprof_file}")
-
-                # Show performance counter info if available
-                if self.summary.get("pmc_counters"):
-                    console.print(
-                        f"\n[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}"
-                    )
-                    console.print("  • counter_collection.csv: Performance counter data")
-
-                # Usage instructions
-                console.print("\n[cyan]Analysis tools:[/cyan]")
-                console.print("  • Open CSV files for detailed trace analysis")
-                console.print("  • kernel_trace.csv: GPU kernel execution data")
-                console.print("  • hip_api_trace.csv: HIP API call traces")
-                console.print("  • memory_allocation_trace.csv: Memory operations")
-
-            # Show NVIDIA profiling results
+            # Show profiling results (both AMD and NVIDIA use same structure now)
             if "profile_files" in self.summary:
-                csv_count = len(self.summary.get("csv_files", []))
-
-                console.print(f"\n[cyan]Profile files generated:[/cyan] {csv_count} CSV files")
-
-                # Show CSV files (only output format)
-                if csv_count > 0:
-                    console.print("[cyan]GPU kernel trace (CSV):[/cyan]")
-                    for csv_file in self.summary.get("csv_files", []):
-                        console.print(f"  • {csv_file}")
-
-                # Usage instructions
-                console.print("\n[cyan]Analysis tools:[/cyan]")
-                if csv_count > 0:
-                    console.print("  • View CSV files for kernel execution details")
+                summary_file = self.summary.get("summary_file")
+                profile_type = self.summary.get("profile_type", "nvidia")
+                
+                if summary_file:
+                    vendor_name = "AMD rocprofv3" if profile_type == "rocprofv3" else "NVIDIA"
+                    console.print(f"\n[cyan]{vendor_name} profile summary generated:[/cyan] {summary_file}")
+                    
+                    # Show performance counter info for AMD if available
+                    if profile_type == "rocprofv3" and self.summary.get("pmc_counters"):
+                        console.print(
+                            f"[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}"
+                        )
+                    
+                    console.print("\n[cyan]Analysis tools:[/cyan]")
+                    console.print("  • View text summary for human-readable kernel analysis")
+                else:
+                    console.print(f"\n[cyan]Profile files generated:[/cyan] 0 files")
         else:
             console.print("\n[red]✗ Profiling failed[/red]")
             if self.stderr:
@@ -479,13 +457,11 @@ class ProfilingManager:
         # Download results without parsing - let users analyze .ncu-rep files with proper tools
         profile_files = self._download_nvidia_results(droplet_info, remote_profile_dir, output_dir)
 
-        # Create basic summary with CSV files only
-        csv_files = [f for f in profile_files if f.endswith(".csv")]
-
+        # Create basic summary with text summary
         summary = {
             "profile_files": profile_files,
-            "csv_files": csv_files,
-            "message": f"NVIDIA profiling completed. Generated {len(csv_files)} CSV files.",
+            "summary_file": profile_files[0] if profile_files else None,
+            "message": f"NVIDIA profiling completed. Generated profile summary.",
         }
 
         # Cleanup remote files
@@ -717,11 +693,11 @@ class ProfilingManager:
         if " && " in command:
             # Split compilation and execution
             compile_part, execute_part = command.split(" && ", 1)
-            # Execute compilation first, then profile with rocprofv3
-            rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats {pmc_args} -d {profile_dirname} -- {execute_part}"
+            # Execute compilation first, then profile with rocprofv3 with summary output
+            rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace {pmc_args} -- {execute_part}"
         else:
-            # Just profile the single command
-            rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 --sys-trace --stats {pmc_args} -d {profile_dirname} -- {command}"
+            # Just profile the single command with summary output
+            rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace {pmc_args} -- {command}"
 
         # Full profiling command
         full_cmd = f"{profile_setup} && {rocprof_cmd}"
@@ -741,9 +717,10 @@ class ProfilingManager:
 
         # Create summary
         summary = {
-            "att_files": rocprof_files,  # Keep same key for display compatibility
+            "profile_files": rocprof_files,
+            "summary_file": rocprof_files[0] if rocprof_files else None,
             "profile_type": "rocprofv3",
-            "message": f"AMD rocprofv3 profiling completed. Generated {len(rocprof_files)} output files.",
+            "message": f"AMD rocprofv3 profiling completed. Generated profile summary.",
             "pmc_counters": pmc_counters,  # Include counter info for display
         }
 
@@ -769,24 +746,34 @@ class ProfilingManager:
 
         ssh_manager = SSHManager()
         ip = droplet_info["ip"]
-        console.print("[cyan]Filtering and downloading AMD profiling results...[/cyan]")
-        filter_cmd = f"""cd {remote_dir} && \
-reports=(kernel_stats memory_copy_stats)\n\nfor csv in $(find {profile_dirname} -type f -name '*.csv'); do\n    keep=false\n    for r in \"${{reports[@]}}\"; do\n        [[ \"$csv\" == *\"${{r}}.csv\" ]] && keep=true\n    done\n    $keep || rm -f \"$csv\"\ndone"""
-        ssh_manager.run(filter_cmd, droplet_info["gpu_type"])
-        archive_cmd = f"cd {remote_dir} && tar -czf amd_att_profile.tgz {profile_dirname}/ 2>/dev/null || echo 'No CSV files found'"
-        exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
+        console.print("[cyan]Downloading AMD profiling results...[/cyan]")
+        # rocprofv3 creates files with session prefix inside a subdirectory, we need to find the actual file
+        find_cmd = f"find {remote_dir} -name '*amd_profile_summary.txt*' -type f | head -1"
+        exit_code = ssh_manager.run(find_cmd, droplet_info["gpu_type"])
+        
         if exit_code != 0:
-            console.print(
-                "[yellow]Warning: No ATT trace files found or archive creation failed[/yellow]"
-            )
+            console.print("[yellow]Warning: Could not find AMD summary file[/yellow]")
             return []
-        local_archive_path = local_output_dir / "amd_att_profile.tgz"
+        
+        # Get the actual file path by running the find command and capturing output
+        import subprocess as sp
+        find_result = sp.run([
+            "ssh", "-o", "StrictHostKeyChecking=no", f"root@{ip}",
+            find_cmd
+        ], capture_output=True, text=True)
+        
+        if find_result.returncode != 0 or not find_result.stdout.strip():
+            console.print("[yellow]Warning: AMD summary file not found[/yellow]")
+            return []
+            
+        remote_summary_path = find_result.stdout.strip()
+        local_summary_path = local_output_dir / "amd_profile_summary.txt"
         scp_cmd = [
             "scp",
             "-o",
             "StrictHostKeyChecking=no",
-            f"root@{ip}:{remote_dir}/amd_att_profile.tgz",
-            str(local_archive_path),
+            f"root@{ip}:{remote_summary_path}",
+            str(local_summary_path),
         ]
         try:
             result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
@@ -795,39 +782,19 @@ reports=(kernel_stats memory_copy_stats)\n\nfor csv in $(find {profile_dirname} 
                     f"[yellow]Warning: Failed to download AMD ATT results: {result.stderr}[/yellow]"
                 )
                 return []
-            if not local_archive_path.exists() or local_archive_path.stat().st_size == 0:
-                console.print("[yellow]Warning: Downloaded archive is empty or missing[/yellow]")
+            if not local_summary_path.exists() or local_summary_path.stat().st_size == 0:
+                console.print("[yellow]Warning: Downloaded summary is empty or missing[/yellow]")
                 return []
-            # Extract archive into a subdirectory as before
-            amd_results_dir = local_output_dir / "amd_att_profile"
-            amd_results_dir.mkdir(exist_ok=True)
-            with tarfile.open(local_archive_path, "r:gz") as tar:
-                tar.extractall(amd_results_dir)
-            csv_files = list(amd_results_dir.rglob("*_kernel_stats.csv")) + list(
-                amd_results_dir.rglob("*_memory_copy_stats.csv")
+            console.print(
+                f"[green]✓ AMD profile summary saved to {local_summary_path}[/green]"
             )
-            if not csv_files:
-                console.print(
-                    "[yellow]Warning: No essential CSV files found in extracted archive[/yellow]"
-                )
-                return []
-            else:
-                console.print(
-                    f"[green]✓ AMD profiling results saved to {amd_results_dir} ({len(csv_files)} essential CSV files)[/green]"
-                )
-                return [str(f.relative_to(amd_results_dir)) for f in csv_files]
+            return ["amd_profile_summary.txt"]
         except subprocess.TimeoutExpired:
             console.print("[yellow]Warning: Download timed out[/yellow]")
-            return []
-        except tarfile.TarError as e:
-            console.print(f"[yellow]Warning: Failed to extract archive: {e}[/yellow]")
             return []
         except Exception as e:
             console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
             return []
-        finally:
-            if local_archive_path.exists():
-                local_archive_path.unlink()
 
     def _cleanup_amd_remote(self, droplet_info: Dict[str, Any], remote_dir: str):
         """Clean up remote AMD profiling files."""
@@ -846,24 +813,18 @@ reports=(kernel_stats memory_copy_stats)\n\nfor csv in $(find {profile_dirname} 
 
         ssh_manager = SSHManager()
         ip = droplet_info["ip"]
-        console.print("[cyan]Converting profiles to CSV format...[/cyan]")
+        console.print("[cyan]Generating profile summary...[/cyan]")
         convert_cmd = f"""cd {remote_dir} && \
-reports=(cuda_gpu_kern_sum cuda_gpu_mem_time_sum)\n\nfor nsys_file in *.nsys-rep; do\n    [ -f \"$nsys_file\" ] || continue\n    base=${{nsys_file%.nsys-rep}}\n    for rep in \"${{reports[@]}}\"; do\n        nsys stats -r \"$rep\" --format csv \"$nsys_file\" \
-            > \"${{base}}_${{rep}}.csv\" 2>/dev/null || true\n    done\ndone"""
+for nsys_file in *.nsys-rep; do\n    [ -f \"$nsys_file\" ] || continue\n    nsys stats --report cuda_api_gpu_sum \"$nsys_file\" > nvidia_profile_summary.txt 2>/dev/null || true\n    break\ndone"""
         ssh_manager.run(convert_cmd, droplet_info["gpu_type"])
         console.print("[cyan]Downloading NVIDIA profiling results...[/cyan]")
-        archive_cmd = f"cd {remote_dir} && tar -czf nvidia_profile.tgz *.csv 2>/dev/null || echo 'No CSV files found'"
-        exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
-        if exit_code != 0:
-            console.print("[yellow]Warning: No CSV files found or archive creation failed[/yellow]")
-            return []
-        local_archive_path = local_output_dir / "nvidia_profile.tgz"
+        local_summary_path = local_output_dir / "nvidia_profile_summary.txt"
         scp_cmd = [
             "scp",
             "-o",
             "StrictHostKeyChecking=no",
-            f"root@{ip}:{remote_dir}/nvidia_profile.tgz",
-            str(local_archive_path),
+            f"root@{ip}:{remote_dir}/nvidia_profile_summary.txt",
+            str(local_summary_path),
         ]
         try:
             result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
@@ -872,35 +833,19 @@ reports=(cuda_gpu_kern_sum cuda_gpu_mem_time_sum)\n\nfor nsys_file in *.nsys-rep
                     f"[yellow]Warning: Failed to download NVIDIA profile results: {result.stderr}[/yellow]"
                 )
                 return []
-            if not local_archive_path.exists() or local_archive_path.stat().st_size == 0:
-                console.print("[yellow]Warning: Downloaded archive is empty or missing[/yellow]")
+            if not local_summary_path.exists() or local_summary_path.stat().st_size == 0:
+                console.print("[yellow]Warning: Downloaded summary is empty or missing[/yellow]")
                 return []
-            # Extract archive into a subdirectory as before
-            nvidia_results_dir = local_output_dir / "nvidia_profile"
-            nvidia_results_dir.mkdir(exist_ok=True)
-            with tarfile.open(local_archive_path, "r:gz") as tar:
-                tar.extractall(nvidia_results_dir)
-            csv_files = list(nvidia_results_dir.glob("*.csv"))
-            if not csv_files:
-                console.print("[yellow]Warning: No CSV files found in extracted archive[/yellow]")
-                return []
-            csv_file_names = [f.name for f in csv_files]
             console.print(
-                f"[green]✓ NVIDIA profile results saved to {nvidia_results_dir} ({len(csv_files)} CSV files)[/green]"
+                f"[green]✓ NVIDIA profile summary saved to {local_summary_path}[/green]"
             )
-            return csv_file_names
+            return ["nvidia_profile_summary.txt"]
         except subprocess.TimeoutExpired:
             console.print("[yellow]Warning: Download timed out[/yellow]")
-            return []
-        except tarfile.TarError as e:
-            console.print(f"[yellow]Warning: Failed to extract archive: {e}[/yellow]")
             return []
         except Exception as e:
             console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
             return []
-        finally:
-            if local_archive_path.exists():
-                local_archive_path.unlink()
 
     def _cleanup_nvidia_remote(self, droplet_info: Dict[str, Any], remote_dir: str):
         """Clean up remote NVIDIA profiling files."""
