@@ -739,10 +739,24 @@ class ProfileManager:
         ssh_manager = SSHManager()
         ip = droplet_info["ip"]
 
-        console.print("[cyan]Downloading AMD ATT profiling results...[/cyan]")
+        console.print("[cyan]Filtering and downloading AMD profiling results...[/cyan]")
 
-        # Create archive on remote - include ATT trace files
-        archive_cmd = f"cd {remote_dir} && tar -czf amd_att_profile.tgz {profile_dirname}/ 2>/dev/null || echo 'No ATT files found'"
+        # Filter to keep only essential CSV files on remote before archiving
+        filter_cmd = f"""cd {remote_dir} && 
+reports=(kernel_stats memory_copy_stats)
+
+# Keep only the essential CSV files
+for csv in $(find {profile_dirname} -type f -name '*.csv'); do
+    keep=false
+    for r in "${{reports[@]}}"; do
+        [[ "$csv" == *"${{r}}.csv" ]] && keep=true
+    done
+    $keep || rm -f "$csv"
+done"""
+        ssh_manager.run(filter_cmd, droplet_info["gpu_type"])
+
+        # Create archive on remote - only essential CSV files remain
+        archive_cmd = f"cd {remote_dir} && tar -czf amd_att_profile.tgz {profile_dirname}/ 2>/dev/null || echo 'No CSV files found'"
         exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
 
         if exit_code != 0:
@@ -787,21 +801,19 @@ class ProfileManager:
             with tarfile.open(local_archive_path, "r:gz") as tar:
                 tar.extractall(amd_results_dir)
 
-            # Find all rocprofv3 output files (JSON, CSV, or other trace files)
-            rocprof_files = list(amd_results_dir.rglob("*"))
-            # Filter to actual files (not directories)
-            rocprof_files = [f for f in rocprof_files if f.is_file()]
+            # Find only the essential CSV files (kernel_stats and memory_copy_stats)
+            csv_files = list(amd_results_dir.rglob("*_kernel_stats.csv")) + list(amd_results_dir.rglob("*_memory_copy_stats.csv"))
             
-            if not rocprof_files:
+            if not csv_files:
                 console.print(
-                    "[yellow]Warning: No rocprofv3 output files found in extracted archive[/yellow]"
+                    "[yellow]Warning: No essential CSV files found in extracted archive[/yellow]"
                 )
                 return []
             else:
                 console.print(
-                    f"[green]✓ AMD rocprofv3 results saved to {amd_results_dir} ({len(rocprof_files)} files)[/green]"
+                    f"[green]✓ AMD profiling results saved to {amd_results_dir} ({len(csv_files)} essential CSV files)[/green]"
                 )
-                return [str(f.relative_to(amd_results_dir)) for f in rocprof_files]
+                return [str(f.relative_to(amd_results_dir)) for f in csv_files]
 
         except subprocess.TimeoutExpired:
             console.print("[yellow]Warning: Download timed out[/yellow]")
@@ -842,12 +854,16 @@ class ProfileManager:
         
         # Convert nsys-rep files to CSV on remote before downloading
         convert_cmd = f"""cd {remote_dir} && 
-        for nsys_file in *.nsys-rep; do 
-            if [ -f "$nsys_file" ]; then
-                base_name=$(basename "$nsys_file" .nsys-rep)
-                nsys stats --report cuda_gpu_trace --format csv "$nsys_file" > "${{base_name}}_cuda_gpu_trace.csv" 2>/dev/null || true
-            fi
-        done"""
+reports=(cuda_gpu_kern_sum cuda_gpu_mem_time_sum)
+
+for nsys_file in *.nsys-rep; do
+    [ -f "$nsys_file" ] || continue
+    base=${{nsys_file%.nsys-rep}}
+    for rep in "${{reports[@]}}"; do
+        nsys stats -r "$rep" --format csv "$nsys_file" \\
+            > "${{base}}_${{rep}}.csv" 2>/dev/null || true
+    done
+done"""
         ssh_manager.run(convert_cmd, droplet_info["gpu_type"])
 
         console.print("[cyan]Downloading NVIDIA profiling results...[/cyan]")
