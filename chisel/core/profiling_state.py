@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 
-class ProfileState:
+class ProfilingState:
     """Manages state for the simplified profiling system."""
 
     def __init__(self):

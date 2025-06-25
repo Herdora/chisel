@@ -21,7 +21,6 @@ class DOClient:
             (success, account_info) - success is True if token is valid
         """
         try:
-            # Get account info to validate token
             account = self.client.account.get()
             return True, account
         except Exception:

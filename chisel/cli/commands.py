@@ -6,9 +6,9 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-from chisel.config import Config
-from chisel.do_client import DOClient
-from chisel.profile_manager import ProfileManager
+from chisel.core.config import Config
+from chisel.core.do_client import DOClient
+from chisel.core.profiling_manager import ProfilingManager
 
 console = Console()
 
@@ -124,7 +124,7 @@ def handle_profile(
         return 1
 
     try:
-        manager = ProfileManager()
+        manager = ProfilingManager()
         result = manager.profile(vendor, target, pmc_counters=pmc, gpu_type=gpu_type)
         result.display_summary()
 

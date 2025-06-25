@@ -35,12 +35,10 @@ class Config:
     @property
     def token(self) -> Optional[str]:
         """Get DigitalOcean API token."""
-        # Check environment variable first
         env_token = os.getenv("CHISEL_DO_TOKEN")
         if env_token:
             return env_token
 
-        # Fall back to config file
         return self._config.get("digitalocean", {}).get("token")
 
     @token.setter
