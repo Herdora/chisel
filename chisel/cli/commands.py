@@ -151,9 +151,9 @@ def handle_profile(
             if profiler_value is None:
                 return None
             elif profiler_value == "":  # Boolean flag was used (empty string)
-                return base_target
+                return ""  # Return empty string for default behavior
             else:  # String value was provided (extra flags)
-                return f"{base_target} {profiler_value}"
+                return profiler_value  # Return just the flags
 
         result = manager.profile(
             vendor=vendor,

@@ -150,24 +150,8 @@ class ProfilingManager:
                 # Build the base command for the file using the synced path
                 base_command = self._build_command(vendor, target_info, synced_file_path)
 
-                # If we have explicit profiler commands, modify them to use the synced file
-                if vendor == "nvidia" and (nsys_cmd or ncompute_cmd):
-                    # Replace the target in profiler commands with the synced file path
-                    if nsys_cmd:
-                        nsys_cmd = nsys_cmd.replace(target, synced_file_path)
-                    if ncompute_cmd:
-                        ncompute_cmd = ncompute_cmd.replace(target, synced_file_path)
-                    command = (nsys_cmd or ncompute_cmd) or ""
-                elif vendor == "amd" and (rocprofv3_cmd or rocprof_compute_cmd):
-                    # Replace the target in profiler commands with the synced file path
-                    if rocprofv3_cmd:
-                        rocprofv3_cmd = rocprofv3_cmd.replace(target, synced_file_path)
-                    if rocprof_compute_cmd:
-                        rocprof_compute_cmd = rocprof_compute_cmd.replace(target, synced_file_path)
-                    command = (rocprofv3_cmd or rocprof_compute_cmd) or ""
-                else:
-                    # Use the built command for compilation and execution
-                    command = base_command
+                # Always use the base command for the new individual profiler methods
+                command = base_command
             else:
                 # It's a command, not a file - use as is
                 command = target
@@ -197,28 +181,72 @@ class ProfilingManager:
 
                 output_path = Path(output_dir)
                 output_path.mkdir(parents=True, exist_ok=True)
-                profile_output = self._run_profiler(
-                    droplet_info,
-                    vendor,
-                    command,
-                    target_info,
-                    rocprofv3_cmd,
-                    rocprof_compute_cmd,
-                    nsys_cmd,
-                    ncompute_cmd,
-                    custom_output_dir=output_path,
-                )
             else:
-                profile_output = self._run_profiler(
-                    droplet_info,
-                    vendor,
-                    command,
-                    target_info,
-                    rocprofv3_cmd,
-                    rocprof_compute_cmd,
-                    nsys_cmd,
-                    ncompute_cmd,
-                )
+                # Create default output directory with timestamp
+                from pathlib import Path
+                from datetime import datetime
+
+                now = datetime.now()
+                timestamp = now.strftime("%H%M%S-%Y%m%d")
+                output_path = Path(f"./{CHISEL_PROFILING_DIR_NAME}/{timestamp}")
+                output_path.mkdir(parents=True, exist_ok=True)
+
+            # Run profiling using individual profiler methods when specific commands are provided
+            all_results = []
+            if vendor == "amd":
+                if rocprofv3_cmd:
+                    result = self._run_rocprofv3(droplet_info, command, output_path, rocprofv3_cmd)
+                    all_results.append(result)
+                elif rocprof_compute_cmd:
+                    result = self._run_rocprof_compute(droplet_info, command, output_path)
+                    all_results.append(result)
+                else:
+                    # Fallback to legacy behavior for backward compatibility
+                    profile_output = self._run_profiler(
+                        droplet_info,
+                        vendor,
+                        command,
+                        target_info,
+                        rocprofv3_cmd,
+                        rocprof_compute_cmd,
+                        nsys_cmd,
+                        ncompute_cmd,
+                        custom_output_dir=output_path,
+                    )
+                    all_results.append(profile_output)
+            else:  # nvidia
+                if nsys_cmd:
+                    result = self._run_nsys(droplet_info, command, output_path, nsys_cmd)
+                    all_results.append(result)
+                elif ncompute_cmd:
+                    result = self._run_ncompute(droplet_info, command, output_path, ncompute_cmd)
+                    all_results.append(result)
+                else:
+                    # Fallback to legacy behavior for backward compatibility
+                    profile_output = self._run_profiler(
+                        droplet_info,
+                        vendor,
+                        command,
+                        target_info,
+                        rocprofv3_cmd,
+                        rocprof_compute_cmd,
+                        nsys_cmd,
+                        ncompute_cmd,
+                        custom_output_dir=output_path,
+                    )
+                    all_results.append(profile_output)
+
+            # Use the first result for now (could be enhanced to combine multiple results)
+            profile_output = (
+                all_results[0]
+                if all_results
+                else {
+                    "output_dir": output_path,
+                    "stdout": "",
+                    "stderr": "No profilers executed",
+                    "summary": {},
+                }
+            )
 
             # 5. Calculate cost
             elapsed_hours = (time.time() - start_time) / 3600
@@ -247,6 +275,202 @@ class ProfilingManager:
                 summary={},
                 cost_estimate=0.0,
             )
+
+    def _run_rocprofv3(
+        self, droplet_info: Dict[str, Any], command: str, output_dir: Path, extra_flags: str = ""
+    ) -> Dict[str, Any]:
+        """Run rocprofv3 on the droplet."""
+        ssh_manager = SSHManager()
+
+        # Ensure rocprofv3 is available
+        self._ensure_rocprofv3(droplet_info)
+
+        # Setup remote profiling environment
+        remote_profile_dir = "/tmp/chisel_amd_profile"
+        profile_dirname = f"chisel-amd"
+        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}/{profile_dirname} && cd {remote_profile_dir}"
+
+        # Extract target command from the command
+        if " && " in command:
+            compile_part, execute_part = command.split(" && ", 1)
+            # Extract the binary path from the compile command
+            if " -o " in compile_part:
+                binary_path = compile_part.split(" -o ")[1].split()[0]
+                target_cmd = binary_path
+            else:
+                target_cmd = execute_part
+
+            # Build rocprofv3 command - compile first, then profile with custom flags
+            rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && cd {remote_profile_dir}/{profile_dirname} && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {target_cmd}"
+        else:
+            # Just profile the single command with custom flags
+            target_cmd = command
+            rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && cd {remote_profile_dir}/{profile_dirname} && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {target_cmd}"
+
+        # Full profiling command
+        full_cmd = f"{profile_setup} && {rocprof_cmd}"
+
+        console.print(
+            f"[cyan]Running AMD rocprofv3 with flags '{extra_flags or '--sys-trace'}': {target_cmd}[/cyan]"
+        )
+
+        # Execute profiling command
+        exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
+
+        if exit_code != 0:
+            raise RuntimeError(f"rocprofv3 profiling failed with exit code {exit_code}")
+
+        # Download results
+        rocprof_files = self._download_amd_att_results(
+            droplet_info, remote_profile_dir, profile_dirname, output_dir
+        )
+
+        # Cleanup remote files
+        self._cleanup_amd_remote(droplet_info, remote_profile_dir)
+
+        return {
+            "output_dir": output_dir,
+            "stdout": "AMD rocprofv3 profiling completed successfully",
+            "stderr": "",
+            "summary": {
+                "profile_files": rocprof_files,
+                "summary_file": rocprof_files[0] if rocprof_files else None,
+                "profile_type": "rocprofv3",
+                "message": f"AMD rocprofv3 profiling completed. Generated profile summary.",
+            },
+        }
+
+    def _run_rocprof_compute(
+        self, droplet_info: Dict[str, Any], command: str, output_dir: Path
+    ) -> Dict[str, Any]:
+        """Run rocprof-compute on the droplet."""
+        ssh_manager = SSHManager()
+
+        # rocprof-compute support is not yet implemented
+        console.print("[yellow]rocprof-compute support not yet implemented[/yellow]")
+        raise RuntimeError("rocprof-compute is not yet supported")
+
+    def _run_nsys(
+        self, droplet_info: Dict[str, Any], command: str, output_dir: Path, extra_flags: str = ""
+    ) -> Dict[str, Any]:
+        """Run nsys on the droplet."""
+        ssh_manager = SSHManager()
+
+        # Ensure NVIDIA profilers are available
+        self._ensure_nvidia_profilers(droplet_info)
+
+        # Setup remote profiling environment
+        remote_profile_dir = "/tmp/chisel_nvidia_profile"
+        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+
+        # Extract target command from the command
+        if " && " in command:
+            compile_part, execute_part = command.split(" && ", 1)
+            # Extract the binary path from the compile command
+            if " -o " in compile_part:
+                binary_path = compile_part.split(" -o ")[1].split()[0]
+                target_cmd = binary_path
+            else:
+                target_cmd = execute_part
+
+            # Build nsys command - compile first, then profile with custom flags
+            nsys_cmd = f"{compile_part} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {target_cmd}"
+        else:
+            # Just profile the single command
+            target_cmd = command
+            nsys_cmd = f"nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {target_cmd}"
+
+        # Full profiling command
+        full_cmd = f"{profile_setup} && {nsys_cmd}"
+
+        console.print(
+            f"[cyan]Running NVIDIA nsys with flags '{extra_flags or '--stats=true --force-overwrite=true'}': {target_cmd}[/cyan]"
+        )
+
+        # Execute profiling command
+        exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
+
+        if exit_code != 0:
+            raise RuntimeError(f"nsys profiling failed with exit code {exit_code}")
+
+        # Download results
+        nvidia_files = self._download_nvidia_results(droplet_info, remote_profile_dir, output_dir)
+
+        # Cleanup remote files
+        self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
+
+        return {
+            "output_dir": output_dir,
+            "stdout": "NVIDIA nsys profiling completed successfully",
+            "stderr": "",
+            "summary": {
+                "profile_files": nvidia_files,
+                "summary_file": nvidia_files[0] if nvidia_files else None,
+                "profile_type": "nsys",
+                "message": f"NVIDIA nsys profiling completed. Generated profile data.",
+            },
+        }
+
+    def _run_ncompute(
+        self, droplet_info: Dict[str, Any], command: str, output_dir: Path, extra_flags: str = ""
+    ) -> Dict[str, Any]:
+        """Run ncu (nsight-compute) on the droplet."""
+        ssh_manager = SSHManager()
+
+        # Ensure NVIDIA profilers are available
+        self._ensure_nvidia_profilers(droplet_info)
+
+        # Setup remote profiling environment
+        remote_profile_dir = "/tmp/chisel_nvidia_profile"
+        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+
+        # Extract target command from the command
+        if " && " in command:
+            compile_part, execute_part = command.split(" && ", 1)
+            # Extract the binary path from the compile command
+            if " -o " in compile_part:
+                binary_path = compile_part.split(" -o ")[1].split()[0]
+                target_cmd = binary_path
+            else:
+                target_cmd = execute_part
+
+            # Build ncu command - compile first, then profile with custom flags
+            ncu_cmd = f"{compile_part} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile {target_cmd}"
+        else:
+            # Just profile the single command
+            target_cmd = command
+            ncu_cmd = f"ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile {target_cmd}"
+
+        # Full profiling command
+        full_cmd = f"{profile_setup} && {ncu_cmd}"
+
+        console.print(
+            f"[cyan]Running NVIDIA ncu with flags '{extra_flags or '--set full --force-overwrite'}': {target_cmd}[/cyan]"
+        )
+
+        # Execute profiling command
+        exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
+
+        if exit_code != 0:
+            raise RuntimeError(f"ncu profiling failed with exit code {exit_code}")
+
+        # Download results
+        nvidia_files = self._download_nvidia_results(droplet_info, remote_profile_dir, output_dir)
+
+        # Cleanup remote files
+        self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
+
+        return {
+            "output_dir": output_dir,
+            "stdout": "NVIDIA ncu profiling completed successfully",
+            "stderr": "",
+            "summary": {
+                "profile_files": nvidia_files,
+                "summary_file": nvidia_files[0] if nvidia_files else None,
+                "profile_type": "ncompute",
+                "message": f"NVIDIA ncu profiling completed. Generated profile data.",
+            },
+        }
 
     def _ensure_droplet(self, gpu_type: str) -> Dict[str, Any]:
         """Ensure a droplet exists for the given GPU type."""
@@ -454,7 +678,7 @@ class ProfilingManager:
                 # Setup remote profiling environment
                 remote_profile_dir = "/tmp/chisel_amd_profile"
                 profile_dirname = f"att_trace_{int(time.time())}"
-                profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+                profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
 
                 # For AMD, we need to separate compilation from profiling
                 if " && " in command:
@@ -942,7 +1166,7 @@ class ProfilingManager:
         profile_dirname = f"att_trace_{int(time.time())}"
 
         # Build rocprofv3 profiling command
-        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
+        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
 
         # If direct command is provided, use it
         if rocprofv3_cmd:
