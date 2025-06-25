@@ -79,31 +79,20 @@ class ProfileResult:
 
             # Show NVIDIA profiling results
             if "profile_files" in self.summary:
-                ncu_count = len(self.summary.get('ncu_files', []))
-                nsys_count = len(self.summary.get('nsys_files', []))
-                total_count = len(self.summary['profile_files'])
+                csv_count = len(self.summary.get('csv_files', []))
                 
-                console.print(f"\n[cyan]Profile files generated:[/cyan] {total_count} total ({ncu_count} ncu, {nsys_count} nsys)")
+                console.print(f"\n[cyan]Profile files generated:[/cyan] {csv_count} CSV files")
                 
-                # Show ncu files
-                if ncu_count > 0:
-                    console.print("[cyan]Kernel profiling (ncu):[/cyan]")
-                    for ncu_file in self.summary.get('ncu_files', []):
-                        console.print(f"  • {ncu_file}")
-                
-                # Show nsys files
-                if nsys_count > 0:
-                    console.print("[cyan]System timeline (nsys):[/cyan]")
-                    for nsys_file in self.summary.get('nsys_files', []):
-                        console.print(f"  • {nsys_file}")
+                # Show CSV files (only output format)
+                if csv_count > 0:
+                    console.print("[cyan]GPU kernel trace (CSV):[/cyan]")
+                    for csv_file in self.summary.get('csv_files', []):
+                        console.print(f"  • {csv_file}")
                 
                 # Usage instructions
                 console.print("\n[cyan]Analysis tools:[/cyan]")
-                if ncu_count > 0:
-                    console.print("  • ncu --import <file>.ncu-rep --page summary  # Text summary")
-                    console.print("  • ncu-ui <file>.ncu-rep                      # GUI analysis")
-                if nsys_count > 0:
-                    console.print("  • nsys-ui <file>.nsys-rep                    # Timeline analysis")
+                if csv_count > 0:
+                    console.print("  • View CSV files for kernel execution details")
         else:
             console.print("\n[red]✗ Profiling failed[/red]")
             if self.stderr:
@@ -259,6 +248,7 @@ class ProfileManager:
                 ".hip": "hipcc",
                 ".cu": "nvcc",
                 ".c": "gcc",
+                ".py": "python",
             }
 
             return TargetInfo(
@@ -287,6 +277,10 @@ class ProfileManager:
         remote_source = f"/tmp/{target_info.file_path.name}"
         binary_name = target_info.file_path.stem
         remote_binary = f"/tmp/{binary_name}"
+
+        # Handle Python files - no compilation needed
+        if target_info.compiler == "python":
+            return f"python3 {remote_source}"
 
         if vendor == "nvidia":
             if target_info.compiler == "nvcc":
@@ -411,6 +405,10 @@ class ProfileManager:
         # Ensure NVIDIA profilers are available
         self._ensure_nvidia_profilers(droplet_info)
 
+        # If profiling a Python script, ensure PyTorch is available
+        if command.startswith("python3"):
+            self._ensure_pytorch(droplet_info)
+
         # Setup remote profiling environment
         remote_profile_dir = "/tmp/chisel_nvidia_profile"
         profile_filename = f"profile_{int(time.time())}"
@@ -463,15 +461,13 @@ class ProfileManager:
             droplet_info, remote_profile_dir, output_dir
         )
 
-        # Create basic summary with both profiler types
-        ncu_files = [f for f in profile_files if f.endswith('.ncu-rep')]
-        nsys_files = [f for f in profile_files if f.endswith('.nsys-rep')]
+        # Create basic summary with CSV files only
+        csv_files = [f for f in profile_files if f.endswith('.csv')]
         
         summary = {
             "profile_files": profile_files,
-            "ncu_files": ncu_files,
-            "nsys_files": nsys_files,
-            "message": f"NVIDIA profiling completed. Generated {len(ncu_files)} ncu files and {len(nsys_files)} nsys files.",
+            "csv_files": csv_files,
+            "message": f"NVIDIA profiling completed. Generated {len(csv_files)} CSV files.",
         }
 
         # Cleanup remote files
@@ -532,6 +528,47 @@ class ProfileManager:
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
+
+    def _ensure_pytorch(self, droplet_info: Dict[str, any]):
+        """Ensure PyTorch with CUDA support is installed on the NVIDIA droplet."""
+        ssh_manager = SSHManager()
+
+        try:
+            # Check if PyTorch is already available with CUDA
+            check_cmd = "python3 -c \"import torch; print(f'CUDA available: {torch.cuda.is_available()}')\" 2>/dev/null"
+            exit_code = ssh_manager.run(check_cmd, droplet_info["gpu_type"])
+
+            if exit_code == 0:
+                console.print("[green]✓ PyTorch with CUDA already available[/green]")
+                return
+
+            console.print("[yellow]Installing PyTorch with CUDA support...[/yellow]")
+
+            # Install pip if not available
+            install_pip_cmd = "apt update -y && apt install -y python3-pip"
+            exit_code = ssh_manager.run(install_pip_cmd, droplet_info["gpu_type"])
+
+            if exit_code != 0:
+                raise RuntimeError("Failed to install pip")
+
+            # Install PyTorch with CUDA support
+            install_pytorch_cmd = "pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121"
+            exit_code = ssh_manager.run(install_pytorch_cmd, droplet_info["gpu_type"])
+
+            if exit_code != 0:
+                raise RuntimeError("Failed to install PyTorch")
+
+            # Verify PyTorch CUDA detection
+            verify_cmd = "python3 -c \"import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0)}')\""
+            exit_code = ssh_manager.run(verify_cmd, droplet_info["gpu_type"])
+
+            if exit_code != 0:
+                raise RuntimeError("PyTorch installation verification failed")
+
+            console.print("[green]✓ PyTorch with CUDA installed successfully[/green]")
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to setup PyTorch: {e}")
 
     def _ensure_rocprofv3(self, droplet_info: Dict[str, any]):
         """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
@@ -801,15 +838,27 @@ class ProfileManager:
         ssh_manager = SSHManager()
         ip = droplet_info["ip"]
 
+        console.print("[cyan]Converting profiles to CSV format...[/cyan]")
+        
+        # Convert nsys-rep files to CSV on remote before downloading
+        convert_cmd = f"""cd {remote_dir} && 
+        for nsys_file in *.nsys-rep; do 
+            if [ -f "$nsys_file" ]; then
+                base_name=$(basename "$nsys_file" .nsys-rep)
+                nsys stats --report cuda_gpu_trace --format csv "$nsys_file" > "${{base_name}}_cuda_gpu_trace.csv" 2>/dev/null || true
+            fi
+        done"""
+        ssh_manager.run(convert_cmd, droplet_info["gpu_type"])
+
         console.print("[cyan]Downloading NVIDIA profiling results...[/cyan]")
 
-        # Create archive on remote - include both .ncu-rep and .nsys-rep files
-        archive_cmd = f"cd {remote_dir} && tar -czf nvidia_profile.tgz *.ncu-rep *.nsys-rep 2>/dev/null || tar -czf nvidia_profile.tgz *.ncu-rep *.nsys-rep *.rep 2>/dev/null || echo 'No profile files found'"
+        # Create archive on remote - only include CSV files
+        archive_cmd = f"cd {remote_dir} && tar -czf nvidia_profile.tgz *.csv 2>/dev/null || echo 'No CSV files found'"
         exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
 
         if exit_code != 0:
             console.print(
-                "[yellow]Warning: No profile files (.ncu-rep or .nsys-rep) found or archive creation failed[/yellow]"
+                "[yellow]Warning: No CSV files found or archive creation failed[/yellow]"
             )
             return []
 
@@ -851,22 +900,21 @@ class ProfileManager:
             with tarfile.open(local_archive_path, "r:gz") as tar:
                 tar.extractall(nvidia_results_dir)
 
-            # Verify extraction and return file list
-            ncu_files = list(nvidia_results_dir.glob("*.ncu-rep"))
-            nsys_files = list(nvidia_results_dir.glob("*.nsys-rep"))
-            all_profile_files = ncu_files + nsys_files
+            # Verify extraction and return file list - only CSV files
+            csv_files = list(nvidia_results_dir.glob("*.csv"))
             
-            if not all_profile_files:
+            if not csv_files:
                 console.print(
-                    "[yellow]Warning: No profile files (.ncu-rep or .nsys-rep) found in extracted archive[/yellow]"
+                    "[yellow]Warning: No CSV files found in extracted archive[/yellow]"
                 )
                 return []
-            else:
-                file_summary = f"{len(ncu_files)} ncu files, {len(nsys_files)} nsys files"
-                console.print(
-                    f"[green]✓ NVIDIA profile results saved to {nvidia_results_dir} ({file_summary})[/green]"
-                )
-                return [f.name for f in all_profile_files]
+            
+            # Return only CSV files
+            csv_file_names = [f.name for f in csv_files]
+            console.print(
+                f"[green]✓ NVIDIA profile results saved to {nvidia_results_dir} ({len(csv_files)} CSV files)[/green]"
+            )
+            return csv_file_names
 
         except subprocess.TimeoutExpired:
             console.print("[yellow]Warning: Download timed out[/yellow]")
