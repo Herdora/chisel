@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-chisel = "chisel.main:main"
+chisel = "chisel.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["chisel*"]

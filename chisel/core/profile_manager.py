@@ -52,24 +52,26 @@ class ProfileResult:
             if "top_kernels" in self.summary:
                 console.print("\n[cyan]Top GPU Kernels:[/cyan]")
                 for i, kernel in enumerate(self.summary["top_kernels"][:5], 1):
-                    console.print(
-                        f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms"
-                    )
+                    console.print(f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms")
 
             # Show AMD rocprofv3 profiling results
             if "att_files" in self.summary:
-                rocprof_count = len(self.summary.get('att_files', []))
-                console.print(f"\n[cyan]AMD rocprofv3 profile files generated:[/cyan] {rocprof_count} files")
-                
+                rocprof_count = len(self.summary.get("att_files", []))
+                console.print(
+                    f"\n[cyan]AMD rocprofv3 profile files generated:[/cyan] {rocprof_count} files"
+                )
+
                 # Show rocprofv3 files
-                for rocprof_file in self.summary.get('att_files', []):
+                for rocprof_file in self.summary.get("att_files", []):
                     console.print(f"  • {rocprof_file}")
-                
+
                 # Show performance counter info if available
                 if self.summary.get("pmc_counters"):
-                    console.print(f"\n[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}")
+                    console.print(
+                        f"\n[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}"
+                    )
                     console.print("  • counter_collection.csv: Performance counter data")
-                
+
                 # Usage instructions
                 console.print("\n[cyan]Analysis tools:[/cyan]")
                 console.print("  • Open CSV files for detailed trace analysis")
@@ -79,16 +81,16 @@ class ProfileResult:
 
             # Show NVIDIA profiling results
             if "profile_files" in self.summary:
-                csv_count = len(self.summary.get('csv_files', []))
-                
+                csv_count = len(self.summary.get("csv_files", []))
+
                 console.print(f"\n[cyan]Profile files generated:[/cyan] {csv_count} CSV files")
-                
+
                 # Show CSV files (only output format)
                 if csv_count > 0:
                     console.print("[cyan]GPU kernel trace (CSV):[/cyan]")
-                    for csv_file in self.summary.get('csv_files', []):
+                    for csv_file in self.summary.get("csv_files", []):
                         console.print(f"  • {csv_file}")
-                
+
                 # Usage instructions
                 console.print("\n[cyan]Analysis tools:[/cyan]")
                 if csv_count > 0:
@@ -114,7 +116,13 @@ class ProfileManager:
 
         self.state = ProfileState()
 
-    def profile(self, vendor: str, target: str, pmc_counters: Optional[str] = None, gpu_type: Optional[str] = None) -> ProfileResult:
+    def profile(
+        self,
+        vendor: str,
+        target: str,
+        pmc_counters: Optional[str] = None,
+        gpu_type: Optional[str] = None,
+    ) -> ProfileResult:
         """
         Execute a complete profiling workflow.
 
@@ -190,9 +198,7 @@ class ProfileManager:
         droplet_info = self.state.get_droplet(gpu_type)
 
         if droplet_info and self._is_droplet_alive(droplet_info):
-            console.print(
-                f"[green]Using existing droplet: {droplet_info['name']}[/green]"
-            )
+            console.print(f"[green]Using existing droplet: {droplet_info['name']}[/green]")
             return droplet_info
 
         # Create new droplet
@@ -238,7 +244,7 @@ class ProfileManager:
         """Analyze the target to determine if it's a file or command."""
         target_path = Path(target)
         extension = target_path.suffix.lower()
-        
+
         # Determine compiler based on extension
         compiler_map = {
             ".cpp": "hipcc",
@@ -247,12 +253,12 @@ class ProfileManager:
             ".c": "gcc",
             ".py": "python",
         }
-        
+
         # Check if it's a source file by extension or if it exists as a file
         # This handles cases where chisel is called as a library with relative paths
         is_source_extension = extension in compiler_map
         file_exists = target_path.exists() and target_path.is_file()
-        
+
         if file_exists or is_source_extension:
             return TargetInfo(
                 raw_target=target,
@@ -274,7 +280,9 @@ class ProfileManager:
         success = ssh_manager.sync(str(file_path), "/tmp/", droplet_info["gpu_type"])
 
         if not success:
-            raise RuntimeError(f"Failed to sync {file_path}. Ensure the file exists and is accessible.")
+            raise RuntimeError(
+                f"Failed to sync {file_path}. Ensure the file exists and is accessible."
+            )
 
     def _build_command(self, vendor: str, target_info: TargetInfo) -> str:
         """Build the compilation and execution command."""
@@ -303,7 +311,11 @@ class ProfileManager:
         return f"{compile_cmd} && {remote_binary}"
 
     def _run_profiler(
-        self, droplet_info: Dict[str, any], vendor: str, command: str, pmc_counters: Optional[str] = None
+        self,
+        droplet_info: Dict[str, any],
+        vendor: str,
+        command: str,
+        pmc_counters: Optional[str] = None,
     ) -> Dict[str, any]:
         """Run the profiler on the droplet."""
         ssh_manager = SSHManager()
@@ -444,30 +456,30 @@ class ProfileManager:
         # If both profilers failed, try them individually for better error reporting
         if exit_code != 0:
             console.print("[yellow]Both profilers failed, trying individually...[/yellow]")
-            
+
             # Try ncu alone
             ncu_only_cmd = f"{profile_setup} && {ncu_cmd}"
             ncu_exit = ssh_manager.run(ncu_only_cmd, droplet_info["gpu_type"])
-            
-            # Try nsys alone  
+
+            # Try nsys alone
             nsys_only_cmd = f"{profile_setup} && {nsys_cmd}"
             nsys_exit = ssh_manager.run(nsys_only_cmd, droplet_info["gpu_type"])
-            
+
             if ncu_exit != 0 and nsys_exit != 0:
-                raise RuntimeError(f"Both NVIDIA profilers failed: ncu={ncu_exit}, nsys={nsys_exit}")
+                raise RuntimeError(
+                    f"Both NVIDIA profilers failed: ncu={ncu_exit}, nsys={nsys_exit}"
+                )
             elif ncu_exit != 0:
                 console.print("[yellow]ncu profiling failed, but nsys succeeded[/yellow]")
             elif nsys_exit != 0:
                 console.print("[yellow]nsys profiling failed, but ncu succeeded[/yellow]")
 
         # Download results without parsing - let users analyze .ncu-rep files with proper tools
-        profile_files = self._download_nvidia_results(
-            droplet_info, remote_profile_dir, output_dir
-        )
+        profile_files = self._download_nvidia_results(droplet_info, remote_profile_dir, output_dir)
 
         # Create basic summary with CSV files only
-        csv_files = [f for f in profile_files if f.endswith('.csv')]
-        
+        csv_files = [f for f in profile_files if f.endswith(".csv")]
+
         summary = {
             "profile_files": profile_files,
             "csv_files": csv_files,
@@ -497,7 +509,9 @@ class ProfileManager:
                 console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
                 return
 
-            console.print("[yellow]Installing NVIDIA profilers (nsight-compute + nsight-systems)...[/yellow]")
+            console.print(
+                "[yellow]Installing NVIDIA profilers (nsight-compute + nsight-systems)...[/yellow]"
+            )
 
             # Install both profilers with timeout
             install_cmd = """
@@ -556,7 +570,9 @@ class ProfileManager:
                 raise RuntimeError("Failed to install pip")
 
             # Install PyTorch with CUDA support
-            install_pytorch_cmd = "pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121"
+            install_pytorch_cmd = (
+                "pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121"
+            )
             exit_code = ssh_manager.run(install_pytorch_cmd, droplet_info["gpu_type"])
 
             if exit_code != 0:
@@ -609,7 +625,7 @@ class ProfileManager:
             mkdir build && cd build && 
             cmake .. && make -j$(nproc) && make install
             """
-            
+
             console.print("[cyan]Building aqlprofile...[/cyan]")
             exit_code = ssh_manager.run(build_aqlprofile_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
@@ -623,7 +639,7 @@ class ProfileManager:
             mkdir build && cd build && 
             cmake .. && make -j$(nproc) && make install
             """
-            
+
             console.print("[cyan]Building rocprofiler-sdk...[/cyan]")
             exit_code = ssh_manager.run(build_rocprofiler_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
@@ -636,7 +652,7 @@ class ProfileManager:
             chmod +x /opt/rocm/lib/rocprof-trace-decoder &&
             ln -sf /opt/rocm/lib/rocprof-trace-decoder /opt/rocm/lib/libatt_decoder_trace.so
             """
-            
+
             console.print("[cyan]Installing rocprof-trace-decoder...[/cyan]")
             exit_code = ssh_manager.run(download_decoder_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
@@ -647,7 +663,7 @@ class ProfileManager:
             echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc &&
             export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/
             """
-            
+
             exit_code = ssh_manager.run(env_setup_cmd, droplet_info["gpu_type"])
             if exit_code != 0:
                 raise RuntimeError("Failed to set up environment")
@@ -665,7 +681,11 @@ class ProfileManager:
             raise RuntimeError(f"Failed to setup rocprofv3: {e}")
 
     def _run_amd_profiler(
-        self, droplet_info: Dict[str, any], command: str, output_dir: Path, pmc_counters: Optional[str] = None
+        self,
+        droplet_info: Dict[str, any],
+        command: str,
+        output_dir: Path,
+        pmc_counters: Optional[str] = None,
     ) -> Dict[str, any]:
         """Run AMD rocprofv3 profiler with ATT traces on the droplet."""
         ssh_manager = SSHManager()
@@ -686,7 +706,9 @@ class ProfileManager:
             # Validate and format counters
             counters = [c.strip() for c in pmc_counters.split(",")]
             if len(counters) > 8:
-                console.print(f"[yellow]Warning: {len(counters)} counters requested, but hardware typically supports max 7-8. Some may fail.[/yellow]")
+                console.print(
+                    f"[yellow]Warning: {len(counters)} counters requested, but hardware typically supports max 7-8. Some may fail.[/yellow]"
+                )
             pmc_args = f"--pmc {','.join(counters)}"
 
         # For AMD, we need to separate compilation from profiling
@@ -734,7 +756,11 @@ class ProfileManager:
         }
 
     def _download_amd_att_results(
-        self, droplet_info: Dict[str, any], remote_dir: str, profile_dirname: str, local_output_dir: Path
+        self,
+        droplet_info: Dict[str, any],
+        remote_dir: str,
+        profile_dirname: str,
+        local_output_dir: Path,
     ) -> list:
         """Download AMD ATT profiling results and return list of files."""
         import subprocess
@@ -764,7 +790,9 @@ done"""
         exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
 
         if exit_code != 0:
-            console.print("[yellow]Warning: No ATT trace files found or archive creation failed[/yellow]")
+            console.print(
+                "[yellow]Warning: No ATT trace files found or archive creation failed[/yellow]"
+            )
             return []
 
         # Download archive
@@ -779,9 +807,7 @@ done"""
         ]
 
         try:
-            result = subprocess.run(
-                scp_cmd, capture_output=True, text=True, timeout=120
-            )
+            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
             if result.returncode != 0:
                 console.print(
                     f"[yellow]Warning: Failed to download AMD ATT results: {result.stderr}[/yellow]"
@@ -789,13 +815,8 @@ done"""
                 return []
 
             # Verify archive was downloaded
-            if (
-                not local_archive_path.exists()
-                or local_archive_path.stat().st_size == 0
-            ):
-                console.print(
-                    "[yellow]Warning: Downloaded archive is empty or missing[/yellow]"
-                )
+            if not local_archive_path.exists() or local_archive_path.stat().st_size == 0:
+                console.print("[yellow]Warning: Downloaded archive is empty or missing[/yellow]")
                 return []
 
             # Extract archive
@@ -806,8 +827,10 @@ done"""
                 tar.extractall(amd_results_dir)
 
             # Find only the essential CSV files (kernel_stats and memory_copy_stats)
-            csv_files = list(amd_results_dir.rglob("*_kernel_stats.csv")) + list(amd_results_dir.rglob("*_memory_copy_stats.csv"))
-            
+            csv_files = list(amd_results_dir.rglob("*_kernel_stats.csv")) + list(
+                amd_results_dir.rglob("*_memory_copy_stats.csv")
+            )
+
             if not csv_files:
                 console.print(
                     "[yellow]Warning: No essential CSV files found in extracted archive[/yellow]"
@@ -826,9 +849,7 @@ done"""
             console.print(f"[yellow]Warning: Failed to extract archive: {e}[/yellow]")
             return []
         except Exception as e:
-            console.print(
-                f"[yellow]Warning: Unexpected error during download: {e}[/yellow]"
-            )
+            console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
             return []
         finally:
             # Clean up archive if it exists
@@ -855,7 +876,7 @@ done"""
         ip = droplet_info["ip"]
 
         console.print("[cyan]Converting profiles to CSV format...[/cyan]")
-        
+
         # Convert nsys-rep files to CSV on remote before downloading
         convert_cmd = f"""cd {remote_dir} && 
 reports=(cuda_gpu_kern_sum cuda_gpu_mem_time_sum)
@@ -877,9 +898,7 @@ done"""
         exit_code = ssh_manager.run(archive_cmd, droplet_info["gpu_type"])
 
         if exit_code != 0:
-            console.print(
-                "[yellow]Warning: No CSV files found or archive creation failed[/yellow]"
-            )
+            console.print("[yellow]Warning: No CSV files found or archive creation failed[/yellow]")
             return []
 
         # Download archive
@@ -894,9 +913,7 @@ done"""
         ]
 
         try:
-            result = subprocess.run(
-                scp_cmd, capture_output=True, text=True, timeout=120
-            )
+            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
             if result.returncode != 0:
                 console.print(
                     f"[yellow]Warning: Failed to download NVIDIA profile results: {result.stderr}[/yellow]"
@@ -904,13 +921,8 @@ done"""
                 return []
 
             # Verify archive was downloaded
-            if (
-                not local_archive_path.exists()
-                or local_archive_path.stat().st_size == 0
-            ):
-                console.print(
-                    "[yellow]Warning: Downloaded archive is empty or missing[/yellow]"
-                )
+            if not local_archive_path.exists() or local_archive_path.stat().st_size == 0:
+                console.print("[yellow]Warning: Downloaded archive is empty or missing[/yellow]")
                 return []
 
             # Extract archive
@@ -922,13 +934,11 @@ done"""
 
             # Verify extraction and return file list - only CSV files
             csv_files = list(nvidia_results_dir.glob("*.csv"))
-            
+
             if not csv_files:
-                console.print(
-                    "[yellow]Warning: No CSV files found in extracted archive[/yellow]"
-                )
+                console.print("[yellow]Warning: No CSV files found in extracted archive[/yellow]")
                 return []
-            
+
             # Return only CSV files
             csv_file_names = [f.name for f in csv_files]
             console.print(
@@ -943,9 +953,7 @@ done"""
             console.print(f"[yellow]Warning: Failed to extract archive: {e}[/yellow]")
             return []
         except Exception as e:
-            console.print(
-                f"[yellow]Warning: Unexpected error during download: {e}[/yellow]"
-            )
+            console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
             return []
         finally:
             # Clean up archive if it exists
