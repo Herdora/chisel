@@ -191,7 +191,6 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
     """
     import subprocess
     import sys
-    from pathlib import Path
 
     console.print("[cyan]Installing shell completion for Chisel...[/cyan]")
 
