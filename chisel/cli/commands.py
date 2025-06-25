@@ -91,7 +91,6 @@ def handle_configure(token: Optional[str] = None) -> int:
 
 def handle_profile(
     target: Optional[str],
-    pmc_counters: Optional[str] = None,
     gpu_type: Optional[str] = None,
     output_dir: Optional[str] = None,
     rocprofv3: Optional[str] = None,
@@ -103,7 +102,6 @@ def handle_profile(
 
     Args:
         target: File or command to profile
-        pmc_counters: Performance counters for AMD (optional)
         gpu_type: GPU type override for NVIDIA (optional)
         output_dir: Output directory for results (optional)
         rocprofv3: Whether to run rocprofv3 (AMD)
@@ -189,10 +187,6 @@ def handle_profile(
 
     vendor = "amd" if amd_profilers else "nvidia"
 
-    # Validation
-    if pmc_counters and vendor != "amd":
-        console.print("[red]Error: --pmc flag is only supported for AMD profiling[/red]")
-        return 1
     if gpu_type and vendor != "nvidia":
         console.print("[red]Error: --gpu-type flag is only supported for NVIDIA profiling[/red]")
         return 1
@@ -221,7 +215,6 @@ def handle_profile(
         result = manager.profile(
             vendor=vendor,
             target=target_str,
-            pmc_counters=pmc_counters,
             gpu_type=gpu_type,
             output_dir=output_dir,
             rocprofv3_cmd=build_cmd(target_str, rocprofv3),

@@ -72,12 +72,6 @@ class ProfilingResults:
                         f"\n[cyan]{vendor_name} profile summary generated:[/cyan] {summary_file}"
                     )
 
-                    # Show performance counter info for AMD if available
-                    if profile_type == "rocprofv3" and self.summary.get("pmc_counters"):
-                        console.print(
-                            f"[cyan]Performance counters collected:[/cyan] {self.summary.get('pmc_counters')}"
-                        )
-
                     console.print("\n[cyan]Analysis tools:[/cyan]")
                     console.print("  • View text summary for human-readable kernel analysis")
                 else:
@@ -105,7 +99,6 @@ class ProfilingManager:
         self,
         vendor: str,
         target: str,
-        pmc_counters: Optional[str] = None,
         gpu_type: Optional[str] = None,
         output_dir: Optional[str] = None,
         rocprofv3_cmd: Optional[str] = None,
@@ -119,7 +112,6 @@ class ProfilingManager:
         Args:
             vendor: Either "nvidia" or "amd"
             target: File path or command to profile
-            pmc_counters: Comma-separated performance counters for AMD (optional)
             gpu_type: GPU type override - "h100" or "l40s" for NVIDIA (optional)
             output_dir: Custom output directory for results (optional)
             rocprofv3_cmd: Full command to run with rocprofv3 (AMD)
@@ -209,7 +201,6 @@ class ProfilingManager:
                     droplet_info,
                     vendor,
                     command,
-                    pmc_counters,
                     target_info,
                     rocprofv3_cmd,
                     rocprof_compute_cmd,
@@ -222,7 +213,6 @@ class ProfilingManager:
                     droplet_info,
                     vendor,
                     command,
-                    pmc_counters,
                     target_info,
                     rocprofv3_cmd,
                     rocprof_compute_cmd,
@@ -418,7 +408,6 @@ class ProfilingManager:
         droplet_info: Dict[str, Any],
         vendor: str,
         command: str,
-        pmc_counters: Optional[str] = None,
         target_info: Optional[TargetInfo] = None,
         rocprofv3_cmd: Optional[str] = None,
         rocprof_compute_cmd: Optional[str] = None,
@@ -446,7 +435,6 @@ class ProfilingManager:
                         droplet_info,
                         command,
                         output_dir,
-                        pmc_counters,
                         rocprofv3_cmd,
                         rocprof_compute_cmd,
                     )
@@ -468,26 +456,15 @@ class ProfilingManager:
                 profile_dirname = f"att_trace_{int(time.time())}"
                 profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
 
-                # Build rocprofv3 command with optional PMC counters
-                pmc_args = ""
-                if pmc_counters:
-                    # Validate and format counters
-                    counters = [c.strip() for c in pmc_counters.split(",")]
-                    if len(counters) > 8:
-                        console.print(
-                            f"[yellow]Warning: {len(counters)} counters requested, but hardware typically supports max 7-8. Some may fail.[/yellow]"
-                        )
-                    pmc_args = f"--pmc {','.join(counters)}"
-
                 # For AMD, we need to separate compilation from profiling
                 if " && " in command:
                     # Split compilation and execution
                     compile_part, execute_part = command.split(" && ", 1)
                     # Execute compilation first, then profile with rocprofv3 with summary output
-                    rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace {pmc_args} -- {execute_part}"
+                    rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace -- {execute_part}"
                 else:
                     # Just profile the single command with summary output
-                    rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace {pmc_args} -- {command}"
+                    rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace -- {command}"
 
                 # Full profiling command
                 full_cmd = f"{profile_setup} && {rocprof_cmd}"
@@ -511,7 +488,6 @@ class ProfilingManager:
                     "summary_file": rocprof_files[0] if rocprof_files else None,
                     "profile_type": "rocprofv3",
                     "message": f"AMD rocprofv3 profiling completed. Generated profile summary.",
-                    "pmc_counters": pmc_counters,  # Include counter info for display
                 }
 
                 # Cleanup remote files
@@ -952,7 +928,6 @@ class ProfilingManager:
         droplet_info: Dict[str, Any],
         command: str,
         output_dir: Path,
-        pmc_counters: Optional[str] = None,
         rocprofv3_cmd: Optional[str] = None,
         rocprof_compute_cmd: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -968,17 +943,6 @@ class ProfilingManager:
 
         # Build rocprofv3 profiling command
         profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
-
-        # Build rocprofv3 command with optional PMC counters
-        pmc_args = ""
-        if pmc_counters:
-            # Validate and format counters
-            counters = [c.strip() for c in pmc_counters.split(",")]
-            if len(counters) > 8:
-                console.print(
-                    f"[yellow]Warning: {len(counters)} counters requested, but hardware typically supports max 7-8. Some may fail.[/yellow]"
-                )
-            pmc_args = f"--pmc {','.join(counters)}"
 
         # If direct command is provided, use it
         if rocprofv3_cmd:
@@ -1013,10 +977,10 @@ class ProfilingManager:
                         else (target_cmd[:-4] if target_cmd.endswith(".cpp") else target_cmd[:-2])
                     )
                 )
-                rocprof_cmd = f"{compile_cmd} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags} {pmc_args} -- {binary_cmd}"
+                rocprof_cmd = f"{compile_cmd} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags} -- {binary_cmd}"
             else:
                 # Use the command as-is (already compiled or script)
-                rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags} {pmc_args} -- {target_cmd}"
+                rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags} -- {target_cmd}"
 
         # Full profiling command
         full_cmd = f"{profile_setup} && {rocprof_cmd}"
@@ -1040,7 +1004,6 @@ class ProfilingManager:
             "summary_file": rocprof_files[0] if rocprof_files else None,
             "profile_type": "rocprofv3",
             "message": f"AMD rocprofv3 profiling completed. Generated profile summary.",
-            "pmc_counters": pmc_counters,  # Include counter info for display
         }
 
         # Cleanup remote files

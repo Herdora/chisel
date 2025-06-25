@@ -85,12 +85,6 @@ def create_app() -> typer.Typer:
             "-o",
             help="Output directory for profiling results. If not specified, uses default timestamped directory.",
         ),
-        pmc_counters: Optional[str] = typer.Option(
-            None,
-            "--pmc",
-            help="Performance counters to collect (AMD rocprofv3 only). "
-            "Comma-separated list, e.g., 'GRBM_GUI_ACTIVE,SQ_WAVES,SQ_BUSY_CYCLES'",
-        ),
         gpu_type: Optional[str] = typer.Option(
             None,
             "--gpu-type",
@@ -106,7 +100,7 @@ def create_app() -> typer.Typer:
         Examples:
             chisel profile --rocprofv3 ./matrix_multiply
             chisel profile --nsys ./kernel.cu
-            chisel profile --rocprofv3 --pmc "SQ_BUSY_CYCLES,SQ_WAVES" ./saxpy.cpp
+            chisel profile --rocprofv3="--sys-trace --pmc SQ_BUSY_CYCLES,SQ_WAVES" ./saxpy.cpp
             chisel profile --nsys --gpu-type l40s ./matmul.cu
             chisel profile --rocprofv3 --rocprof-compute --output-dir ./results ./gemm
             chisel profile --nsys --ncompute --output-dir ./my_results ./cuda_kernel
@@ -118,7 +112,6 @@ def create_app() -> typer.Typer:
             nsys=nsys,
             ncompute=ncompute,
             output_dir=output_dir,
-            pmc_counters=pmc_counters,
             gpu_type=gpu_type,
         )
         raise typer.Exit(exit_code)
