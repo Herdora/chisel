@@ -109,9 +109,7 @@ class SSHManager:
             return True
         except paramiko.AuthenticationException:
             console.print("\n[bold red]SSH Key Not Authorized[/bold red]")
-            console.print(
-                f"The droplet at [cyan]{ip}[/cyan] did not accept your SSH key."
-            )
+            console.print(f"The droplet at [cyan]{ip}[/cyan] did not accept your SSH key.")
 
             public_key_path = self._ensure_local_ssh_key()
             if not public_key_path or not os.path.exists(public_key_path):
@@ -122,47 +120,34 @@ class SSHManager:
                 public_key = f.read().strip()
 
             console.print(
-                "\n[yellow]To fix this, you need to add your public SSH key to the droplet.[/yellow]"
-            )
-            console.print(
-                "\n[bold cyan]Option 1: (Recommended) Add key to DigitalOcean and recreate[/bold cyan]"
-            )
-            console.print(
-                "1. Go to your DigitalOcean account settings: [link=https://cloud.digitalocean.com/account/security]https://cloud.digitalocean.com/account/security[/link]"
-            )
-            console.print("2. Click 'Add SSH Key'.")
-            console.print("3. Paste the following key:")
-            console.print(f"\n[white on black] {public_key} [/white on black]\n")
-            console.print("4. Once added, destroy and recreate the droplet with:")
-            console.print("   [bold]chisel down && chisel up[/bold]")
-
-            console.print(
-                "\n[bold cyan]Option 2: Manually add the key to the running droplet[/bold cyan]"
-            )
-            console.print(
-                "1. Log in to the droplet using a different machine or the web console."
-            )
-            console.print("2. Run this command to add your key:")
-            console.print(
+                "\n[yellow]To fix this, you need to add your public SSH key to the droplet.[/yellow]\n"
+                "[bold cyan]Option 1: (Recommended) Add key to DigitalOcean and recreate[/bold cyan]\n"
+                "1. Go to your DigitalOcean account settings: [link=https://cloud.digitalocean.com/account/security]https://cloud.digitalocean.com/account/security[/link]\n"
+                "2. Click 'Add SSH Key'.\n"
+                "3. Paste the following key:\n"
+                f"\n[white on black] {public_key} [/white on black]\n\n"
+                "4. Once added, destroy and recreate the droplet with:\n"
+                "   [bold]chisel down && chisel up[/bold]\n\n"
+                "[bold cyan]Option 2: Manually add the key to the running droplet[/bold cyan]\n"
+                "1. Log in to the droplet using a different machine or the web console.\n"
+                "2. Run this command to add your key:\n"
                 f"   [bold]echo '{public_key}' >> ~/.ssh/authorized_keys[/bold]"
             )
 
             return False
         except (paramiko.SSHException, TimeoutError) as e:
-            console.print("\n[bold red]SSH Connection Failed[/bold red]")
-            console.print(f"Could not connect to the droplet at [cyan]{ip}[/cyan].")
-            console.print(f"Reason: {e}")
-            console.print("\n[yellow]Please check the following:[/yellow]")
             console.print(
-                "1. Is the droplet running? Check the DigitalOcean dashboard."
+                "\n[bold red]SSH Connection Failed[/bold red]\n"
+                f"Could not connect to the droplet at [cyan]{ip}[/cyan].\n"
+                f"Reason: {e}\n"
+                "\n[yellow]Please check the following:[/yellow]\n"
+                "1. Is the droplet running? Check the DigitalOcean dashboard.\n"
+                "2. Is your internet connection working?\n"
+                "3. Are there any firewalls blocking port 22?"
             )
-            console.print("2. Is your internet connection working?")
-            console.print("3. Are there any firewalls blocking port 22?")
             return False
         except Exception as e:
-            console.print(
-                f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]"
-            )
+            console.print(f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]")
             return False
 
     def _show_cost_warning(self, gpu_type: str) -> None:
@@ -175,17 +160,13 @@ class SSHManager:
 
         if should_warn:
             console.print(
-                f"\n[yellow]⚠️  Cost Warning: {gpu_type} droplet has been running for {uptime_hours:.1f} hours[/yellow]"
-            )
-            console.print(
-                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at ${hourly_rate}/hour)[/yellow]"
-            )
-            console.print(
+                f"\n[yellow]⚠️  Cost Warning: {gpu_type} droplet has been running for {uptime_hours:.1f} hours[/yellow]\n"
+                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at ${hourly_rate}/hour)[/yellow]\n"
                 f"[yellow]   Run 'chisel down --gpu-type {gpu_type}' to stop billing[/yellow]\n"
             )
 
     def sync(
-        self, source: str, destination: Optional[str] = None, gpu_type: str = None
+        self, source: str, destination: Optional[str] = None, gpu_type: Optional[str] = None
     ) -> bool:
         """Sync files to the droplet using rsync."""
         if not gpu_type:
@@ -194,8 +175,8 @@ class SSHManager:
 
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
+                f"[red]Error: No {gpu_type} droplet found[/red]\n"
                 f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
             )
             return False
@@ -251,7 +232,7 @@ class SSHManager:
             console.print("[red]Error: rsync not found. Please install rsync.[/red]")
             return False
 
-    def run(self, command: str, gpu_type: str = None) -> int:
+    def run(self, command: str, gpu_type: Optional[str] = None) -> int:
         """Execute a command on the droplet and stream output."""
         if not gpu_type:
             console.print("[red]Error: GPU type is required[/red]")
@@ -259,8 +240,8 @@ class SSHManager:
 
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
+                f"[red]Error: No {gpu_type} droplet found[/red]\n"
                 f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
             )
             return 1
@@ -303,9 +284,7 @@ class SSHManager:
                             console.print(data, end="")
 
                     if channel.recv_stderr_ready():
-                        data = channel.recv_stderr(1024).decode(
-                            "utf-8", errors="replace"
-                        )
+                        data = channel.recv_stderr(1024).decode("utf-8", errors="replace")
                         if data:
                             console.print(f"[red]{data}[/red]", end="")
 
@@ -343,9 +322,7 @@ class SSHManager:
                 return 130  # Standard exit code for Ctrl+C
             except paramiko.AuthenticationException:
                 console.print(
-                    "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]"
-                )
-                console.print(
+                    "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]\n"
                     "This can happen if the droplet's SSH keys were changed after the connection was established."
                 )
                 return 1
@@ -363,7 +340,7 @@ class SSHManager:
     def profile(
         self,
         command: str,
-        gpu_type: str = None,
+        gpu_type: Optional[str] = None,
         trace: str = "hip,hsa",
         output_dir: str = "./out",
         open_result: bool = False,
@@ -375,8 +352,8 @@ class SSHManager:
 
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
+                f"[red]Error: No {gpu_type} droplet found[/red]\n"
                 f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
             )
             return None
@@ -439,9 +416,7 @@ class SSHManager:
                             console.print(data, end="")
 
                     if channel.recv_stderr_ready():
-                        data = channel.recv_stderr(1024).decode(
-                            "utf-8", errors="replace"
-                        )
+                        data = channel.recv_stderr(1024).decode("utf-8", errors="replace")
                         if data:
                             console.print(f"[yellow]{data}[/yellow]", end="")
 
@@ -451,9 +426,7 @@ class SSHManager:
                 exit_code = channel.recv_exit_status()
 
                 if exit_code != 0:
-                    console.print(
-                        f"\n[red]Profiling failed with exit code {exit_code}[/red]"
-                    )
+                    console.print(f"\n[red]Profiling failed with exit code {exit_code}[/red]")
                     return None
 
                 console.print("\n[green]✓ Profiling completed[/green]")
@@ -486,9 +459,7 @@ class SSHManager:
 
                 result = subprocess.run(scp_cmd, capture_output=True, text=True)
                 if result.returncode != 0:
-                    console.print(
-                        f"[red]Error: Failed to download archive: {result.stderr}[/red]"
-                    )
+                    console.print(f"[red]Error: Failed to download archive: {result.stderr}[/red]")
                     return None
 
                 # Extract archive
@@ -509,9 +480,7 @@ class SSHManager:
                 # Show summary if results files exist (try JSON first, then CSV)
                 json_file = local_output_dir / "chisel_profile" / "results.json"
                 csv_file = local_output_dir / "chisel_profile" / "results.csv"
-                stats_csv_file = (
-                    local_output_dir / "chisel_profile" / "results.stats.csv"
-                )
+                stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
 
                 if json_file.exists():
                     self._show_profile_summary(json_file)
@@ -538,7 +507,7 @@ class SSHManager:
                 ssh.close()
 
     def pull(
-        self, remote_path: str, local_path: Optional[str] = None, gpu_type: str = None
+        self, remote_path: str, local_path: Optional[str] = None, gpu_type: Optional[str] = None
     ) -> bool:
         """Pull files or directories from the droplet to local machine."""
         if not gpu_type:
@@ -547,8 +516,8 @@ class SSHManager:
 
         droplet_info = self.get_droplet_info(gpu_type)
         if not droplet_info:
-            console.print(f"[red]Error: No {gpu_type} droplet found[/red]")
             console.print(
+                f"[red]Error: No {gpu_type} droplet found[/red]\n"
                 f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
             )
             return False
@@ -588,9 +557,7 @@ class SSHManager:
             exists_result = stdout.read().decode().strip()
 
             if exists_result == "missing":
-                console.print(
-                    f"[red]Error: Remote path '{remote_path}' does not exist[/red]"
-                )
+                console.print(f"[red]Error: Remote path '{remote_path}' does not exist[/red]")
                 return False
 
             # Check if it's a directory
@@ -629,7 +596,8 @@ class SSHManager:
 
             if result.returncode != 0:
                 console.print(
-                    f"[red]Error: Failed to pull files: {result.stderr}[/red]"
+                    f"[red]Error: SCP failed with code {result.returncode}[/red]\n"
+                    f"[red]Stderr: {result.stderr}[/red]"
                 )
                 return False
 
@@ -638,18 +606,14 @@ class SSHManager:
 
         except paramiko.AuthenticationException:
             console.print(
-                "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]"
+                "[bold red]Error: SSH authentication failed unexpectedly.[/bold red]\n"
+                "This can happen if the droplet's SSH keys were changed after the connection was established."
             )
             return False
         except paramiko.SSHException as e:
             console.print(
-                f"[bold red]Error: SSH connection failed while checking remote path: {e}[/bold red]"
+                f"[bold red]Error: SSH connection lost during command execution: {e}[/bold red]"
             )
-            return False
-        except subprocess.CalledProcessError as e:
-            console.print(f"[red]Error: SCP failed with code {e.returncode}[/red]")
-            if e.stderr:
-                console.print(f"[red]Stderr: {e.stderr}[/red]")
             return False
         except Exception as e:
             console.print(f"[red]An unexpected error occurred while pulling: {e}[/red]")
@@ -740,8 +704,7 @@ class SSHManager:
                                 {
                                     "name": row["KernelName"],
                                     # Convert to ms
-                                    "total_time": float(row["TotalDurationNs"])
-                                    / 1_000_000,
+                                    "total_time": float(row["TotalDurationNs"]) / 1_000_000,
                                     "calls": int(row.get("Calls", 0)),
                                 }
                             )
