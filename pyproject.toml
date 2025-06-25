@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chisel-cli"
-version = "0.1.12"
+version = "0.1.14"
 description = "A CLI tool for developing and profiling GPU kernels on DigitalOcean droplets"
 readme = "README.md"
 requires-python = ">=3.8"

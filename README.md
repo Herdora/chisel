@@ -160,3 +160,9 @@ uv run chisel <command>
 # With pip
 pip install -e .
 ```
+
+## Making updates to PyPI
+
+```bash
+rm -rf dist/ build/ *.egg-info && python -m build && twine upload dist/*
+```
