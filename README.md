@@ -5,6 +5,20 @@
 
 **TL;DR:** Seamless GPU kernel profiling on cloud infrastructure. Write GPU code, run one command, get profiling results. Zero GPU hardware required.
 
+> 🚀 **Recent Releases**
+> 
+> ### Latest
+> - **AMD rocprofv3 Support**: Full integration with AMD's latest profiling tool
+> - **Automatic Cleanup**: Remote files are automatically cleaned up after profiling
+
+> 🔮 **Upcoming Features**
+> 
+> ### In Development
+> - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
+> - **Web Dashboard**: Browser-based visualization of profiling results.
+> - **Multi-GPU Support**: Profile the same kernel across multiple GPU types simultaneously.
+> - **Profiling Backend**: Bypass the need for a DigitalOcean account by using a public backend.
+
 ## Quick Start
 
 Get up and running in 30 seconds:
