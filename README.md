@@ -166,3 +166,9 @@ pip install -e .
 ```bash
 rm -rf dist/ build/ *.egg-info && python -m build && twine upload dist/*
 ```
+
+## Testing
+
+```bash
+chisel profile --rocprofv3="--sys-trace" examples/simple-mm.hip
+```
