@@ -109,7 +109,9 @@ class SSHManager:
             return True
         except paramiko.AuthenticationException:
             console.print("\n[bold red]SSH Key Not Authorized[/bold red]")
-            console.print(f"The droplet at [cyan]{ip}[/cyan] did not accept your SSH key.")
+            console.print(
+                f"The droplet at [cyan]{ip}[/cyan] did not accept your SSH key."
+            )
 
             public_key_path = self._ensure_local_ssh_key()
             if not public_key_path or not os.path.exists(public_key_path):
@@ -147,26 +149,16 @@ class SSHManager:
             )
             return False
         except Exception as e:
-            console.print(f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]")
+            console.print(
+                f"\n[bold red]An unexpected SSH error occurred: {e}[/bold red]"
+            )
             return False
 
-    def _show_cost_warning(self, gpu_type: str) -> None:
-        """Show cost warning if droplet has been running for a while."""
-        # Use appropriate hourly rate based on GPU type
-        hourly_rate = 4.89 if "nvidia" in gpu_type else 1.99
-        should_warn, uptime_hours, estimated_cost = self.state.should_warn_cost(
-            gpu_type, hourly_rate=hourly_rate
-        )
-
-        if should_warn:
-            console.print(
-                f"\n[yellow]⚠️  Cost Warning: {gpu_type} droplet has been running for {uptime_hours:.1f} hours[/yellow]\n"
-                f"[yellow]   Estimated cost: ${estimated_cost:.2f} (at ${hourly_rate}/hour)[/yellow]\n"
-                f"[yellow]   Run 'chisel down --gpu-type {gpu_type}' to stop billing[/yellow]\n"
-            )
-
     def sync(
-        self, source: str, destination: Optional[str] = None, gpu_type: Optional[str] = None
+        self,
+        source: str,
+        destination: Optional[str] = None,
+        gpu_type: Optional[str] = None,
     ) -> bool:
         """Sync files to the droplet using rsync."""
         if not gpu_type:
@@ -180,9 +172,6 @@ class SSHManager:
                 f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
             )
             return False
-
-        # Show cost warning
-        self._show_cost_warning(gpu_type)
 
         # Ensure SSH access
         ip = droplet_info["ip"]
@@ -246,9 +235,6 @@ class SSHManager:
             )
             return 1
 
-        # Show cost warning
-        self._show_cost_warning(gpu_type)
-
         ip = droplet_info["ip"]
 
         # Ensure SSH access before running command
@@ -284,7 +270,9 @@ class SSHManager:
                             console.print(data, end="")
 
                     if channel.recv_stderr_ready():
-                        data = channel.recv_stderr(1024).decode("utf-8", errors="replace")
+                        data = channel.recv_stderr(1024).decode(
+                            "utf-8", errors="replace"
+                        )
                         if data:
                             console.print(f"[red]{data}[/red]", end="")
 
@@ -358,9 +346,6 @@ class SSHManager:
             )
             return None
 
-        # Show cost warning
-        self._show_cost_warning(gpu_type)
-
         ip = droplet_info["ip"]
 
         # Ensure SSH access before profiling
@@ -416,7 +401,9 @@ class SSHManager:
                             console.print(data, end="")
 
                     if channel.recv_stderr_ready():
-                        data = channel.recv_stderr(1024).decode("utf-8", errors="replace")
+                        data = channel.recv_stderr(1024).decode(
+                            "utf-8", errors="replace"
+                        )
                         if data:
                             console.print(f"[yellow]{data}[/yellow]", end="")
 
@@ -426,7 +413,9 @@ class SSHManager:
                 exit_code = channel.recv_exit_status()
 
                 if exit_code != 0:
-                    console.print(f"\n[red]Profiling failed with exit code {exit_code}[/red]")
+                    console.print(
+                        f"\n[red]Profiling failed with exit code {exit_code}[/red]"
+                    )
                     return None
 
                 console.print("\n[green]✓ Profiling completed[/green]")
@@ -459,7 +448,9 @@ class SSHManager:
 
                 result = subprocess.run(scp_cmd, capture_output=True, text=True)
                 if result.returncode != 0:
-                    console.print(f"[red]Error: Failed to download archive: {result.stderr}[/red]")
+                    console.print(
+                        f"[red]Error: Failed to download archive: {result.stderr}[/red]"
+                    )
                     return None
 
                 # Extract archive
@@ -480,7 +471,9 @@ class SSHManager:
                 # Show summary if results files exist (try JSON first, then CSV)
                 json_file = local_output_dir / "chisel_profile" / "results.json"
                 csv_file = local_output_dir / "chisel_profile" / "results.csv"
-                stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
+                stats_csv_file = (
+                    local_output_dir / "chisel_profile" / "results.stats.csv"
+                )
 
                 if json_file.exists():
                     self._show_profile_summary(json_file)
@@ -507,7 +500,10 @@ class SSHManager:
                 ssh.close()
 
     def pull(
-        self, remote_path: str, local_path: Optional[str] = None, gpu_type: Optional[str] = None
+        self,
+        remote_path: str,
+        local_path: Optional[str] = None,
+        gpu_type: Optional[str] = None,
     ) -> bool:
         """Pull files or directories from the droplet to local machine."""
         if not gpu_type:
@@ -521,9 +517,6 @@ class SSHManager:
                 f"[yellow]Run 'chisel up --gpu-type {gpu_type}' first to create a droplet[/yellow]"
             )
             return False
-
-        # Show cost warning
-        self._show_cost_warning(gpu_type)
 
         ip = droplet_info["ip"]
 
@@ -557,7 +550,9 @@ class SSHManager:
             exists_result = stdout.read().decode().strip()
 
             if exists_result == "missing":
-                console.print(f"[red]Error: Remote path '{remote_path}' does not exist[/red]")
+                console.print(
+                    f"[red]Error: Remote path '{remote_path}' does not exist[/red]"
+                )
                 return False
 
             # Check if it's a directory
@@ -704,7 +699,8 @@ class SSHManager:
                                 {
                                     "name": row["KernelName"],
                                     # Convert to ms
-                                    "total_time": float(row["TotalDurationNs"]) / 1_000_000,
+                                    "total_time": float(row["TotalDurationNs"])
+                                    / 1_000_000,
                                     "calls": int(row.get("Calls", 0)),
                                 }
                             )

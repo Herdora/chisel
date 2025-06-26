@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 from rich.console import Console
 
@@ -42,7 +42,6 @@ class ProfilingResults:
     stdout: str
     stderr: str
     summary: Dict[str, Any]
-    cost_estimate: float
 
     def display_summary(self):
         """Display a summary of the profiling results."""
@@ -50,14 +49,13 @@ class ProfilingResults:
             console.print("\n[green]✓ Profiling completed successfully[/green]")
             console.print(f"[cyan]Results saved to:[/cyan] {self.output_dir}")
 
-            # Show cost estimate
-            console.print(f"[yellow]Estimated cost:[/yellow] ${self.cost_estimate:.2f}")
-
             # Show top kernels if available (AMD legacy profiling)
             if "top_kernels" in self.summary:
                 console.print("\n[cyan]Top GPU Kernels:[/cyan]")
                 for i, kernel in enumerate(self.summary["top_kernels"][:5], 1):
-                    console.print(f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms")
+                    console.print(
+                        f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms"
+                    )
 
             # Show profiling results (both AMD and NVIDIA use same structure now)
             if "profile_files" in self.summary:
@@ -65,13 +63,17 @@ class ProfilingResults:
                 profile_type = self.summary.get("profile_type", "nvidia")
 
                 if summary_file:
-                    vendor_name = "AMD rocprofv3" if profile_type == "rocprofv3" else "NVIDIA"
+                    vendor_name = (
+                        "AMD rocprofv3" if profile_type == "rocprofv3" else "NVIDIA"
+                    )
                     console.print(
                         f"\n[cyan]{vendor_name} profile summary generated:[/cyan] {summary_file}"
                     )
 
                     console.print("\n[cyan]Analysis tools:[/cyan]")
-                    console.print("  • View text summary for human-readable kernel analysis")
+                    console.print(
+                        "  • View text summary for human-readable kernel analysis"
+                    )
                 else:
                     console.print("\n[cyan]Profile files generated:[/cyan] 0 files")
         else:
@@ -140,7 +142,6 @@ class ProfilingManager:
                 stdout="",
                 stderr=str(e),
                 summary={},
-                cost_estimate=0.0,
             )
 
         try:
@@ -160,15 +161,22 @@ class ProfilingManager:
 
             all_results = []
             if rocprofv3_flag:
-                result = self.run_rocprofv3(droplet_info, target_info, output_path, rocprofv3_flag)
+                result = self.run_rocprofv3(
+                    droplet_info, target_info, output_path, rocprofv3_flag
+                )
                 all_results.append(result)
             if rocprof_compute_flag:
                 result = self.run_rocprof_compute(
-                    droplet_info, target_info.raw_target, output_path, rocprof_compute_flag
+                    droplet_info,
+                    target_info.raw_target,
+                    output_path,
+                    rocprof_compute_flag,
                 )
                 all_results.append(result)
             if nsys_flag:
-                result = self.run_nsys(droplet_info, target_info.raw_target, output_path, nsys_flag)
+                result = self.run_nsys(
+                    droplet_info, target_info.raw_target, output_path, nsys_flag
+                )
                 all_results.append(result)
             if ncompute_flag:
                 result = self.run_ncompute(
@@ -176,22 +184,19 @@ class ProfilingManager:
                 )
                 all_results.append(result)
 
-            elapsed_hours = (time.time() - start_time) / 3600
-            hourly_rate = 4.89 if vendor == "nvidia" else 1.99
-            cost_estimate = elapsed_hours * hourly_rate
-
             return ProfilingResults(
                 success=True,
                 output_dir=output_path,
                 stdout="",
                 stderr="",
                 summary={
-                    "profile_files": [result["local_output_dir"] for result in all_results],
+                    "profile_files": [
+                        result["local_output_dir"] for result in all_results
+                    ],
                     "summary_file": all_results[0]["summary"]["summary_file"],
                     "profile_type": all_results[0]["summary"]["profile_type"],
                     "message": "Profiling completed. Generated profile data.",
                 },
-                cost_estimate=cost_estimate,
             )
 
         except Exception as e:
@@ -202,7 +207,6 @@ class ProfilingManager:
                 stdout="",
                 stderr=str(e),
                 summary={},
-                cost_estimate=0.0,
             )
 
     def run_rocprofv3(
@@ -228,7 +232,9 @@ class ProfilingManager:
         EXPORT_LIB_CMD = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/"
         RESET_DIR_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
         CD_CMD = f"cd {remote_profile_dir}"
-        BUILD_CMD = f"hipcc {remote_source} -o {remote_binary}"  # TODO: add python support
+        BUILD_CMD = (
+            f"hipcc {remote_source} -o {remote_binary}"  # TODO: add python support
+        )
         PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {remote_binary}"
 
         # First reset directory, then sync file, then build and profile
@@ -239,7 +245,9 @@ class ProfilingManager:
 
         # Now sync the file to the clean directory
         _ = self._sync_file(
-            droplet_info, target.file_path or Path(target.raw_target), remote_profile_dir
+            droplet_info,
+            target.file_path or Path(target.raw_target),
+            remote_profile_dir,
         )
 
         # Build and profile
@@ -248,9 +256,13 @@ class ProfilingManager:
         console.print(f"[cyan]Running AMD rocprofv3 with flags '{full_cmd}'[/cyan]")
         rocprof_exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
         if rocprof_exit_code != 0:
-            raise RuntimeError(f"rocprofv3 profiling failed with exit code {rocprof_exit_code}")
+            raise RuntimeError(
+                f"rocprofv3 profiling failed with exit code {rocprof_exit_code}"
+            )
 
-        rocprof_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
+        rocprof_files = self._download_results(
+            droplet_info, remote_profile_dir, local_output_dir
+        )
         self._cleanup_amd_remote(droplet_info, remote_profile_dir)
 
         return {
@@ -303,7 +315,9 @@ class ProfilingManager:
         if nsys_exit_code != 0:
             raise RuntimeError(f"nsys profiling failed with exit code {nsys_exit_code}")
 
-        nvidia_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
+        nvidia_files = self._download_results(
+            droplet_info, remote_profile_dir, local_output_dir
+        )
 
         self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
 
@@ -336,13 +350,17 @@ class ProfilingManager:
         def make_full_cmd(remote_profile_dir: str, extra_flags: str):
             return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command}"
 
-        full_cmd = make_full_cmd(remote_profile_dir, extra_flags or "--set full --force-overwrite")
+        full_cmd = make_full_cmd(
+            remote_profile_dir, extra_flags or "--set full --force-overwrite"
+        )
         console.print(f"[cyan]Running NVIDIA ncu with flags '{full_cmd}'[/cyan]")
         ncu_exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
         if ncu_exit_code != 0:
             raise RuntimeError(f"ncu profiling failed with exit code {ncu_exit_code}")
 
-        nvidia_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
+        nvidia_files = self._download_results(
+            droplet_info, remote_profile_dir, local_output_dir
+        )
 
         self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
 
@@ -363,7 +381,9 @@ class ProfilingManager:
         droplet_info = self.state.get_droplet(gpu_type)
 
         if droplet_info and self._is_droplet_alive(droplet_info):
-            console.print(f"[green]Using existing droplet: {droplet_info['name']}[/green]")
+            console.print(
+                f"[green]Using existing droplet: {droplet_info['name']}[/green]"
+            )
             return droplet_info
 
         # Create new droplet
@@ -431,10 +451,14 @@ class ProfilingManager:
 
         return TargetInfo(raw_target=target, is_source_file=False)
 
-    def _sync_file(self, droplet_info: Dict[str, Any], source_file: Path, remote_dir: str):
+    def _sync_file(
+        self, droplet_info: Dict[str, Any], source_file: Path, remote_dir: str
+    ):
         """Sync a file to the droplet with proper temp directory setup."""
         ssh_manager = SSHManager()
-        success = ssh_manager.sync(str(source_file), f"{remote_dir}/", droplet_info["gpu_type"])
+        success = ssh_manager.sync(
+            str(source_file), f"{remote_dir}/", droplet_info["gpu_type"]
+        )
         if not success:
             raise RuntimeError(
                 f"Failed to sync {source_file} to {remote_dir}. Ensure the file exists and is accessible."
@@ -501,7 +525,9 @@ class ProfilingManager:
             exit_code = ssh_manager.run(check_cmd, droplet_info["gpu_type"])
 
             if exit_code == 0:
-                console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
+                console.print(
+                    "[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]"
+                )
                 return
 
             console.print(
@@ -524,8 +550,12 @@ class ProfilingManager:
                 )
 
             # Verify both installations
-            verify_ncu = ssh_manager.run("which ncu && ncu --version", droplet_info["gpu_type"])
-            verify_nsys = ssh_manager.run("which nsys && nsys --version", droplet_info["gpu_type"])
+            verify_ncu = ssh_manager.run(
+                "which ncu && ncu --version", droplet_info["gpu_type"]
+            )
+            verify_nsys = ssh_manager.run(
+                "which nsys && nsys --version", droplet_info["gpu_type"]
+            )
 
             if verify_ncu != 0:
                 raise RuntimeError(
@@ -537,7 +567,9 @@ class ProfilingManager:
                     "nsight-systems installation verification failed. The nsys command is not available after installation."
                 )
 
-            console.print("[green]✓ NVIDIA profilers installed successfully (ncu + nsys)[/green]")
+            console.print(
+                "[green]✓ NVIDIA profilers installed successfully (ncu + nsys)[/green]"
+            )
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
@@ -565,9 +597,7 @@ class ProfilingManager:
                 raise RuntimeError("Failed to install pip")
 
             # Install PyTorch with CUDA support
-            install_pytorch_cmd = (
-                "pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121"
-            )
+            install_pytorch_cmd = "pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121"
             exit_code = ssh_manager.run(install_pytorch_cmd, droplet_info["gpu_type"])
 
             if exit_code != 0:
@@ -670,7 +700,9 @@ class ProfilingManager:
             if exit_code != 0:
                 raise RuntimeError("rocprofv3 installation verification failed")
 
-            console.print("[green]✓ rocprofv3 and dependencies installed successfully[/green]")
+            console.print(
+                "[green]✓ rocprofv3 and dependencies installed successfully[/green]"
+            )
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup rocprofv3: {e}")
@@ -698,7 +730,9 @@ class ProfilingManager:
         ]
 
         try:
-            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+                scp_cmd, capture_output=True, text=True, timeout=300
+            )
             if result.returncode != 0:
                 console.print(
                     f"[yellow]Warning: Failed to download profiling results: {result.stderr}[/yellow]"
@@ -733,7 +767,8 @@ class ProfilingManager:
                         name_parts = clean_name.rsplit(".", 1)
                         if len(name_parts) == 2:
                             target_path = (
-                                local_output_dir / f"{name_parts[0]}_{counter}.{name_parts[1]}"
+                                local_output_dir
+                                / f"{name_parts[0]}_{counter}.{name_parts[1]}"
                             )
                         else:
                             target_path = local_output_dir / f"{clean_name}_{counter}"
@@ -753,10 +788,13 @@ class ProfilingManager:
                             name_parts = clean_name.rsplit(".", 1)
                             if len(name_parts) == 2:
                                 target_path = (
-                                    local_output_dir / f"{name_parts[0]}_{counter}.{name_parts[1]}"
+                                    local_output_dir
+                                    / f"{name_parts[0]}_{counter}.{name_parts[1]}"
                                 )
                             else:
-                                target_path = local_output_dir / f"{clean_name}_{counter}"
+                                target_path = (
+                                    local_output_dir / f"{clean_name}_{counter}"
+                                )
                             counter += 1
 
                         if target_path != file_path:
@@ -774,7 +812,9 @@ class ProfilingManager:
                 if item.is_dir():
                     try:
                         item.rmdir()  # Only removes if empty
-                        console.print(f"[green]✓ Removed empty directory: {item.name}[/green]")
+                        console.print(
+                            f"[green]✓ Removed empty directory: {item.name}[/green]"
+                        )
                     except OSError:
                         # Directory not empty, leave it
                         pass
@@ -792,7 +832,9 @@ class ProfilingManager:
             console.print("[yellow]Warning: Download timed out[/yellow]")
             return []
         except Exception as e:
-            console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Unexpected error during download: {e}[/yellow]"
+            )
             return []
 
     def _cleanup_amd_remote(self, droplet_info: Dict[str, Any], remote_dir: str):

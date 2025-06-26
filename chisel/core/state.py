@@ -100,26 +100,6 @@ class State:
         except (ValueError, TypeError):
             return 0.0
 
-    def get_estimated_cost(self, gpu_type: str, hourly_rate: float = 1.99) -> float:
-        """Get estimated cost based on uptime for specific GPU type."""
-        uptime_hours = self.get_droplet_uptime_hours(gpu_type)
-        return uptime_hours * hourly_rate
-
-    def should_warn_cost(
-        self, gpu_type: str, warning_hours: float = 12.0, hourly_rate: float = 1.99
-    ) -> tuple[bool, float, float]:
-        """
-        Check if cost warning should be shown for specific GPU type. Only warns for droplets running >12 hours.
-
-        Returns:
-            (should_warn, uptime_hours, estimated_cost)
-        """
-        uptime_hours = self.get_droplet_uptime_hours(gpu_type)
-        estimated_cost = self.get_estimated_cost(gpu_type, hourly_rate)
-        should_warn = uptime_hours >= warning_hours
-
-        return should_warn, uptime_hours, estimated_cost
-
     def get_active_context(self) -> Optional[str]:
         """Get the active GPU context."""
         if not self.context_file.exists():
