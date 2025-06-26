@@ -5,6 +5,8 @@ from rich.console import Console
 
 console = Console()
 
+# TODO: change this to DO manager
+
 
 class DOClient:
     """Wrapper for DigitalOcean API client."""

@@ -11,7 +11,7 @@ Goal: Understand MFMA API and data flow
 #include <cmath>
 #include <hip/hip_runtime.h>
 #include <iomanip>
-#include <iostream>
+#include <iostream> //
 
 using f4 = float __attribute__((ext_vector_type(4)));
 

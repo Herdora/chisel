@@ -87,11 +87,10 @@ class ProfilingManager:
         self.config = Config()
         if not self.config.token:
             raise RuntimeError("No API token configured. Run 'chisel configure' first.")
-
         self.do_client = DOClient(self.config.token)
+        self.state = ProfilingState()
 
         # We'll use a separate state file for the new profiling system
-        self.state = ProfilingState()
 
     def profile(
         self,
@@ -120,6 +119,7 @@ class ProfilingManager:
         Returns:
             ProfilingResults with profiling data and summary
         """
+
         start_time = time.time()
 
         # TODO: resolved_gpu_type will be phased out when heterogenous profiling is implemented
@@ -131,18 +131,24 @@ class ProfilingManager:
         try:
             console.print(f"[cyan]Ensuring {vendor.upper()} droplet is ready...[/cyan]")
             droplet_info = self._ensure_droplet(resolved_gpu_type)
+            console.print(f"[green]Droplet {droplet_info['name']} is ready[/green]")
+        except Exception as e:
+            console.print(f"[red]Error during droplet setup: {e}[/red]")
+            return ProfilingResults(
+                success=False,
+                output_dir=Path(f"./{CHISEL_PROFILING_DIR_NAME}/failed"),
+                stdout="",
+                stderr=str(e),
+                summary={},
+                cost_estimate=0.0,
+            )
 
-            target_info = self._analyze_target(target)
-
+        try:
+            target_info = self._get_target_info(target)
             if target_info.is_source_file and target_info.file_path:
                 console.print(
                     f"[cyan]Syncing {target_info.file_path.name} to remote server...[/cyan]"
                 )
-                synced_file_path = self._sync_file(droplet_info, target_info.file_path)
-                base_command = self._build_command(vendor, target_info, synced_file_path)
-                command = base_command
-            else:
-                command = target
 
             if output_dir:
                 output_path = Path(output_dir)
@@ -154,25 +160,25 @@ class ProfilingManager:
 
             all_results = []
             if rocprofv3_flag:
-                result = self.run_rocprofv3(droplet_info, command, output_path, rocprofv3_flag)
+                result = self.run_rocprofv3(droplet_info, target_info, output_path, rocprofv3_flag)
                 all_results.append(result)
             if rocprof_compute_flag:
                 result = self.run_rocprof_compute(
-                    droplet_info, command, output_path, rocprof_compute_flag
+                    droplet_info, target_info.raw_target, output_path, rocprof_compute_flag
                 )
                 all_results.append(result)
             if nsys_flag:
-                result = self.run_nsys(droplet_info, command, output_path, nsys_flag)
+                result = self.run_nsys(droplet_info, target_info.raw_target, output_path, nsys_flag)
                 all_results.append(result)
             if ncompute_flag:
-                result = self.run_ncompute(droplet_info, command, output_path, ncompute_flag)
+                result = self.run_ncompute(
+                    droplet_info, target_info.raw_target, output_path, ncompute_flag
+                )
                 all_results.append(result)
 
             elapsed_hours = (time.time() - start_time) / 3600
             hourly_rate = 4.89 if vendor == "nvidia" else 1.99
             cost_estimate = elapsed_hours * hourly_rate
-
-            self.state.update_activity(resolved_gpu_type)
 
             return ProfilingResults(
                 success=True,
@@ -202,7 +208,7 @@ class ProfilingManager:
     def run_rocprofv3(
         self,
         droplet_info: Dict[str, Any],
-        command: str,
+        target: TargetInfo,
         local_output_dir: Path,
         extra_flags: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -212,19 +218,39 @@ class ProfilingManager:
 
         remote_profile_dir = "/tmp/chisel-rocprofv3"
 
-        # Combine setup and profiling into a single atomic command to ensure cd works properly
-        def make_full_cmd(remote_profile_dir: str, extra_flags: str):
-            return f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {command}"
+        # Get the source file name and binary name
+        source_file = target.file_path or Path(target.raw_target)
+        source_name = source_file.name
+        binary_name = source_file.stem
+        remote_source = f"{remote_profile_dir}/{source_name}"
+        remote_binary = f"{remote_profile_dir}/{binary_name}"
 
-        full_cmd = make_full_cmd(remote_profile_dir, extra_flags or "--sys-trace")
+        EXPORT_LIB_CMD = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/"
+        RESET_DIR_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        CD_CMD = f"cd {remote_profile_dir}"
+        BUILD_CMD = f"hipcc {remote_source} -o {remote_binary}"  # TODO: add python support
+        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {remote_binary}"
+
+        # First reset directory, then sync file, then build and profile
+        reset_cmd = f"{EXPORT_LIB_CMD} && {RESET_DIR_CMD}"
+        exit_code = ssh_manager.run(reset_cmd, droplet_info["gpu_type"])
+        if exit_code != 0:
+            raise RuntimeError(f"Failed to reset remote directory: {exit_code}")
+
+        # Now sync the file to the clean directory
+        _ = self._sync_file(
+            droplet_info, target.file_path or Path(target.raw_target), remote_profile_dir
+        )
+
+        # Build and profile
+        build_profile_cmd = f"{CD_CMD} && {BUILD_CMD} && {PROFILE_CMD}"
+        full_cmd = build_profile_cmd
         console.print(f"[cyan]Running AMD rocprofv3 with flags '{full_cmd}'[/cyan]")
         rocprof_exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
         if rocprof_exit_code != 0:
             raise RuntimeError(f"rocprofv3 profiling failed with exit code {rocprof_exit_code}")
 
-        rocprof_files = self._download_amd_att_results(
-            droplet_info, remote_profile_dir, local_output_dir
-        )
+        rocprof_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
         self._cleanup_amd_remote(droplet_info, remote_profile_dir)
 
         return {
@@ -277,9 +303,7 @@ class ProfilingManager:
         if nsys_exit_code != 0:
             raise RuntimeError(f"nsys profiling failed with exit code {nsys_exit_code}")
 
-        nvidia_files = self._download_nvidia_results(
-            droplet_info, remote_profile_dir, local_output_dir
-        )
+        nvidia_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
 
         self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
 
@@ -318,9 +342,7 @@ class ProfilingManager:
         if ncu_exit_code != 0:
             raise RuntimeError(f"ncu profiling failed with exit code {ncu_exit_code}")
 
-        nvidia_files = self._download_nvidia_results(
-            droplet_info, remote_profile_dir, local_output_dir
-        )
+        nvidia_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
 
         self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
 
@@ -383,12 +405,11 @@ class ProfilingManager:
             pass
         return False
 
-    def _analyze_target(self, target: str) -> TargetInfo:
+    def _get_target_info(self, target: str) -> TargetInfo:
         """Analyze the target to determine if it's a file or command."""
         target_path = Path(target)
         extension = target_path.suffix.lower()
 
-        # Determine compiler based on extension
         compiler_map = {
             ".cpp": "hipcc",
             ".hip": "hipcc",
@@ -397,272 +418,35 @@ class ProfilingManager:
             ".py": "python",
         }
 
-        # Check if it's a source file by extension or if it exists as a file
-        # This handles cases where chisel is called as a library with relative paths
         is_source_extension = extension in compiler_map
         file_exists = target_path.exists() and target_path.is_file()
-
         if file_exists or is_source_extension:
             return TargetInfo(
                 raw_target=target,
                 is_source_file=True,
-                file_path=target_path,  # Don't resolve() for relative paths when called as library
+                file_path=target_path,
                 file_extension=extension,
                 compiler=compiler_map.get(extension, "gcc"),
             )
 
-        # It's a command
         return TargetInfo(raw_target=target, is_source_file=False)
 
-    def _sync_file(self, droplet_info: Dict[str, Any], file_path: Path):
+    def _sync_file(self, droplet_info: Dict[str, Any], source_file: Path, remote_dir: str):
         """Sync a file to the droplet with proper temp directory setup."""
         ssh_manager = SSHManager()
-
-        # Create a unique temp directory for this profiling session
-        import time
-
-        session_id = int(time.time())
-        temp_dir = f"/tmp/chisel_session_{session_id}"
-
-        # First, ensure the temp directory exists on the remote server
-        setup_cmd = f"mkdir -p {temp_dir}"
-        exit_code = ssh_manager.run(setup_cmd, droplet_info["gpu_type"])
-        if exit_code != 0:
-            raise RuntimeError(f"Failed to create temp directory {temp_dir} on remote server")
-
-        # Sync the file to the temp directory
-        success = ssh_manager.sync(str(file_path), f"{temp_dir}/", droplet_info["gpu_type"])
-
+        success = ssh_manager.sync(str(source_file), f"{remote_dir}/", droplet_info["gpu_type"])
         if not success:
             raise RuntimeError(
-                f"Failed to sync {file_path} to {temp_dir}. Ensure the file exists and is accessible."
+                f"Failed to sync {source_file} to {remote_dir}. Ensure the file exists and is accessible."
             )
 
-        # Make the file executable
-        chmod_cmd = f"chmod +x {temp_dir}/{file_path.name}"
+        chmod_cmd = f"chmod +x {remote_dir}/{source_file.name}"
         exit_code = ssh_manager.run(chmod_cmd, droplet_info["gpu_type"])
         if exit_code != 0:
             console.print("[yellow]Warning: Failed to make file executable[/yellow]")
+        console.print(f"[green]✓ File synced to {remote_dir} on remote server[/green]")
 
-        # Update the file path to point to the synced location
-        file_path = Path(f"{temp_dir}/{file_path.name}")
-
-        console.print(f"[green]✓ File synced to {file_path} on remote server[/green]")
-
-        return str(file_path)
-
-    def _build_command(
-        self, vendor: str, target_info: TargetInfo, synced_file_path: Optional[str] = None
-    ) -> str:
-        """Build the compilation and execution command."""
-        if not target_info.file_path:
-            return target_info.raw_target
-
-        # Use synced file path if provided, otherwise use default /tmp location
-        if synced_file_path:
-            remote_source = synced_file_path
-            # Extract directory and binary name from synced path
-            synced_path = Path(synced_file_path)
-            binary_name = synced_path.stem
-            remote_binary = f"{synced_path.parent}/{binary_name}"
-        else:
-            remote_source = f"/tmp/{target_info.file_path.name}"
-            binary_name = target_info.file_path.stem
-            remote_binary = f"/tmp/{binary_name}"
-
-        # Handle Python files - no compilation needed
-        if target_info.compiler == "python":
-            return f"python3 {remote_source}"
-
-        if vendor == "nvidia":
-            if target_info.compiler == "nvcc":
-                # Add -lineinfo for better profiling source mapping
-                compile_cmd = f"nvcc -O3 -lineinfo {remote_source} -o {remote_binary}"
-            else:
-                # For non-CUDA files on NVIDIA
-                compile_cmd = f"gcc {remote_source} -o {remote_binary}"
-        else:  # AMD
-            if target_info.compiler == "hipcc":
-                compile_cmd = f"hipcc {remote_source} -o {remote_binary}"
-            else:
-                compile_cmd = f"gcc {remote_source} -o {remote_binary}"
-
-        # Return compile and run command
-        return f"{compile_cmd} && {remote_binary}"
-
-    def _run_profiler(
-        self,
-        droplet_info: Dict[str, Any],
-        vendor: str,
-        command: str,
-        target_info: Optional[TargetInfo] = None,
-        rocprofv3_cmd: Optional[str] = None,
-        rocprof_compute_cmd: Optional[str] = None,
-        nsys_cmd: Optional[str] = None,
-        ncompute_cmd: Optional[str] = None,
-        custom_output_dir: Optional[Path] = None,
-    ) -> Dict[str, Any]:
-        """Run the profiler on the droplet."""
-        ssh_manager = SSHManager()
-
-        # Create output directory with simple timestamp naming
-        now = datetime.now()
-        timestamp = now.strftime("%H%M%S-%Y%m%d")
-        output_dir = custom_output_dir or Path(f"./{CHISEL_PROFILING_DIR_NAME}/{timestamp}")
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        all_results = []
-        combined_summary = {"profile_files": [], "profilers_run": []}
-
-        if vendor == "amd":
-            # Run enabled AMD profilers
-            if rocprofv3_cmd:
-                try:
-                    result = self._run_amd_profiler(
-                        droplet_info,
-                        command,
-                        output_dir,
-                        rocprofv3_cmd,
-                        rocprof_compute_cmd,
-                    )
-                    all_results.append(result)
-                    combined_summary["profilers_run"].append("rocprofv3")
-                    combined_summary["profile_files"].extend(
-                        result["summary"].get("profile_files", [])
-                    )
-                except Exception as e:
-                    console.print(f"[yellow]AMD rocprofv3 profiling failed: {e}[/yellow]")
-            elif rocprof_compute_cmd:
-                # TODO: Implement rocprof-compute support
-                console.print("[yellow]rocprof-compute support not yet implemented[/yellow]")
-                raise RuntimeError("rocprof-compute is not yet supported")
-            else:
-                # TODO: phase out this code
-                # Original behavior for backward compatibility
-                # Setup remote profiling environment
-                remote_profile_dir = "/tmp/chisel_amd_profile"
-                profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
-
-                # For AMD, we need to separate compilation from profiling
-                if " && " in command:
-                    # Split compilation and execution
-                    compile_part, execute_part = command.split(" && ", 1)
-                    # Execute compilation first, then profile with rocprofv3 with summary output
-                    rocprof_cmd = f"{compile_part} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace -- {execute_part}"
-                else:
-                    # Just profile the single command with summary output
-                    rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt --sys-trace -- {command}"
-
-                # Full profiling command
-                full_cmd = f"{profile_setup} && {rocprof_cmd}"
-
-                console.print(f"[cyan]Running AMD rocprofv3 with ATT traces: {command}[/cyan]")
-
-                # Execute profiling command
-                exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
-
-                if exit_code != 0:
-                    raise RuntimeError(f"rocprofv3 profiling failed with exit code {exit_code}")
-
-                # Download results
-                rocprof_files = self._download_amd_att_results(
-                    droplet_info, remote_profile_dir, output_dir
-                )
-
-                # Create summary
-                summary = {
-                    "profile_files": rocprof_files,
-                    "summary_file": rocprof_files[0] if rocprof_files else None,
-                    "profile_type": "rocprofv3",
-                    "message": "AMD rocprofv3 profiling completed. Generated profile summary.",
-                }
-
-                # Cleanup remote files
-                self._cleanup_amd_remote(droplet_info, remote_profile_dir)
-
-                return {
-                    "output_dir": output_dir,
-                    "stdout": "AMD rocprofv3 profiling completed successfully",
-                    "stderr": "",
-                    "summary": summary,
-                }
-
-            # Download results
-            if rocprof_compute_cmd:
-                try:
-                    # TODO: Implement rocprof-compute when ready
-                    console.print("[yellow]rocprof-compute support not yet implemented[/yellow]")
-                except Exception as e:
-                    console.print(f"[yellow]AMD rocprof-compute profiling failed: {e}[/yellow]")
-
-            if not all_results:
-                # Fallback to legacy behavior
-                console.print("[yellow]Falling back to legacy rocprof...[/yellow]")
-                ssh_manager.profile(
-                    command,
-                    droplet_info["gpu_type"],
-                    trace="hip,hsa",
-                    output_dir=str(output_dir),
-                    open_result=False,
-                )
-                summary = self._parse_amd_results(output_dir)
-                return {
-                    "output_dir": output_dir,
-                    "stdout": "",
-                    "stderr": "",
-                    "summary": summary,
-                }
-        else:
-            # Run enabled NVIDIA profilers
-            if nsys_cmd or ncompute_cmd:
-                try:
-                    result = self._run_nvidia_profiler(
-                        droplet_info, command, output_dir, nsys_cmd, ncompute_cmd
-                    )
-                    all_results.append(result)
-                    if nsys_cmd:
-                        combined_summary["profilers_run"].append("nsys")
-                    if ncompute_cmd:
-                        combined_summary["profilers_run"].append("ncompute")
-                    combined_summary["profile_files"].extend(
-                        result["summary"].get("profile_files", [])
-                    )
-                except Exception as e:
-                    console.print(f"[yellow]NVIDIA profiling failed: {e}[/yellow]")
-
-            if not all_results:
-                # Fallback to basic execution
-                console.print("[yellow]Falling back to basic execution...[/yellow]")
-                exit_code = ssh_manager.run(command, droplet_info["gpu_type"])
-                return {
-                    "output_dir": output_dir,
-                    "stdout": f"Command executed with exit code: {exit_code}",
-                    "stderr": "",
-                    "summary": {},
-                }
-
-        # Return combined results
-        if all_results:
-            # Use the first successful result as base, but update summary
-            base_result = all_results[0]
-            base_result["summary"].update(
-                {
-                    "profilers_run": combined_summary["profilers_run"],
-                    "profile_files": combined_summary["profile_files"],
-                    "summary_file": combined_summary["profile_files"][0]
-                    if combined_summary["profile_files"]
-                    else None,
-                    "message": f"Profiling completed with {', '.join(combined_summary['profilers_run'])}",
-                }
-            )
-            return base_result
-        else:
-            return {
-                "output_dir": output_dir,
-                "stdout": "No profilers succeeded",
-                "stderr": "All profilers failed",
-                "summary": {},
-            }
+        return remote_dir
 
     def _parse_amd_results(self, output_dir: Path) -> Dict[str, Any]:
         """Parse AMD profiling results."""
@@ -706,127 +490,6 @@ class ProfilingManager:
                 console.print(f"[yellow]Could not parse JSON results: {e}[/yellow]")
 
         return summary
-
-    def _run_nvidia_profiler(
-        self,
-        droplet_info: Dict[str, Any],
-        command: str,
-        output_dir: Path,
-        nsys_cmd: Optional[str] = None,
-        ncompute_cmd: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Run NVIDIA profilers (nsight-compute + nsight-systems) on the droplet."""
-        ssh_manager = SSHManager()
-
-        # TODO: phase out this code
-
-        # Ensure NVIDIA profilers are available
-        self._ensure_nvidia_profilers(droplet_info)
-
-        # If profiling a Python script, ensure PyTorch is available
-        if command.startswith("python3"):
-            self._ensure_pytorch(droplet_info)
-
-        # Setup remote profiling environment
-        remote_profile_dir = "/tmp/chisel_nvidia_profile"
-        profile_filename = f"profile_{int(time.time())}"
-
-        # Build nsight-compute profiling command
-        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir}"
-
-        # For NVIDIA, we need to separate compilation from profiling
-        # The command might be a compile+run, so we need to handle this properly
-        if " && " in command:
-            # Split compilation and execution
-            compile_part, execute_part = command.split(" && ", 1)
-            # Execute compilation first, then profile with both tools
-            ncu_cmd = f"{compile_part} && ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {execute_part}"
-            nsys_cmd = f"nsys profile --output={profile_filename}.nsys-rep {execute_part}"
-        else:
-            # Just profile the single command with both tools
-            ncu_cmd = f"ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {command}"
-            nsys_cmd = f"nsys profile --output={profile_filename}.nsys-rep {command}"
-
-        # Handle direct profiler commands
-        if nsys_cmd or ncompute_cmd:
-            # If direct commands are provided, use them
-            cmds = []
-            if ncompute_cmd:
-                cmds.append(
-                    f"ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {ncompute_cmd}"
-                )
-            if nsys_cmd:
-                cmds.append(f"nsys profile --output={profile_filename}.nsys-rep {nsys_cmd}")
-
-            if len(cmds) == 2:
-                # Run both profilers
-                full_cmd = f"{profile_setup} && {cmds[0]} && {cmds[1]}"
-            else:
-                # Run single profiler
-                full_cmd = f"{profile_setup} && {cmds[0]}"
-        else:
-            # Original behavior for backward compatibility
-            # For NVIDIA, we need to separate compilation from profiling
-            # The command might be a compile+run, so we need to handle this properly
-            if " && " in command:
-                # Split compilation and execution
-                compile_part, execute_part = command.split(" && ", 1)
-                # Execute compilation first, then profile with both tools
-                ncu_cmd = f"{compile_part} && ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {execute_part}"
-                nsys_cmd_built = f"nsys profile --output={profile_filename}.nsys-rep {execute_part}"
-            else:
-                # Just profile the single command with both tools
-                ncu_cmd = f"ncu --set full --target-processes all --export {profile_filename}_%p.ncu-rep {command}"
-                nsys_cmd_built = f"nsys profile --output={profile_filename}.nsys-rep {command}"
-
-            # Run both profilers - ncu first (more likely to fail), then nsys
-            full_cmd = f"{profile_setup} && {ncu_cmd} && {nsys_cmd_built}"
-
-        console.print(f"[cyan]Running NVIDIA profilers (ncu + nsys): {command}[/cyan]")
-
-        # Execute profiling command - try both profilers with graceful degradation
-        exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
-
-        # If both profilers failed, try them individually for better error reporting
-        if exit_code != 0:
-            console.print("[yellow]Both profilers failed, trying individually...[/yellow]")
-
-            # Try ncu alone
-            ncu_only_cmd = f"{profile_setup} && {ncu_cmd}"
-            ncu_exit = ssh_manager.run(ncu_only_cmd, droplet_info["gpu_type"])
-
-            # Try nsys alone
-            nsys_only_cmd = f"{profile_setup} && {nsys_cmd}"
-            nsys_exit = ssh_manager.run(nsys_only_cmd, droplet_info["gpu_type"])
-
-            if ncu_exit != 0 and nsys_exit != 0:
-                raise RuntimeError(
-                    f"Both NVIDIA profilers failed: ncu={ncu_exit}, nsys={nsys_exit}"
-                )
-            elif ncu_exit != 0:
-                console.print("[yellow]ncu profiling failed, but nsys succeeded[/yellow]")
-            elif nsys_exit != 0:
-                console.print("[yellow]nsys profiling failed, but ncu succeeded[/yellow]")
-
-        # Download results without parsing - let users analyze .ncu-rep files with proper tools
-        profile_files = self._download_nvidia_results(droplet_info, remote_profile_dir, output_dir)
-
-        # Create basic summary with text summary
-        summary = {
-            "profile_files": profile_files,
-            "summary_file": profile_files[0] if profile_files else None,
-            "message": "NVIDIA profiling completed. Generated profile summary.",
-        }
-
-        # Cleanup remote files
-        self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
-
-        return {
-            "output_dir": output_dir,
-            "stdout": "NVIDIA profiling completed successfully",
-            "stderr": "",
-            "summary": summary,
-        }
 
     def _ensure_nvidia_profilers(self, droplet_info: Dict[str, Any]):
         """Ensure both nsight-compute and nsight-systems are installed on the droplet."""
@@ -1012,99 +675,7 @@ class ProfilingManager:
         except Exception as e:
             raise RuntimeError(f"Failed to setup rocprofv3: {e}")
 
-    def _run_amd_profiler(
-        self,
-        droplet_info: Dict[str, Any],
-        command: str,
-        output_dir: Path,
-        rocprofv3_cmd: Optional[str] = None,
-        rocprof_compute_cmd: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Run AMD rocprofv3 profiler with ATT traces on the droplet."""
-        ssh_manager = SSHManager()
-
-        # TODO: phase out this code
-
-        # Ensure rocprofv3 is available
-        self._ensure_rocprofv3(droplet_info)
-
-        # Setup remote profiling environment
-        remote_profile_dir = "/tmp/chisel_amd_profile"
-
-        # Build rocprofv3 profiling command
-        profile_setup = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
-
-        # If direct command is provided, use it
-        if rocprofv3_cmd:
-            # Extract extra flags from rocprofv3_cmd
-            # rocprofv3_cmd format: "target extra_flags" or just "target"
-            parts = rocprofv3_cmd.split(" ", 1)
-            target_cmd = parts[0]
-            extra_flags = parts[1] if len(parts) > 1 else ""
-
-            # Check if target_cmd is a source file that needs compilation
-            if (
-                target_cmd.endswith(".hip")
-                or target_cmd.endswith(".cu")
-                or target_cmd.endswith(".cpp")
-                or target_cmd.endswith(".c")
-            ):
-                # Compile the source file first
-                if target_cmd.endswith(".hip"):
-                    compile_cmd = f"hipcc {target_cmd} -o {target_cmd[:-4]}"
-                elif target_cmd.endswith(".cu"):
-                    compile_cmd = f"nvcc -O3 -lineinfo {target_cmd} -o {target_cmd[:-3]}"
-                else:
-                    compile_cmd = f"gcc {target_cmd} -o {target_cmd[:-4] if target_cmd.endswith('.cpp') else target_cmd[:-2]}"
-
-                # Use compiled binary for profiling
-                binary_cmd = (
-                    target_cmd[:-4]
-                    if target_cmd.endswith(".hip")
-                    else (
-                        target_cmd[:-3]
-                        if target_cmd.endswith(".cu")
-                        else (target_cmd[:-4] if target_cmd.endswith(".cpp") else target_cmd[:-2])
-                    )
-                )
-                rocprof_cmd = f"{compile_cmd} && export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags} -- {binary_cmd}"
-            else:
-                # Use the command as-is (already compiled or script)
-                rocprof_cmd = f"export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags} -- {target_cmd}"
-
-        # Full profiling command
-        full_cmd = f"{profile_setup} && {rocprof_cmd}"
-
-        console.print(f"[cyan]Running AMD rocprofv3 with ATT traces: {command}[/cyan]")
-
-        # Execute profiling command
-        exit_code = ssh_manager.run(full_cmd, droplet_info["gpu_type"])
-
-        if exit_code != 0:
-            raise RuntimeError(f"rocprofv3 profiling failed with exit code {exit_code}")
-
-        # Download results
-        rocprof_files = self._download_amd_att_results(droplet_info, remote_profile_dir, output_dir)
-
-        # Create summary
-        summary = {
-            "profile_files": rocprof_files,
-            "summary_file": rocprof_files[0] if rocprof_files else None,
-            "profile_type": "rocprofv3",
-            "message": "AMD rocprofv3 profiling completed. Generated profile summary.",
-        }
-
-        # Cleanup remote files
-        self._cleanup_amd_remote(droplet_info, remote_profile_dir)
-
-        return {
-            "output_dir": output_dir,
-            "stdout": "AMD rocprofv3 profiling completed successfully",
-            "stderr": "",
-            "summary": summary,
-        }
-
-    def _download_amd_att_results(
+    def _download_results(
         self,
         droplet_info: Dict[str, Any],
         remote_dir: str,
@@ -1114,49 +685,109 @@ class ProfilingManager:
 
         ssh_manager = SSHManager()
         ip = droplet_info["ip"]
-        console.print("[cyan]Downloading AMD profiling results...[/cyan]")
-        # rocprofv3 creates files with session prefix inside a subdirectory, we need to find the actual file
-        find_cmd = f"find {remote_dir} -name '*amd_profile_summary.txt*' -type f | head -1"
-        exit_code = ssh_manager.run(find_cmd, droplet_info["gpu_type"])
+        console.print("[cyan]Downloading profiling results...[/cyan]")
 
-        if exit_code != 0:
-            console.print("[yellow]Warning: Could not find AMD summary file[/yellow]")
-            return []
-
-        # Get the actual file path by running the find command and capturing output
-        import subprocess as sp
-
-        find_result = sp.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", f"root@{ip}", find_cmd],
-            capture_output=True,
-            text=True,
-        )
-
-        if find_result.returncode != 0 or not find_result.stdout.strip():
-            console.print("[yellow]Warning: AMD summary file not found[/yellow]")
-            return []
-
-        remote_summary_path = find_result.stdout.strip()
-        local_summary_path = local_output_dir / "amd_profile_summary.txt"
+        # Download all files from remote directory to local directory
         scp_cmd = [
             "scp",
+            "-r",  # Recursive to download entire directory contents
             "-o",
             "StrictHostKeyChecking=no",
-            f"root@{ip}:{remote_summary_path}",
-            str(local_summary_path),
+            f"root@{ip}:{remote_dir}/*",  # Download all files from remote directory
+            str(local_output_dir),
         ]
+
         try:
-            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 console.print(
-                    f"[yellow]Warning: Failed to download AMD ATT results: {result.stderr}[/yellow]"
+                    f"[yellow]Warning: Failed to download profiling results: {result.stderr}[/yellow]"
                 )
                 return []
-            if not local_summary_path.exists() or local_summary_path.stat().st_size == 0:
-                console.print("[yellow]Warning: Downloaded summary is empty or missing[/yellow]")
+
+            # Flatten any subdirectories - move all files to the top level
+            downloaded_files = []
+
+            # Walk through all files and subdirectories
+            all_files = []
+            for item in local_output_dir.rglob("*"):
+                if item.is_file():
+                    all_files.append(item)
+
+            # Move all files to the top level and clean up names
+            for file_path in all_files:
+                original_name = file_path.name
+                # Remove numeric session ID prefixes (e.g., "40396_agent_info.csv" -> "agent_info.csv")
+                import re
+
+                clean_name = re.sub(r"^\d+_", "", original_name)
+
+                # Target path in the top level directory
+                target_path = local_output_dir / clean_name
+
+                # If file is not already in the top level, move it there
+                if file_path.parent != local_output_dir:
+                    # Handle name conflicts by adding a counter if needed
+                    counter = 1
+                    while target_path.exists():
+                        name_parts = clean_name.rsplit(".", 1)
+                        if len(name_parts) == 2:
+                            target_path = (
+                                local_output_dir / f"{name_parts[0]}_{counter}.{name_parts[1]}"
+                            )
+                        else:
+                            target_path = local_output_dir / f"{clean_name}_{counter}"
+                        counter += 1
+
+                    file_path.rename(target_path)
+                    console.print(
+                        f"[green]✓ Downloaded: {original_name} -> {target_path.name}[/green]"
+                    )
+                    downloaded_files.append(target_path.name)
+                else:
+                    # File is already in top level, just rename if needed
+                    if clean_name != original_name:
+                        # Handle name conflicts
+                        counter = 1
+                        while target_path.exists() and target_path != file_path:
+                            name_parts = clean_name.rsplit(".", 1)
+                            if len(name_parts) == 2:
+                                target_path = (
+                                    local_output_dir / f"{name_parts[0]}_{counter}.{name_parts[1]}"
+                                )
+                            else:
+                                target_path = local_output_dir / f"{clean_name}_{counter}"
+                            counter += 1
+
+                        if target_path != file_path:
+                            file_path.rename(target_path)
+                        console.print(
+                            f"[green]✓ Downloaded: {original_name} -> {target_path.name}[/green]"
+                        )
+                        downloaded_files.append(target_path.name)
+                    else:
+                        console.print(f"[green]✓ Downloaded: {original_name}[/green]")
+                        downloaded_files.append(original_name)
+
+            # Remove any empty subdirectories
+            for item in local_output_dir.iterdir():
+                if item.is_dir():
+                    try:
+                        item.rmdir()  # Only removes if empty
+                        console.print(f"[green]✓ Removed empty directory: {item.name}[/green]")
+                    except OSError:
+                        # Directory not empty, leave it
+                        pass
+
+            if not downloaded_files:
+                console.print("[yellow]Warning: No files were downloaded[/yellow]")
                 return []
-            console.print(f"[green]✓ AMD profile summary saved to {local_summary_path}[/green]")
-            return ["amd_profile_summary.txt"]
+
+            console.print(
+                f"[green]✓ Profiling results downloaded ({len(downloaded_files)} files)[/green]"
+            )
+            return downloaded_files
+
         except subprocess.TimeoutExpired:
             console.print("[yellow]Warning: Download timed out[/yellow]")
             return []
@@ -1172,58 +803,6 @@ class ProfilingManager:
         ssh_manager.run(cleanup_cmd, droplet_info["gpu_type"])
 
         console.print("[green]✓ Remote cleanup completed[/green]")
-
-    def _download_nvidia_results(
-        self, droplet_info: Dict[str, Any], remote_dir: str, local_output_dir: Path
-    ) -> list:
-        import subprocess
-
-        ssh_manager = SSHManager()
-        ip = droplet_info["ip"]
-        console.print("[cyan]Generating comprehensive profile summary...[/cyan]")
-        convert_cmd = f"""cd {remote_dir} && \
-for nsys_file in *.nsys-rep; do
-    [ -f \"$nsys_file\" ] || continue
-    {{
-        echo "=== CUDA API Summary ==="
-        nsys stats --report cuda_api_sum \"$nsys_file\" 2>/dev/null || true
-        echo -e \"\\n=== GPU Kernel Summary ===\"
-        nsys stats --report cuda_gpu_kern_sum \"$nsys_file\" 2>/dev/null || true
-        echo -e \"\\n=== Memory Operations Summary ===\"
-        nsys stats --report cuda_gpu_mem_time_sum \"$nsys_file\" 2>/dev/null || true
-        echo -e \"\\n=== CUDA GPU Summary (Combined) ===\"
-        nsys stats --report cuda_api_gpu_sum \"$nsys_file\" 2>/dev/null || true
-    }} > nvidia_profile_summary.txt
-    break
-done"""
-        ssh_manager.run(convert_cmd, droplet_info["gpu_type"])
-        console.print("[cyan]Downloading NVIDIA profiling results...[/cyan]")
-        local_summary_path = local_output_dir / "nvidia_profile_summary.txt"
-        scp_cmd = [
-            "scp",
-            "-o",
-            "StrictHostKeyChecking=no",
-            f"root@{ip}:{remote_dir}/nvidia_profile_summary.txt",
-            str(local_summary_path),
-        ]
-        try:
-            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=120)
-            if result.returncode != 0:
-                console.print(
-                    f"[yellow]Warning: Failed to download NVIDIA profile results: {result.stderr}[/yellow]"
-                )
-                return []
-            if not local_summary_path.exists() or local_summary_path.stat().st_size == 0:
-                console.print("[yellow]Warning: Downloaded summary is empty or missing[/yellow]")
-                return []
-            console.print(f"[green]✓ NVIDIA profile summary saved to {local_summary_path}[/green]")
-            return ["nvidia_profile_summary.txt"]
-        except subprocess.TimeoutExpired:
-            console.print("[yellow]Warning: Download timed out[/yellow]")
-            return []
-        except Exception as e:
-            console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
-            return []
 
     def _cleanup_nvidia_remote(self, droplet_info: Dict[str, Any], remote_dir: str):
         """Clean up remote NVIDIA profiling files."""

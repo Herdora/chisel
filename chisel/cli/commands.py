@@ -147,23 +147,15 @@ def handle_profile(
     try:
         manager = ProfilingManager()
 
-        def build_cmd(base_target: str, profiler_value: Optional[str]) -> Optional[str]:
-            if profiler_value is None:
-                return None
-            elif profiler_value == "":  # Boolean flag was used (empty string)
-                return ""  # Return empty string for default behavior
-            else:  # String value was provided (extra flags)
-                return profiler_value  # Return just the flags
-
         result = manager.profile(
             vendor=vendor,
             target=target_str,
             gpu_type=gpu_type,
             output_dir=output_dir,
-            rocprofv3_cmd=build_cmd(target_str, rocprofv3),
-            rocprof_compute_cmd=build_cmd(target_str, rocprof_compute),
-            nsys_cmd=build_cmd(target_str, nsys),
-            ncompute_cmd=build_cmd(target_str, ncompute),
+            rocprofv3_flag=rocprofv3,
+            rocprof_compute_flag=rocprof_compute,
+            nsys_flag=nsys,
+            ncompute_flag=ncompute,
         )
         result.display_summary()
 
