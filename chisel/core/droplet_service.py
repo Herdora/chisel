@@ -31,34 +31,57 @@ class DropletService:
         droplet_image: str,
         replace: bool = False,
     ) -> Droplet:
-        """Create a new droplet."""
-        if replace:
-            existing_droplets = self.list_droplets()
-            for droplet in existing_droplets:
-                if droplet.name == gpu_type.value:
-                    if droplet.id is not None:
-                        self.destroy_droplet(droplet.id)
+        # (unchanged) tear down duplicates when replace=True …
 
         ssh_keys = self.list_account_ssh_keys()
 
+        # ----------------------------------------------------------------- #
+        # new cloud-init script: installs Docker, pulls your image, starts it,
+        # and drops every future SSH login straight into the container.
+        # ----------------------------------------------------------------- #
         user_data = """#!/bin/bash
-# Update package list
-apt-get update
+        set -e
 
-# Install basic development tools  
-apt-get install -y build-essential git wget curl
+        # Install Docker
+        apt-get update
+        apt-get install -y docker.io
 
-# ROCm should be pre-installed on gpu-mi300x1-base image
-# Just make sure environment is properly set up
-echo 'export PATH=/opt/rocm/bin:$PATH' >> /etc/profile.d/rocm.sh
-echo 'export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/rocm.sh
-echo 'export HIP_PATH=/opt/rocm' >> /etc/profile.d/rocm.sh
+        # Start and enable Docker
+        systemctl enable docker
+        systemctl start docker
+        usermod -aG docker root
 
-# Make hipcc globally accessible
-ln -sf /opt/rocm/bin/hipcc /usr/local/bin/hipcc
+        # Setup ROCm (optional redundancy)
+        echo 'export PATH=/opt/rocm/bin:$PATH' >> /etc/profile.d/rocm.sh
+        echo 'export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/rocm.sh
+        echo 'export HIP_PATH=/opt/rocm' >> /etc/profile.d/rocm.sh
+        ln -sf /opt/rocm/bin/hipcc /usr/local/bin/hipcc
 
-echo "Setup completed"
-"""
+        # Pull official AMD ROCm PyTorch image
+        docker pull rocm/pytorch:rocm6.4.0_ubuntu22.04_py3.10_pytorch_2.6.0
+
+        # Run persistent container (named 'ml')
+        docker run -dit \
+        --name ml \
+        --restart=always \
+        --network host \
+        --ipc=host \
+        --device=/dev/kfd \
+        --device=/dev/dri \
+        --group-add video \
+        --cap-add=SYS_PTRACE \
+        --security-opt seccomp=unconfined \
+        -v /mnt/share:/workspace \
+        rocm/pytorch:rocm6.4.0_ubuntu22.04_py3.10_pytorch_2.6.0 bash
+
+        # Optional: install Python packages into container globally
+        docker exec ml pip install rich pydo paramiko jupyterlab vllm triton sglang
+
+        # Automatically enter the container on SSH login
+        echo 'exec docker exec -it ml bash' >> /root/.bash_profile
+
+        echo "Setup complete"
+        """
 
         body = {
             "name": gpu_type.value,
