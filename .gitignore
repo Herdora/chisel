@@ -238,3 +238,6 @@ logs/
 *.temp
 .tmp/
 temp/
+
+# Chisel
+chisel**/

@@ -98,6 +98,16 @@ class Droplet:
             result["stderr"] += f"\n[SSH ERROR] {e}"
         return result
 
+    def run_container_command(self, command: str, timeout: int = 30) -> Dict[str, Any]:
+        """Run a command inside the Docker container 'ml' where PyTorch and tools are installed."""
+        # Translate paths: /mnt/share -> /workspace (container mount point)
+        container_command = command.replace("/mnt/share", "/workspace")
+
+        # Wrap command to run inside Docker container where all tools are installed
+        # This ensures we're using the container environment with PyTorch, ROCm, etc.
+        docker_exec_command = f"docker exec ml bash -c '{container_command}'"
+        return self.run_command(docker_exec_command, timeout=timeout)
+
     def is_ssh_ready(self, timeout: int = 5) -> bool:
         """Check if SSH is available on the droplet."""
         if not self.ip:

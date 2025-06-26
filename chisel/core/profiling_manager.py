@@ -132,18 +132,16 @@ class ProfilingManager:
             if rocprof_compute_flag:
                 result = self.run_rocprof_compute(
                     droplet_info,
-                    target_info.raw_target,
+                    target_info,
                     output_path,
                     rocprof_compute_flag,
                 )
                 all_results.append(result)
             if nsys_flag:
-                result = self.run_nsys(droplet_info, target_info.raw_target, output_path, nsys_flag)
+                result = self.run_nsys(droplet_info, target_info, output_path, nsys_flag)
                 all_results.append(result)
             if ncompute_flag:
-                result = self.run_ncompute(
-                    droplet_info, target_info.raw_target, output_path, ncompute_flag
-                )
+                result = self.run_ncompute(droplet_info, target_info, output_path, ncompute_flag)
                 all_results.append(result)
 
             return ProfilingResults(
@@ -180,7 +178,13 @@ class ProfilingManager:
 
         self._ensure_rocprofv3(droplet_info)
 
-        remote_profile_dir = "/tmp/chisel-rocprofv3"
+        # Check if this is a Python file and ensure ROCm Python libraries are available
+        is_python = target.file_extension == ".py"
+        if is_python:
+            self._ensure_pytorch_rocm(droplet_info)
+
+        # Use mounted volume path that container can access
+        remote_profile_dir = "/mnt/share/chisel-rocprofv3"
 
         # Get the source file name and binary name
         source_file = target.file_path or Path(target.raw_target)
@@ -192,30 +196,86 @@ class ProfilingManager:
         EXPORT_LIB_CMD = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/"
         RESET_DIR_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
         CD_CMD = f"cd {remote_profile_dir}"
-        BUILD_CMD = f"hipcc {remote_source} -o {remote_binary}"  # TODO: add python support
-        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {remote_binary}"
 
-        # First reset directory, then sync file, then build and profile
-        reset_cmd = f"{EXPORT_LIB_CMD} && {RESET_DIR_CMD}"
-        result = droplet_info.run_command(reset_cmd)
-        if result["exit_code"] != 0:
-            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+        if is_python:
+            # For Python files, we don't need to build - just run with python
+            # Note: Virtual environment is automatically activated in the container
+            PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- python {remote_source}"
 
-        # Now sync the file to the clean directory
-        _ = self._sync_file(
-            droplet_info,
-            target.file_path or Path(target.raw_target),
-            remote_profile_dir,
-        )
+            # First reset directory, then sync file, then profile directly
+            reset_cmd = f"{EXPORT_LIB_CMD} && {RESET_DIR_CMD}"
+            result = droplet_info.run_container_command(reset_cmd)
+            if result["exit_code"] != 0:
+                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
-        # Build and profile
-        build_profile_cmd = f"{CD_CMD} && {BUILD_CMD} && {PROFILE_CMD}"
-        full_cmd = build_profile_cmd
-        console.print(f"[cyan]Running AMD rocprofv3 with flags '{full_cmd}'[/cyan]")
-        rocprof_result = droplet_info.run_command(full_cmd, timeout=600)
+            # Now sync the file to the clean directory
+            _ = self._sync_file(
+                droplet_info,
+                target.file_path or Path(target.raw_target),
+                remote_profile_dir,
+            )
+
+            # Test if the Python script runs standalone first
+            console.print("[cyan]Testing if Python script runs standalone...[/cyan]")
+            test_cmd = f"{CD_CMD} && timeout 30 python {remote_source}"
+
+            test_result = droplet_info.run_container_command(test_cmd, timeout=60)
+
+            if test_result["exit_code"] != 0:
+                console.print(
+                    f"[red]Python script test failed with exit code {test_result['exit_code']}[/red]"
+                )
+                if test_result.get("stdout"):
+                    console.print(f"[red]STDOUT:[/red] {test_result['stdout']}")
+                if test_result.get("stderr"):
+                    console.print(f"[red]STDERR:[/red] {test_result['stderr']}")
+                console.print("[yellow]Script has issues - profiling may fail[/yellow]")
+            else:
+                console.print("[green]✓ Python script runs successfully[/green]")
+
+            # Profile directly with python
+            profile_cmd = f"{CD_CMD} && {PROFILE_CMD}"
+            full_cmd = profile_cmd
+            console.print(
+                f"[cyan]Running AMD rocprofv3 on Python script with flags '{full_cmd}'[/cyan]"
+            )
+        else:
+            # For compiled languages, build then profile
+            BUILD_CMD = f"hipcc {remote_source} -o {remote_binary}"
+            PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {remote_binary}"
+
+            # First reset directory, then sync file, then build and profile
+            reset_cmd = f"{EXPORT_LIB_CMD} && {RESET_DIR_CMD}"
+            result = droplet_info.run_container_command(reset_cmd)
+            if result["exit_code"] != 0:
+                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+
+            # Now sync the file to the clean directory
+            _ = self._sync_file(
+                droplet_info,
+                target.file_path or Path(target.raw_target),
+                remote_profile_dir,
+            )
+
+            # Build and profile
+            build_profile_cmd = f"{CD_CMD} && {BUILD_CMD} && {PROFILE_CMD}"
+            full_cmd = build_profile_cmd
+            console.print(f"[cyan]Running AMD rocprofv3 with flags '{full_cmd}'[/cyan]")
+
+        rocprof_result = droplet_info.run_container_command(full_cmd, timeout=600)
         if rocprof_result["exit_code"] != 0:
+            # Show detailed error information to help with debugging
+            console.print(
+                f"[red]rocprofv3 command failed with exit code {rocprof_result['exit_code']}[/red]"
+            )
+            if rocprof_result.get("stdout"):
+                console.print(f"[red]STDOUT:[/red] {rocprof_result['stdout']}")
+            if rocprof_result.get("stderr"):
+                console.print(f"[red]STDERR:[/red] {rocprof_result['stderr']}")
+            console.print(f"[red]Command that failed:[/red] {full_cmd}")
             raise RuntimeError(
-                f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}"
+                f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}. "
+                f"Check the output above for details."
             )
 
         rocprof_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
@@ -236,7 +296,7 @@ class ProfilingManager:
     def run_rocprof_compute(
         self,
         droplet_info: Droplet,
-        command: str,
+        target: TargetInfo,
         local_output_dir: Path,
         extra_flags: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -249,24 +309,53 @@ class ProfilingManager:
     def run_nsys(
         self,
         droplet_info: Droplet,
-        command: str,
+        target: TargetInfo,
         local_output_dir: Path,
         extra_flags: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Run nsys on the droplet."""
         self._ensure_nvidia_profilers(droplet_info)
 
-        remote_profile_dir = "/tmp/chisel-nsys"
+        # If this is a Python file, ensure PyTorch is available for GPU libraries
+        is_python_file = target.is_source_file and target.file_extension == ".py"
+        if is_python_file:
+            self._ensure_pytorch(droplet_info)
+
+        # Use mounted volume path that container can access
+        remote_profile_dir = "/mnt/share/chisel-nsys"
+
+        # Check if this is a Python file that needs to be synced
+        if is_python_file:
+            # For Python files, sync the file and construct the command
+            source_file = target.file_path or Path(target.raw_target)
+            remote_script = f"{remote_profile_dir}/{source_file.name}"
+            command_to_run = f"python {remote_script}"
+
+            # Sync the Python file to remote
+            reset_cmd = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+            result = droplet_info.run_container_command(reset_cmd)
+            if result["exit_code"] != 0:
+                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+
+            _ = self._sync_file(droplet_info, source_file, remote_profile_dir)
+        else:
+            # For other commands (non-Python files or direct commands), use as-is
+            command_to_run = target.raw_target
 
         # Combine setup and profiling into a single atomic command to ensure cd works properly
         def make_full_cmd(remote_profile_dir: str, extra_flags: str):
-            return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command}"
+            if is_python_file:
+                # For Python files, we already set up the directory above
+                return f"cd {remote_profile_dir} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command_to_run}"
+            else:
+                # For other commands, set up directory as part of the command
+                return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command_to_run}"
 
         full_cmd = make_full_cmd(
             remote_profile_dir, extra_flags or "--stats=true --force-overwrite=true"
         )
         console.print(f"[cyan]Running NVIDIA nsys with flags '{full_cmd}'[/cyan]")
-        nsys_result = droplet_info.run_command(full_cmd, timeout=600)
+        nsys_result = droplet_info.run_container_command(full_cmd, timeout=600)
         if nsys_result["exit_code"] != 0:
             raise RuntimeError(f"nsys profiling failed with exit code {nsys_result['exit_code']}")
 
@@ -289,22 +378,51 @@ class ProfilingManager:
     def run_ncompute(
         self,
         droplet_info: Droplet,
-        command: str,
+        target: TargetInfo,
         local_output_dir: Path,
         extra_flags: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Run ncu (nsight-compute) on the droplet."""
         self._ensure_nvidia_profilers(droplet_info)
 
-        remote_profile_dir = "/tmp/chisel-ncompute"
+        # If this is a Python file, ensure PyTorch is available for GPU libraries
+        is_python_file = target.is_source_file and target.file_extension == ".py"
+        if is_python_file:
+            self._ensure_pytorch(droplet_info)
+
+        # Use mounted volume path that container can access
+        remote_profile_dir = "/mnt/share/chisel-ncompute"
+
+        # Check if this is a Python file that needs to be synced
+        if is_python_file:
+            # For Python files, sync the file and construct the command
+            source_file = target.file_path or Path(target.raw_target)
+            remote_script = f"{remote_profile_dir}/{source_file.name}"
+            command_to_run = f"python {remote_script}"
+
+            # Sync the Python file to remote
+            reset_cmd = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+            result = droplet_info.run_container_command(reset_cmd)
+            if result["exit_code"] != 0:
+                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+
+            _ = self._sync_file(droplet_info, source_file, remote_profile_dir)
+        else:
+            # For other commands (non-Python files or direct commands), use as-is
+            command_to_run = target.raw_target
 
         # Combine setup and profiling into a single atomic command to ensure cd works properly
         def make_full_cmd(remote_profile_dir: str, extra_flags: str):
-            return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command}"
+            if is_python_file:
+                # For Python files, we already set up the directory above
+                return f"cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command_to_run}"
+            else:
+                # For other commands, set up directory as part of the command
+                return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command_to_run}"
 
         full_cmd = make_full_cmd(remote_profile_dir, extra_flags or "--set full --force-overwrite")
         console.print(f"[cyan]Running NVIDIA ncu with flags '{full_cmd}'[/cyan]")
-        ncu_result = droplet_info.run_command(full_cmd, timeout=600)
+        ncu_result = droplet_info.run_container_command(full_cmd, timeout=600)
         if ncu_result["exit_code"] != 0:
             raise RuntimeError(f"ncu profiling failed with exit code {ncu_result['exit_code']}")
 
@@ -334,7 +452,7 @@ class ProfilingManager:
             ".hip": "hipcc",
             ".cu": "nvcc",
             ".c": "gcc",
-            ".py": "python",
+            ".py": "python3",
         }
 
         is_source_extension = extension in compiler_map
@@ -358,10 +476,11 @@ class ProfilingManager:
                 f"Failed to sync {source_file} to {remote_dir}. Ensure the file exists and is accessible."
             )
 
+        # Make file executable inside the container (not on host)
         chmod_cmd = f"chmod +x {remote_dir}/{source_file.name}"
-        result = droplet_info.run_command(chmod_cmd)
+        result = droplet_info.run_container_command(chmod_cmd)
         if result["exit_code"] != 0:
-            console.print("[yellow]Warning: Failed to make file executable[/yellow]")
+            console.print("[yellow]Warning: Failed to make file executable in container[/yellow]")
         console.print(f"[green]✓ File synced to {remote_dir} on remote server[/green]")
 
         return remote_dir
@@ -414,7 +533,7 @@ class ProfilingManager:
         try:
             # Check if both profilers are already available
             check_cmd = "which ncu && ncu --version && which nsys && nsys --version"
-            result = droplet_info.run_command(check_cmd)
+            result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
                 console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
@@ -432,7 +551,7 @@ class ProfilingManager:
             '
             """
 
-            install_result = droplet_info.run_command(install_cmd, timeout=700)
+            install_result = droplet_info.run_container_command(install_cmd, timeout=700)
 
             if install_result["exit_code"] != 0:
                 raise RuntimeError(
@@ -440,8 +559,8 @@ class ProfilingManager:
                 )
 
             # Verify both installations
-            verify_ncu_result = droplet_info.run_command("which ncu && ncu --version")
-            verify_nsys_result = droplet_info.run_command("which nsys && nsys --version")
+            verify_ncu_result = droplet_info.run_container_command("which ncu && ncu --version")
+            verify_nsys_result = droplet_info.run_container_command("which nsys && nsys --version")
 
             if verify_ncu_result["exit_code"] != 0:
                 raise RuntimeError(
@@ -459,53 +578,48 @@ class ProfilingManager:
             raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
 
     def _ensure_pytorch(self, droplet_info: Droplet):
-        """Ensure PyTorch with CUDA support is installed on the NVIDIA droplet."""
+        """Check that PyTorch with CUDA support is available (should be pre-installed in container)."""
 
         try:
-            # Check if PyTorch is already available with CUDA
-            check_cmd = "python3 -c \"import torch; print(f'CUDA available: {torch.cuda.is_available()}')\" 2>/dev/null"
-            result = droplet_info.run_command(check_cmd)
+            # Check if PyTorch is available (should be pre-installed in Docker container)
+            check_cmd = "python -c \"import torch; print(f'PyTorch {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')\""
+            result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch with CUDA already available[/green]")
+                console.print("[green]✓ PyTorch with CUDA already available in container[/green]")
+                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
                 return
 
-            console.print("[yellow]Installing PyTorch with CUDA support...[/yellow]")
-
-            # Install pip if not available
-            install_pip_cmd = "apt update -y && apt install -y python3-pip"
-            pip_result = droplet_info.run_command(install_pip_cmd, timeout=300)
-
-            if pip_result["exit_code"] != 0:
-                raise RuntimeError("Failed to install pip")
-
-            # Install PyTorch with CUDA support
-            install_pytorch_cmd = (
-                "pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121"
+            console.print(
+                "[yellow]PyTorch not detected in container - checking if container needs restart[/yellow]"
             )
-            pytorch_result = droplet_info.run_command(install_pytorch_cmd, timeout=600)
 
-            if pytorch_result["exit_code"] != 0:
-                raise RuntimeError("Failed to install PyTorch")
+            # Try restarting the container in case it's not running
+            restart_cmd = "docker restart ml && sleep 5"
+            droplet_info.run_command(restart_cmd, timeout=30)
 
-            # Verify PyTorch CUDA detection
-            verify_cmd = "python3 -c \"import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0)}')\""
-            verify_result = droplet_info.run_command(verify_cmd)
+            # Try again
+            result = droplet_info.run_container_command(check_cmd)
+            if result["exit_code"] == 0:
+                console.print("[green]✓ PyTorch available after container restart[/green]")
+                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                return
 
-            if verify_result["exit_code"] != 0:
-                raise RuntimeError("PyTorch installation verification failed")
-
-            console.print("[green]✓ PyTorch with CUDA installed successfully[/green]")
+            console.print("[red]Warning: PyTorch not available in container[/red]")
+            console.print(
+                "[yellow]Container may still be starting up - profiling may work anyway[/yellow]"
+            )
 
         except Exception as e:
-            raise RuntimeError(f"Failed to setup PyTorch: {e}")
+            console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
+            console.print("[yellow]Continuing anyway - container may still be starting[/yellow]")
 
     def _ensure_rocprofv3(self, droplet_info: Droplet):
         """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
         try:
             # Check if rocprofv3 is already available
             check_cmd = "which rocprofv3 && echo 'rocprofv3 available'"
-            result = droplet_info.run_command(check_cmd)
+            result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
                 console.print("[green]✓ rocprofv3 already available[/green]")
@@ -521,7 +635,7 @@ class ProfilingManager:
             '
             """
 
-            setup_result = droplet_info.run_command(setup_cmd, timeout=1900)
+            setup_result = droplet_info.run_container_command(setup_cmd, timeout=1900)
             if setup_result["exit_code"] != 0:
                 raise RuntimeError("Failed to install build dependencies")
 
@@ -535,7 +649,7 @@ class ProfilingManager:
             """
 
             console.print("[cyan]Building aqlprofile...[/cyan]")
-            aql_result = droplet_info.run_command(build_aqlprofile_cmd, timeout=1200)
+            aql_result = droplet_info.run_container_command(build_aqlprofile_cmd, timeout=1200)
             if aql_result["exit_code"] != 0:
                 raise RuntimeError("Failed to build aqlprofile")
 
@@ -549,7 +663,9 @@ class ProfilingManager:
             """
 
             console.print("[cyan]Building rocprofiler-sdk...[/cyan]")
-            profiler_result = droplet_info.run_command(build_rocprofiler_cmd, timeout=1200)
+            profiler_result = droplet_info.run_container_command(
+                build_rocprofiler_cmd, timeout=1200
+            )
             if profiler_result["exit_code"] != 0:
                 raise RuntimeError("Failed to build rocprofiler-sdk")
 
@@ -562,7 +678,7 @@ class ProfilingManager:
             """
 
             console.print("[cyan]Installing rocprof-trace-decoder...[/cyan]")
-            decoder_result = droplet_info.run_command(download_decoder_cmd, timeout=300)
+            decoder_result = droplet_info.run_container_command(download_decoder_cmd, timeout=300)
             if decoder_result["exit_code"] != 0:
                 raise RuntimeError("Failed to install rocprof-trace-decoder")
 
@@ -572,13 +688,13 @@ class ProfilingManager:
             export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/
             """
 
-            env_result = droplet_info.run_command(env_setup_cmd)
+            env_result = droplet_info.run_container_command(env_setup_cmd)
             if env_result["exit_code"] != 0:
                 raise RuntimeError("Failed to set up environment")
 
             # Verify installation
             verify_cmd = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && which rocprofv3 && rocprofv3 --help"
-            verify_result = droplet_info.run_command(verify_cmd)
+            verify_result = droplet_info.run_container_command(verify_cmd)
 
             if verify_result["exit_code"] != 0:
                 raise RuntimeError("rocprofv3 installation verification failed")
@@ -710,134 +826,14 @@ class ProfilingManager:
     def _cleanup_amd_remote(self, droplet_info: Droplet, remote_dir: str):
         """Clean up remote AMD profiling files."""
         cleanup_cmd = f"rm -rf {remote_dir}"
-        droplet_info.run_command(cleanup_cmd)
+        droplet_info.run_container_command(cleanup_cmd)
         console.print("[green]✓ Remote cleanup completed[/green]")
 
     def _cleanup_nvidia_remote(self, droplet_info: Droplet, remote_dir: str):
         """Clean up remote NVIDIA profiling files."""
         cleanup_cmd = f"rm -rf {remote_dir}"
-        droplet_info.run_command(cleanup_cmd)
+        droplet_info.run_container_command(cleanup_cmd)
         console.print("[green]✓ Remote cleanup completed[/green]")
-
-    def profile_legacy_rocprof(
-        self,
-        droplet: Droplet,
-        command: str,
-        trace: str = "hip,hsa",
-        output_dir: str = "./out",
-    ) -> Optional[str]:
-        """Profile a command with legacy rocprof and pull results locally using Droplet directly."""
-        if not droplet.ip:
-            console.print("[red]Error: Droplet has no IP address[/red]")
-            return None
-
-        # Ensure SSH access before profiling
-        if not droplet.is_ssh_ready():
-            console.print("[red]Error: SSH is not ready on the droplet[/red]")
-            return None
-
-        # Create remote profile directory
-        remote_profile_dir = "/tmp/chisel_profile"
-
-        # Build rocprof command
-        trace_flags = []
-        if "hip" in trace:
-            trace_flags.append("--hip-trace")
-        if "hsa" in trace:
-            trace_flags.append("--hsa-trace")
-        if "roctx" in trace:
-            trace_flags.append("--roctx-trace")
-
-        trace_flags.append("--stats")
-
-        # Create the profile command
-        profile_cmd = f"""
-        rm -rf {remote_profile_dir} && 
-        mkdir -p {remote_profile_dir} && 
-        cd {remote_profile_dir} && 
-        rocprof -d {remote_profile_dir} {" ".join(trace_flags)} -o results.csv {command}
-        """
-
-        console.print(f"[cyan]Profiling on {droplet.ip}: {command}[/cyan]")
-        console.print(f"[cyan]Trace options: {trace}[/cyan]")
-
-        try:
-            # Run profiling command using Droplet's run_command
-            result = droplet.run_command(profile_cmd, timeout=300)
-
-            if result["exit_code"] != 0:
-                console.print(f"[red]Profiling failed with exit code {result['exit_code']}[/red]")
-                console.print(f"[red]Error: {result['stderr']}[/red]")
-                return None
-
-            console.print("[green]✓ Profiling completed[/green]")
-
-            # Create archive on remote
-            archive_cmd = "cd /tmp && tar -czf chisel_profile.tgz chisel_profile"
-            archive_result = droplet.run_command(archive_cmd)
-
-            if archive_result["exit_code"] != 0:
-                console.print("[red]Error: Failed to create archive[/red]")
-                return None
-
-            console.print("[cyan]Pulling results to local machine...[/cyan]")
-
-            # Pull archive using scp
-            local_output_dir = Path(output_dir)
-            local_output_dir.mkdir(parents=True, exist_ok=True)
-
-            local_archive_path = local_output_dir / "chisel_profile.tgz"
-
-            # Use scp to download
-            import subprocess
-
-            scp_cmd = [
-                "scp",
-                "-o",
-                "StrictHostKeyChecking=no",
-                f"root@{droplet.ip}:/tmp/chisel_profile.tgz",
-                str(local_archive_path),
-            ]
-
-            scp_result = subprocess.run(scp_cmd, capture_output=True, text=True)
-            if scp_result.returncode != 0:
-                console.print(f"[red]Error: Failed to download archive: {scp_result.stderr}[/red]")
-                return None
-
-            # Extract archive
-            import tarfile
-
-            with tarfile.open(local_archive_path, "r:gz") as tar:
-                tar.extractall(local_output_dir)
-
-            # Clean up local archive
-            local_archive_path.unlink()
-
-            # Clean up remote files
-            cleanup_cmd = f"rm -rf {remote_profile_dir} /tmp/chisel_profile.tgz"
-            droplet.run_command(cleanup_cmd)
-
-            console.print(
-                f"[green]✓ Profile results saved to {local_output_dir / 'chisel_profile'}[/green]"
-            )
-
-            # Show summary if results files exist
-            json_file = local_output_dir / "chisel_profile" / "results.json"
-            csv_file = local_output_dir / "chisel_profile" / "results.csv"
-            stats_csv_file = local_output_dir / "chisel_profile" / "results.stats.csv"
-
-            if json_file.exists():
-                self._show_profile_summary(json_file)
-            elif csv_file.exists():
-                self._show_profile_summary(csv_file)
-            elif stats_csv_file.exists():
-                self._show_profile_summary(stats_csv_file)
-
-            return str(local_output_dir / "chisel_profile")
-
-        except Exception as e:
-            console.print(f"[red]Error during profiling: {e}[/red]")
-            return None
 
     def _show_profile_summary(self, stats_file: Path) -> None:
         """Show a summary of the profiling results."""
@@ -940,3 +936,42 @@ class ProfilingManager:
 
         except Exception as e:
             console.print(f"[yellow]Could not parse profile summary: {e}[/yellow]")
+
+    def _ensure_pytorch_rocm(self, droplet_info: Droplet):
+        """Check that PyTorch with ROCm support is available (should be pre-installed in container)."""
+
+        try:
+            # Check if PyTorch is available (should be pre-installed in Docker container)
+            check_cmd = "python -c \"import torch; print(f'PyTorch {torch.__version__}'); print(f'ROCm available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')\""
+            result = droplet_info.run_container_command(check_cmd)
+
+            if result["exit_code"] == 0:
+                console.print("[green]✓ PyTorch with ROCm already available in container[/green]")
+                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                return
+
+            console.print(
+                "[yellow]PyTorch not detected in container - checking if container needs restart[/yellow]"
+            )
+
+            # Try restarting the container in case it's not running
+            restart_cmd = "docker restart ml && sleep 5"
+            droplet_info.run_command(restart_cmd, timeout=30)
+
+            # Try again
+            result = droplet_info.run_container_command(check_cmd)
+            if result["exit_code"] == 0:
+                console.print("[green]✓ PyTorch available after container restart[/green]")
+                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                return
+
+            console.print(
+                "[red]Warning: PyTorch not available in container[/red]"
+            )  # TODO: fix this env issue
+            console.print(
+                "[yellow]Container may still be starting up - profiling may work anyway[/yellow]"
+            )
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
+            console.print("[yellow]Continuing anyway - container may still be starting[/yellow]")

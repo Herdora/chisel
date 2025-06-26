@@ -36,52 +36,50 @@ class DropletService:
         ssh_keys = self.list_account_ssh_keys()
 
         # ----------------------------------------------------------------- #
-        # new cloud-init script: installs Docker, pulls your image, starts it,
-        # and drops every future SSH login straight into the container.
+        # New cloud-init script: installs Docker, pulls ROCm 6.4.1 PyTorch image,
+        # starts it, creates virtual environment, and drops every future SSH login
+        # straight into the container with activated venv.
         # ----------------------------------------------------------------- #
         user_data = """#!/bin/bash
-        set -e
+set -e
 
-        # Install Docker
-        apt-get update
-        apt-get install -y docker.io
+### System prep -----------------------------------------------------------
+apt-get update
+apt-get install -y docker.io python3-venv  # venv helper for later
+systemctl enable docker
+systemctl start docker
+usermod -aG docker root
 
-        # Start and enable Docker
-        systemctl enable docker
-        systemctl start docker
-        usermod -aG docker root
+### Pull the ROCm 6.4.1 PyTorch image ------------------------------------
+docker pull rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
 
-        # Setup ROCm (optional redundancy)
-        echo 'export PATH=/opt/rocm/bin:$PATH' >> /etc/profile.d/rocm.sh
-        echo 'export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/rocm.sh
-        echo 'export HIP_PATH=/opt/rocm' >> /etc/profile.d/rocm.sh
-        ln -sf /opt/rocm/bin/hipcc /usr/local/bin/hipcc
+### Start a long-running container called "ml" ----------------------------
+docker run -dit \\
+  --name ml \\
+  --restart=always \\
+  --network host \\
+  --ipc=host \\
+  --device=/dev/kfd \\
+  --device=/dev/dri \\
+  --group-add video \\
+  --cap-add=SYS_PTRACE \\
+  --security-opt seccomp=unconfined \\
+  -v /mnt/share:/workspace \\
+  rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0 bash
 
-        # Pull official AMD ROCm PyTorch image
-        docker pull rocm/pytorch:rocm6.4.0_ubuntu22.04_py3.10_pytorch_2.6.0
+### Inside the container: create + preload a venv -------------------------
+docker exec ml bash -c "
+  python -m venv /opt/venv && \\
+  source /opt/venv/bin/activate && \\
+  pip install --upgrade pip rich pydo paramiko jupyterlab vllm triton sglang && \\
+  echo 'source /opt/venv/bin/activate' >> /root/.bashrc   # auto-activate on each shell
+"
 
-        # Run persistent container (named 'ml')
-        docker run -dit \
-        --name ml \
-        --restart=always \
-        --network host \
-        --ipc=host \
-        --device=/dev/kfd \
-        --device=/dev/dri \
-        --group-add video \
-        --cap-add=SYS_PTRACE \
-        --security-opt seccomp=unconfined \
-        -v /mnt/share:/workspace \
-        rocm/pytorch:rocm6.4.0_ubuntu22.04_py3.10_pytorch_2.6.0 bash
+### Make every SSH login jump straight into the container -----------------
+echo 'exec docker exec -it ml bash' >> /root/.bash_profile
 
-        # Optional: install Python packages into container globally
-        docker exec ml pip install rich pydo paramiko jupyterlab vllm triton sglang
-
-        # Automatically enter the container on SSH login
-        echo 'exec docker exec -it ml bash' >> /root/.bash_profile
-
-        echo "Setup complete"
-        """
+echo "Setup complete"
+"""
 
         body = {
             "name": gpu_type.value,
