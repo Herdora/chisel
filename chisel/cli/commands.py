@@ -6,9 +6,10 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
-from chisel.core.config import Config
-from chisel.core.do_client import DOClient
+from chisel.core.droplet_service import DropletService
 from chisel.core.profiling_manager import ProfilingManager
+from chisel.core.config import get_token, save_token
+from chisel.core.types.gpu_profiles import GPUType
 
 console = Console()
 
@@ -22,8 +23,7 @@ def handle_configure(token: Optional[str] = None) -> int:
     Returns:
         Exit code (0 for success, 1 for failure)
     """
-    config = Config()
-    existing_token = config.token
+    existing_token = get_token()
 
     if token:
         api_token = token
@@ -38,7 +38,7 @@ def handle_configure(token: Optional[str] = None) -> int:
         console.print(
             "[yellow]No DigitalOcean API token found.[/yellow]\n"
             "To get your API token:\n"
-            "1. Go to: https://amd.digitalocean.com/account/api/tokens\n"
+            "1. Go to: https://cloud.digitalocean.com/account/api/tokens\n"
             "2. Generate a new token with read and write access\n"
             "3. Copy the token (you won't be able to see it again)\n"
         )
@@ -47,33 +47,34 @@ def handle_configure(token: Optional[str] = None) -> int:
     console.print("\n[cyan]Validating API token...[/cyan]")
 
     try:
-        do_client = DOClient(api_token)
-        valid, account_info = do_client.validate_token()
+        droplet_service = DropletService(api_token)
+        valid, account_info = droplet_service.validate_token()
 
         if valid and account_info:
-            config.token = api_token
+            save_token(api_token)
 
             console.print(
                 "[green]✓ Token validated successfully![/green]\n"
-                "\n[green]Configuration saved to:[/green] {}\n"
+                "\n[green]Configuration saved![/green]\n"
                 "\n[green]✓ Chisel is now configured and ready to use![/green]\n"
                 "\n[cyan]Usage:[/cyan]\n"
-                "  chisel profile nvidia <file_or_command>  # Profile on NVIDIA H100\n"
-                "  chisel profile amd <file_or_command>     # Profile on AMD MI300X".format(
-                    config.config_file
-                )
+                "  chisel profile --nsys ./kernel.cu        # Profile on NVIDIA\n"
+                "  chisel profile --rocprofv3 ./kernel.hip  # Profile on AMD"
             )
 
-            table = Table(title="Account Information", show_header=False)
-            table.add_column("Field", style="cyan")
-            table.add_column("Value", style="white")
+            if account_info:
+                table = Table(title="Account Information", show_header=False)
+                table.add_column("Field", style="cyan")
+                table.add_column("Value", style="white")
 
-            account_data = account_info.get("account", {})
-            table.add_row("Email", account_data.get("email", "N/A"))
-            table.add_row("Status", account_data.get("status", "N/A"))
-            table.add_row("Droplet Limit", str(account_data.get("droplet_limit", "N/A")))
+                account_data = (
+                    account_info.get("account", {}) if isinstance(account_info, dict) else {}
+                )
+                table.add_row("Email", account_data.get("email", "N/A"))
+                table.add_row("Status", account_data.get("status", "N/A"))
+                table.add_row("Droplet Limit", str(account_data.get("droplet_limit", "N/A")))
 
-            console.print(table)
+                console.print(table)
 
             return 0
 
@@ -119,8 +120,6 @@ def handle_profile(
         console.print("[red]Error: Target file or command is required[/red]")
         return 1
 
-    # TODO: add some cleaning to flags to interact with target.
-
     assert target is not None
     target_str = target
     profilers_enabled = [p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None]
@@ -131,26 +130,37 @@ def handle_profile(
         )
         return 1
 
-    # check gpu_type is valid
+    # Check gpu_type is valid
     if gpu_type and gpu_type not in ["h100", "l40s"]:
         console.print("[red]Error: --gpu-type flag is only supported for NVIDIA profiling[/red]")
         return 1
 
-    if not Config().token:
+    api_token = get_token()
+    if not api_token:
         console.print(
             "[red]Error: No API token configured.[/red]\n"
             "[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]"
         )
         return 1
 
-    vendor = "amd" if rocprofv3 else "nvidia"
+    # Determine GPU type based on profiler
+    if rocprofv3:
+        gpu_profile = GPUType.AMD_MI300X
+    elif nsys or ncompute:
+        if gpu_type == "l40s":
+            gpu_profile = GPUType.NVIDIA_L40S
+        else:
+            gpu_profile = GPUType.NVIDIA_H100
+    else:
+        console.print("[red]Error: Could not determine GPU type from profiler flags[/red]")
+        return 1
+
     try:
-        manager = ProfilingManager()
+        manager = ProfilingManager(api_token)
 
         result = manager.profile(
-            vendor=vendor,
             target=target_str,
-            gpu_type=gpu_type,
+            gpu_type=gpu_profile,
             output_dir=output_dir,
             rocprofv3_flag=rocprofv3,
             rocprof_compute_flag=rocprof_compute,
@@ -223,8 +233,8 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
                     "[yellow]Restart your shell session to enable completion[/yellow]\n"
                     "\n[cyan]Usage examples with completion:[/cyan]\n"
                     "  chisel prof<TAB>        # Completes to 'profile'\n"
-                    "  chisel profile <TAB>    # Shows 'nvidia' and 'amd'\n"
-                    "  chisel profile nvidia --gpu<TAB>  # Shows '--gpu-type'"
+                    "  chisel profile <TAB>    # Shows available flags\n"
+                    "  chisel profile --rocprof<TAB>  # Shows '--rocprofv3'"
                 )
                 return 0
             else:

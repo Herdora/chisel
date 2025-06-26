@@ -1,22 +1,15 @@
 """Chisel core functionality - exposed API for programmatic use."""
 
-from chisel.core.config import Config
-from chisel.core.do_client import DOClient
-from chisel.core.droplet import DropletManager
-from chisel.core.gpu_profiles import GPU_PROFILES, GPUProfile
+from chisel.core.droplet_service import DropletService, Droplet
+from chisel.core.types.gpu_profiles import GPU_PROFILES, GPUType, GPUProfile, GPURegion
 from chisel.core.profiling_manager import ProfilingManager
-from chisel.core.profiling_state import ProfilingState
-from chisel.core.ssh_manager import SSHManager
-from chisel.core.state import State
 
 __all__ = [
-    "Config",
-    "DOClient",
-    "DropletManager",
+    "DropletService",
+    "Droplet",
     "GPU_PROFILES",
+    "GPUType",
     "GPUProfile",
+    "GPURegion",
     "ProfilingManager",
-    "ProfilingState",
-    "SSHManager",
-    "State",
 ]

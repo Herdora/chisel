@@ -1,56 +1,27 @@
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
-
 import toml
-from rich.console import Console
 
-console = Console()
+CONFIG_FILE = Path.home() / ".config" / "chisel" / "config.toml"
+ENV_TOKEN_VAR = "CHISEL_DO_TOKEN"
 
 
-class Config:
-    """Manage Chisel configuration."""
+def get_token() -> str | None:
+    return os.getenv(ENV_TOKEN_VAR) or _load_token_from_file()
 
-    def __init__(self):
-        self.config_dir = Path.home() / ".config" / "chisel"
-        self.config_file = self.config_dir / "config.toml"
-        self._config: Dict[str, Any] = {}
-        self._load()
 
-    def _load(self) -> None:
-        """Load configuration from file if it exists."""
-        if self.config_file.exists():
-            try:
-                self._config = toml.load(self.config_file)
-            except Exception as e:
-                console.print(f"[red]Error loading config: {e}[/red]")
-                self._config = {}
+def _load_token_from_file() -> str | None:
+    if CONFIG_FILE.exists():
+        try:
+            data = toml.load(CONFIG_FILE)
+            return data.get("digitalocean", {}).get("token")
+        except Exception:
+            pass
+    return None
 
-    def _save(self) -> None:
-        """Save configuration to file."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, "w") as f:
-            toml.dump(self._config, f)
 
-    @property
-    def token(self) -> Optional[str]:
-        """Get DigitalOcean API token."""
-        env_token = os.getenv("CHISEL_DO_TOKEN")
-        if env_token:
-            return env_token
-
-        return self._config.get("digitalocean", {}).get("token")
-
-    @token.setter
-    def token(self, value: str) -> None:
-        """Set DigitalOcean API token."""
-        if "digitalocean" not in self._config:
-            self._config["digitalocean"] = {}
-        self._config["digitalocean"]["token"] = value
-        self._save()
-
-    def clear(self) -> None:
-        """Clear all configuration."""
-        self._config = {}
-        if self.config_file.exists():
-            self.config_file.unlink()
+def save_token(token: str) -> None:
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data = {"digitalocean": {"token": token}}
+    with CONFIG_FILE.open("w") as f:
+        toml.dump(data, f)

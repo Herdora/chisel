@@ -18,15 +18,13 @@ __version__ = "0.1.5"
 
 # Expose core API for programmatic use
 from chisel.core import (
-    Config,
-    DOClient,
-    DropletManager,
+    DropletService,
+    Droplet,
     GPU_PROFILES,
+    GPUType,
     GPUProfile,
+    GPURegion,
     ProfilingManager,
-    ProfilingState,
-    SSHManager,
-    State,
 )
 
 # Expose CLI functionality
@@ -36,15 +34,13 @@ __all__ = [
     # Version
     "__version__",
     # Core API
-    "Config",
-    "DOClient",
-    "DropletManager",
+    "DropletService",
+    "Droplet",
     "GPU_PROFILES",
+    "GPUType",
     "GPUProfile",
+    "GPURegion",
     "ProfilingManager",
-    "ProfilingState",
-    "SSHManager",
-    "State",
     # CLI
     "main",
     "run_cli",
