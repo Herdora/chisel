@@ -8,13 +8,13 @@
 > 🚀 **Recent Releases**
 > 
 > ### Latest
+> - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
 > - **AMD rocprofv3 Support**: Full integration with AMD's latest profiling tool
 > - **Automatic Cleanup**: Remote files are automatically cleaned up after profiling
 
 > 🔮 **Upcoming Features**
 > 
 > ### In Development
-> - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
 > - **Web Dashboard**: Browser-based visualization of profiling results.
 > - **Multi-GPU Support**: Profile the same kernel across multiple GPU types simultaneously.
 > - **Profiling Backend**: Bypass the need for a DigitalOcean account by using a public backend.
@@ -31,8 +31,8 @@ pip install chisel-cli
 chisel configure
 
 # 3. Profile your GPU kernels
-chisel profile nvidia kernel.cu    # NVIDIA H100
-chisel profile amd kernel.cpp      # AMD MI300X
+chisel profile --nsys kernel.cu              # NVIDIA with nsys
+chisel profile --rocprofv3 kernel.cpp        # AMD with rocprofv3
 ```
 
 **That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine.
@@ -55,106 +55,186 @@ chisel configure
 chisel configure --token YOUR_TOKEN
 ```
 
-### `chisel profile nvidia <file_or_command>`
+### `chisel profile --nsys="<nsys flags>" <file>`
 
 Profile GPU kernels on NVIDIA H100 ($4.89/hour) or L40S ($2.21/hour).
 
 ```bash
-# Compile and profile CUDA source files
-chisel profile nvidia matrix.cu              # Default: H100
-chisel profile nvidia kernel.cu --gpu-type l40s  # L40S GPU
-
-# Profile existing binaries or commands
-chisel profile nvidia "./my-cuda-app --size=1024"
-chisel profile nvidia "nvidia-smi"
+chisel profile --nsys="--trace=cuda,nvtx" kernel.cu
 ```
 
-### `chisel profile amd <file_or_command>`
+### `chisel profile --ncompute="<ncu flags>" <file>`
+
+```bash
+chisel profile --ncompute="--metrics all" kernel.cu
+```
+
+### `chisel profile --rocprofv3="<rocprofv3 flags>" <file>`
 
 Profile GPU kernels on AMD MI300X ($1.99/hour).
 
 ```bash
-# Compile and profile HIP source files
-chisel profile amd matrix.cpp
-chisel profile amd kernel.hip
-
-# Profile with performance counters
-chisel profile amd matrix.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES,SQ_BUSY_CYCLES"
-
-# Profile existing binaries or commands
-chisel profile amd "./my-hip-app --iterations=100"
-chisel profile amd "rocm-smi"
+chisel profile --rocprofv3="--sys-trace" examples/attention_block.py
+chisel profile --rocprofv3="--sys-trace" examples/simple-mm.hip
 ```
 
 ## Examples
 
-### AMD Profiling
+### Python GPU Applications
+
+```bash
+# Create a PyTorch training script
+cat > train.py << 'EOF'
+import torch
+import torch.nn as nn
+import time
+
+# Simple neural network
+model = nn.Sequential(
+    nn.Linear(1024, 512),
+    nn.ReLU(),
+    nn.Linear(512, 256),
+    nn.ReLU(),
+    nn.Linear(256, 10)
+).cuda()
+
+# Generate some data
+x = torch.randn(1000, 1024).cuda()
+y = torch.randint(0, 10, (1000,)).cuda()
+
+# Training loop
+optimizer = torch.optim.Adam(model.parameters())
+criterion = nn.CrossEntropyLoss()
+
+for epoch in range(5):
+    output = model(x)
+    loss = criterion(output, y)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    print(f"Epoch {epoch}, Loss: {loss.item()}")
+EOF
+
+# Profile PyTorch on NVIDIA
+chisel profile --nsys train.py
+
+# Profile PyTorch on AMD  
+chisel profile --rocprofv3 train.py
+
+# Get detailed kernel analysis showing:
+# - GPU kernel execution times and memory usage
+# - CUDA/HIP API call timing breakdown
+# - Memory transfer analysis
+# - Optimization suggestions
+```
+
+### AMD HIP Profiling
 
 ```bash
 # Create a simple HIP kernel
-cat > simple.cpp << 'EOF'
+cat > matrix_add.cpp << 'EOF'
 #include <hip/hip_runtime.h>
 #include <iostream>
+#include <vector>
 
-__global__ void add_kernel(int *a, int *b, int *c, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        c[idx] = a[idx] + b[idx];
+__global__ void matrixAdd(float *A, float *B, float *C, int N) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    
+    if (i < N && j < N) {
+        int idx = i * N + j;
+        C[idx] = A[idx] + B[idx];
     }
 }
 
 int main() {
-    // Your HIP code here
-    std::cout << "HIP kernel executed!" << std::endl;
+    const int N = 1024;
+    size_t size = N * N * sizeof(float);
+    
+    // Allocate and run kernel
+    float *d_A, *d_B, *d_C;
+    hipMalloc(&d_A, size);
+    hipMalloc(&d_B, size);
+    hipMalloc(&d_C, size);
+    
+    dim3 threadsPerBlock(16, 16);
+    dim3 numBlocks((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                   (N + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    
+    hipLaunchKernelGGL(matrixAdd, numBlocks, threadsPerBlock, 0, 0, d_A, d_B, d_C, N);
+    hipDeviceSynchronize();
+    
+    std::cout << "Matrix addition completed!" << std::endl;
     return 0;
 }
 EOF
 
-# Profile it
-chisel profile amd simple.cpp
-
-# Profile with performance counters
-chisel profile amd simple.cpp --pmc "GRBM_GUI_ACTIVE,SQ_WAVES"
-
-# Get a human-readable summary table showing:
-# - HIP/HSA API calls with timing breakdown
-# - Kernel execution statistics
-# - Memory operations and bandwidth analysis
-# - Performance counter data (when --pmc used)
+# Profile with detailed system tracing
+chisel profile --rocprofv3="--sys-trace" matrix_add.cpp
 ```
 
-### NVIDIA Profiling
+### NVIDIA CUDA Profiling
 
 ```bash
-# Create a simple CUDA kernel
-cat > simple.cu << 'EOF'
+# Create a CUDA matrix multiplication kernel
+cat > matmul.cu << 'EOF'
 #include <cuda_runtime.h>
+#include <cublas_v2.h>
 #include <iostream>
 
-__global__ void multiply_kernel(int *a, int *b, int *c, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        c[idx] = a[idx] * b[idx];
+__global__ void matmul_kernel(float *A, float *B, float *C, int N) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (row < N && col < N) {
+        float sum = 0.0f;
+        for (int k = 0; k < N; k++) {
+            sum += A[row * N + k] * B[k * N + col];
+        }
+        C[row * N + col] = sum;
     }
 }
 
 int main() {
-    // Your CUDA code here
-    std::cout << "CUDA kernel executed!" << std::endl;
+    const int N = 1024;
+    size_t size = N * N * sizeof(float);
+    
+    float *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, size);
+    cudaMalloc(&d_B, size);
+    cudaMalloc(&d_C, size);
+    
+    dim3 threadsPerBlock(16, 16);
+    dim3 numBlocks((N + 15) / 16, (N + 15) / 16);
+    
+    matmul_kernel<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_C, N);
+    cudaDeviceSynchronize();
+    
+    std::cout << "Matrix multiplication completed!" << std::endl;
     return 0;
 }
 EOF
 
-# Profile it
-chisel profile nvidia simple.cu
+# Profile on H100 (default) with kernel launch and memory trace
+chisel profile --nsys="--trace=cuda,osrt,mem" matmul.cu
 
-# Get a human-readable summary table showing:
-# - CUDA kernels with execution time and call counts
-# - Memory operations and bandwidth analysis
-# - API call timing breakdown
+# Profile on L40S with CUDA API and NVTX trace, limit to 10 seconds
+chisel profile --nsys="--trace=cuda,nvtx --duration=10" matmul.cu --gpu-type l40s
+
+# Profile with detailed metrics using nsight-compute, including memory and instruction stats
+chisel profile --ncompute="--metrics sm__throughput.avg.pct_of_peak_sustained_active,dram__throughput.avg.pct_of_peak_sustained_active,sm__warps_active.avg,smsp__sass_average_branch_targets_threads_per_inst.avg" matmul.cu
+
+# Profile with both nsys and ncompute, with timeline and kernel stats
+chisel profile --nsys="--trace=cuda,osrt --sample=cpu" --ncompute="--section ComputeWorkloadAnalysis --section MemoryWorkloadAnalysis" matmul.cu
 ```
 
 **Results are saved to:** `chisel-results/TIMESTAMP/profile_summary.txt`
+
+All examples include:
+- **Kernel Performance**: Execution times, occupancy, and throughput analysis
+- **Memory Analysis**: Bandwidth utilization and transfer patterns
+- **API Timing**: CUDA/HIP/OpenCL API call breakdowns  
+- **Optimization Insights**: Automated suggestions for performance improvements
 
 ## GPU Support
 
@@ -181,8 +261,3 @@ pip install -e .
 rm -rf dist/ build/ *.egg-info && python -m build && twine upload dist/*
 ```
 
-## Testing
-
-```bash
-chisel profile --rocprofv3="--sys-trace" examples/simple-mm.hip
-```
