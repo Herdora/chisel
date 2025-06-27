@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="300" height="300" src="https://i.imgur.com/H32IKRZ.jpeg" alt="Chisel CLI logo" /> 
+  <img width="450" height="300" src="https://i.imgur.com/H32IKRZ.jpeg" alt="Chisel CLI logo" /> 
 	<h1>chisel</h1>
 </div>
 
