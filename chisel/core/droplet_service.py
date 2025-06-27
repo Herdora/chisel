@@ -129,6 +129,7 @@ echo "Setup complete"
 
     def get_or_create_droplet_by_type(self, gpu_type: GPUType) -> Droplet:
         """Create or reuse a droplet."""
+        console.print(f"[cyan]Ensuring {gpu_type.value} droplet is ready...[/cyan]")
         existing = self.get_droplet_by_type(gpu_type.value)
 
         if existing:

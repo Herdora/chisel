@@ -5,7 +5,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 
@@ -15,6 +15,10 @@ from .types.gpu_profiles import GPUType
 console = Console()
 
 CHISEL_PROFILING_DIR_NAME = "chisel-results"
+ROCPROFV3_DIR_NAME = "chisel-rocprofv3"
+NSYS_DIR_NAME = "chisel-nsys"
+NCOMPUTE_DIR_NAME = "chisel-ncompute"
+MNT_SHARE_DIR = "/mnt/share"
 
 
 @dataclass
@@ -26,6 +30,19 @@ class TargetInfo:
     file_path: Optional[Path] = None
     file_extension: Optional[str] = None
     compiler: Optional[str] = None
+
+
+@dataclass
+class ProfilerResult:
+    """Result from an individual profiler run."""
+
+    local_output_dir: Path
+    stdout: str
+    stderr: str
+    profile_files: List[str]
+    summary_file: Optional[str]
+    profile_type: str
+    message: str
 
 
 @dataclass
@@ -82,9 +99,10 @@ class ProfilingManager:
 
     def profile(
         self,
-        target: str,
+        command_to_profile: str,
         gpu_type: GPUType,
-        output_dir: Optional[str] = None,
+        files_to_sync: List[str] = [],
+        output_dir: Path = Path("./chisel-results"),
         rocprofv3_flag: Optional[str] = None,
         rocprof_compute_flag: Optional[str] = None,
         nsys_flag: Optional[str] = None,
@@ -94,10 +112,11 @@ class ProfilingManager:
         Execute a complete profiling workflow.
 
         Args:
-            target: File path or command to profile
-            gpu_type: GPU type override - "nvidia-h100" or "nvidia-l40s" for NVIDIA (optional)
-            output_dir: Custom output directory for results (optional)
-            rocprofv3_flag: Full command to run with rocprofv3 (AMD)
+            command_to_profile: The command that will be profiled on the remote server.
+            gpu_type: The GPU type to use for profiling.
+            files_to_sync: List of files to sync to the remote server.
+            output_dir: Custom output directory for results.
+            rocprofv3_flag: Full command to run with rocprofv3 (AMD).
             rocprof_compute_flag: Full command to run with rocprof-compute (AMD)
             nsys_flag: Full command to run with nsys (NVIDIA)
             ncompute_flag: Full command to run with ncu (NVIDIA)
@@ -107,52 +126,55 @@ class ProfilingManager:
         """
 
         try:
-            console.print(f"[cyan]Ensuring {gpu_type.value} droplet is ready...[/cyan]")
+            console.print(
+                f"[cyan]Starting profiling for {command_to_profile} on {gpu_type.value}[/cyan]"
+            )
             droplet_info = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
-            console.print(f"[green]Droplet {droplet_info.name} is ready[/green]")
 
-            target_info = self._get_target_info(target)
-            if target_info.is_source_file and target_info.file_path:
-                console.print(
-                    f"[cyan]Syncing {target_info.file_path.name} to remote server...[/cyan]"
-                )
-
-            if output_dir:
-                output_path = Path(output_dir)
-                output_path.mkdir(parents=True, exist_ok=True)
+            if not output_dir.exists():
+                output_dir.mkdir(parents=True, exist_ok=True)
             else:
-                timestamp = datetime.now().strftime("%H%M%S-%Y%m%d")
-                output_path = Path(f"./{CHISEL_PROFILING_DIR_NAME}-{timestamp}")
-                output_path.mkdir(parents=True, exist_ok=True)
+                console.print(
+                    f"[yellow]Overwriting existing output directory: {output_dir}[/yellow]"
+                )
+                output_dir.rmdir()
+                output_dir.mkdir(parents=True, exist_ok=True)
 
             all_results = []
             if rocprofv3_flag:
-                result = self.run_rocprofv3(droplet_info, target_info, output_path, rocprofv3_flag)
+                result = self.run_rocprofv3(
+                    command_to_profile, gpu_type, files_to_sync, output_dir, rocprofv3_flag
+                )
                 all_results.append(result)
             if rocprof_compute_flag:
                 result = self.run_rocprof_compute(
-                    droplet_info,
-                    target_info,
-                    output_path,
+                    command_to_profile,
+                    gpu_type,
+                    files_to_sync,
+                    output_dir,
                     rocprof_compute_flag,
                 )
                 all_results.append(result)
             if nsys_flag:
-                result = self.run_nsys(droplet_info, target_info, output_path, nsys_flag)
+                result = self.run_nsys(
+                    command_to_profile, gpu_type, files_to_sync, output_dir, nsys_flag
+                )
                 all_results.append(result)
             if ncompute_flag:
-                result = self.run_ncompute(droplet_info, target_info, output_path, ncompute_flag)
+                result = self.run_ncompute(
+                    command_to_profile, gpu_type, files_to_sync, output_dir, ncompute_flag
+                )
                 all_results.append(result)
 
             return ProfilingResults(
                 success=True,
-                output_dir=output_path,
+                output_dir=output_dir,
                 stdout="",
                 stderr="",
                 summary={
-                    "profile_files": [result["local_output_dir"] for result in all_results],
-                    "summary_file": all_results[0]["summary"]["summary_file"],
-                    "profile_type": all_results[0]["summary"]["profile_type"],
+                    "profile_files": [result.local_output_dir for result in all_results],
+                    "summary_file": all_results[0].summary_file if all_results else None,
+                    "profile_type": all_results[0].profile_type if all_results else "unknown",
                     "message": "Profiling completed. Generated profile data.",
                 },
             )
@@ -169,138 +191,61 @@ class ProfilingManager:
 
     def run_rocprofv3(
         self,
-        droplet_info: Droplet,
-        target: TargetInfo,
-        local_output_dir: Path,
-        extra_flags: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        command_to_profile: str,
+        gpu_type: GPUType,
+        files_to_sync: List[str],
+        output_dir: Path,
+        rocprofv3_flags: str,
+    ) -> ProfilerResult:
         """Run rocprofv3 on the droplet."""
+        droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        self._ensure_rocprofv3(droplet_with_gpu)
 
-        # Validate ROCm and ensure rocprofv3 is available
-        self._ensure_rocprofv3(droplet_info)
+        remote_profile_dir = f"{MNT_SHARE_DIR}/{ROCPROFV3_DIR_NAME}"
 
-        # Check if this is a Python file and ensure ROCm Python libraries are available
-        is_python = target.file_extension == ".py"
-        if is_python:
-            self._ensure_pytorch_rocm(droplet_info)
+        for file in files_to_sync:
+            self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
+            if file.endswith(".py"):
+                self._ensure_pytorch_rocm(droplet_with_gpu)
 
-        # Use mounted volume path that container can access
-        remote_profile_dir = "/mnt/share/chisel-rocprofv3"
+        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        result = droplet_with_gpu.run_container_command(RESET_CMD)
+        if result["exit_code"] != 0:
+            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
-        # Get the source file name and binary name
-        source_file = target.file_path or Path(target.raw_target)
-        source_name = source_file.name
-        binary_name = source_file.stem
-        remote_source = f"{remote_profile_dir}/{source_name}"
-        remote_binary = f"{remote_profile_dir}/{binary_name}"
-
-        EXPORT_LIB_CMD = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/"
-        RESET_DIR_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
         CD_CMD = f"cd {remote_profile_dir}"
-
-        if is_python:
-            # For Python files, we don't need to build - just run with python
-            # Note: Virtual environment is automatically activated in the container
-            PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- python {remote_source}"
-
-            # First reset directory, then sync file, then profile directly
-            reset_cmd = f"{EXPORT_LIB_CMD} && {RESET_DIR_CMD}"
-            result = droplet_info.run_container_command(reset_cmd)
-            if result["exit_code"] != 0:
-                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
-
-            # Now sync the file to the clean directory
-            _ = self._sync_file(
-                droplet_info,
-                target.file_path or Path(target.raw_target),
-                remote_profile_dir,
-            )
-
-            # Test if the Python script runs standalone first
-            console.print("[cyan]Testing if Python script runs standalone...[/cyan]")
-            test_cmd = f"{CD_CMD} && timeout 30 python {remote_source}"
-
-            test_result = droplet_info.run_container_command(test_cmd, timeout=60)
-
-            if test_result["exit_code"] != 0:
-                console.print(
-                    f"[red]Python script test failed with exit code {test_result['exit_code']}[/red]"
-                )
-                if test_result.get("stdout"):
-                    console.print(f"[red]STDOUT:[/red] {test_result['stdout']}")
-                if test_result.get("stderr"):
-                    console.print(f"[red]STDERR:[/red] {test_result['stderr']}")
-                console.print("[yellow]Script has issues - profiling may fail[/yellow]")
-            else:
-                console.print("[green]✓ Python script runs successfully[/green]")
-
-            # Profile directly with python
-            profile_cmd = f"{CD_CMD} && {PROFILE_CMD}"
-            full_cmd = profile_cmd
-            console.print(
-                f"[cyan]Running AMD rocprofv3 on Python script with flags '{full_cmd}'[/cyan]"
-            )
-        else:
-            # For compiled languages, build then profile
-            BUILD_CMD = f"hipcc {remote_source} -o {remote_binary}"
-            PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {extra_flags or '--sys-trace'} -- {remote_binary}"
-
-            # First reset directory, then sync file, then build and profile
-            reset_cmd = f"{EXPORT_LIB_CMD} && {RESET_DIR_CMD}"
-            result = droplet_info.run_container_command(reset_cmd)
-            if result["exit_code"] != 0:
-                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
-
-            # Now sync the file to the clean directory
-            _ = self._sync_file(
-                droplet_info,
-                target.file_path or Path(target.raw_target),
-                remote_profile_dir,
-            )
-
-            # Build and profile
-            build_profile_cmd = f"{CD_CMD} && {BUILD_CMD} && {PROFILE_CMD}"
-            full_cmd = build_profile_cmd
-            console.print(f"[cyan]Running AMD rocprofv3 with flags '{full_cmd}'[/cyan]")
-
-        rocprof_result = droplet_info.run_container_command(full_cmd, timeout=600)
+        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {rocprofv3_flags} -- {command_to_profile}"
+        FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
+        console.print(f"[cyan]Running AMD rocprofv3 with command: {FULL_CMD}[/cyan]")
+        rocprof_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
         if rocprof_result["exit_code"] != 0:
-            # Show detailed error information to help with debugging
-            console.print(
-                f"[red]rocprofv3 command failed with exit code {rocprof_result['exit_code']}[/red]"
-            )
-            if rocprof_result.get("stdout"):
-                console.print(f"[red]STDOUT:[/red] {rocprof_result['stdout']}")
-            if rocprof_result.get("stderr"):
-                console.print(f"[red]STDERR:[/red] {rocprof_result['stderr']}")
-            console.print(f"[red]Command that failed:[/red] {full_cmd}")
             raise RuntimeError(
-                f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}. "
-                f"Check the output above for details."
+                f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}"
             )
 
-        rocprof_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
-        self._cleanup_amd_remote(droplet_info, remote_profile_dir)
+        rocprof_files = self._download_results(
+            droplet_with_gpu, remote_profile_dir, output_dir
+        )  # TODO: Make this 'feel' better
+        self._cleanup_amd_remote(droplet_with_gpu, remote_profile_dir)
 
-        return {
-            "local_output_dir": local_output_dir,
-            "stdout": "AMD rocprofv3 profiling completed successfully",
-            "stderr": "",
-            "summary": {
-                "profile_files": rocprof_files,
-                "summary_file": rocprof_files[0] if rocprof_files else None,
-                "profile_type": "rocprofv3",
-                "message": "AMD rocprofv3 profiling completed. Generated profile summary.",
-            },
-        }
+        return ProfilerResult(
+            local_output_dir=output_dir,
+            stdout="AMD rocprofv3 profiling completed successfully",
+            stderr="",
+            profile_files=rocprof_files,
+            summary_file=rocprof_files[0] if rocprof_files else None,
+            profile_type="rocprofv3",
+            message="AMD rocprofv3 profiling completed. Generated profile summary.",
+        )
 
     def run_rocprof_compute(
         self,
-        droplet_info: Droplet,
-        target: TargetInfo,
-        local_output_dir: Path,
-        extra_flags: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        command_to_profile: str,
+        gpu_type: GPUType,
+        files_to_sync: List[str],
+        output_dir: Path,
+        rocprof_compute_flags: str,
+    ) -> ProfilerResult:
         """Run rocprof-compute on the droplet."""
         # TODO: Implement rocprof-compute when ready
 
@@ -309,139 +254,93 @@ class ProfilingManager:
 
     def run_nsys(
         self,
-        droplet_info: Droplet,
-        target: TargetInfo,
-        local_output_dir: Path,
-        extra_flags: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        command_to_profile: str,
+        gpu_type: GPUType,
+        files_to_sync: List[str],
+        output_dir: Path,
+        nsys_flags: str,
+    ) -> ProfilerResult:
         """Run nsys on the droplet."""
-        self._ensure_nvidia_profilers(droplet_info)
+        droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        self._ensure_nvidia_profilers(droplet_with_gpu)
 
-        # If this is a Python file, ensure PyTorch is available for GPU libraries
-        is_python_file = target.is_source_file and target.file_extension == ".py"
-        if is_python_file:
-            self._ensure_pytorch(droplet_info)
+        remote_profile_dir = f"{MNT_SHARE_DIR}/{NSYS_DIR_NAME}"
 
-        # Use mounted volume path that container can access
-        remote_profile_dir = "/mnt/share/chisel-nsys"
+        for file in files_to_sync:
+            self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
+            if file.endswith(".py"):
+                self._ensure_pytorch(droplet_with_gpu)
 
-        # Check if this is a Python file that needs to be synced
-        if is_python_file:
-            # For Python files, sync the file and construct the command
-            source_file = target.file_path or Path(target.raw_target)
-            remote_script = f"{remote_profile_dir}/{source_file.name}"
-            command_to_run = f"python {remote_script}"
+        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        result = droplet_with_gpu.run_container_command(RESET_CMD)
+        if result["exit_code"] != 0:
+            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
-            # Sync the Python file to remote
-            reset_cmd = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
-            result = droplet_info.run_container_command(reset_cmd)
-            if result["exit_code"] != 0:
-                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
-
-            _ = self._sync_file(droplet_info, source_file, remote_profile_dir)
-        else:
-            # For other commands (non-Python files or direct commands), use as-is
-            command_to_run = target.raw_target
-
-        # Combine setup and profiling into a single atomic command to ensure cd works properly
-        def make_full_cmd(remote_profile_dir: str, extra_flags: str):
-            if is_python_file:
-                # For Python files, we already set up the directory above
-                return f"cd {remote_profile_dir} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command_to_run}"
-            else:
-                # For other commands, set up directory as part of the command
-                return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && nsys profile {extra_flags or '--stats=true --force-overwrite=true'} -o nvidia_profile -- {command_to_run}"
-
-        full_cmd = make_full_cmd(
-            remote_profile_dir, extra_flags or "--stats=true --force-overwrite=true"
-        )
-        console.print(f"[cyan]Running NVIDIA nsys with flags '{full_cmd}'[/cyan]")
-        nsys_result = droplet_info.run_container_command(full_cmd, timeout=600)
+        CD_CMD = f"cd {remote_profile_dir}"
+        PROFILE_CMD = f"nsys profile {nsys_flags} -o nvidia_profile -- {command_to_profile}"
+        FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
+        console.print(f"[cyan]Running NVIDIA nsys with command: {FULL_CMD}[/cyan]")
+        nsys_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
         if nsys_result["exit_code"] != 0:
             raise RuntimeError(f"nsys profiling failed with exit code {nsys_result['exit_code']}")
 
-        nvidia_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
+        nvidia_files = self._download_results(droplet_with_gpu, remote_profile_dir, output_dir)
+        self._cleanup_nvidia_remote(droplet_with_gpu, remote_profile_dir)
 
-        self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
-
-        return {
-            "local_output_dir": local_output_dir,
-            "stdout": "NVIDIA nsys profiling completed successfully",
-            "stderr": "",
-            "summary": {
-                "profile_files": nvidia_files,
-                "summary_file": nvidia_files[0] if nvidia_files else None,
-                "profile_type": "nsys",
-                "message": "NVIDIA nsys profiling completed. Generated profile data.",
-            },
-        }
+        return ProfilerResult(
+            local_output_dir=output_dir,
+            stdout="NVIDIA nsys profiling completed successfully",
+            stderr="",
+            profile_files=nvidia_files,
+            summary_file=nvidia_files[0] if nvidia_files else None,
+            profile_type="nsys",
+            message="NVIDIA nsys profiling completed. Generated profile data.",
+        )
 
     def run_ncompute(
         self,
-        droplet_info: Droplet,
-        target: TargetInfo,
-        local_output_dir: Path,
-        extra_flags: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        command_to_profile: str,
+        gpu_type: GPUType,
+        files_to_sync: List[str],
+        output_dir: Path,
+        ncompute_flags: str,
+    ) -> ProfilerResult:
         """Run ncu (nsight-compute) on the droplet."""
-        self._ensure_nvidia_profilers(droplet_info)
+        droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        self._ensure_nvidia_profilers(droplet_with_gpu)
 
-        # If this is a Python file, ensure PyTorch is available for GPU libraries
-        is_python_file = target.is_source_file and target.file_extension == ".py"
-        if is_python_file:
-            self._ensure_pytorch(droplet_info)
+        remote_profile_dir = f"{MNT_SHARE_DIR}/{NCOMPUTE_DIR_NAME}"
 
-        # Use mounted volume path that container can access
-        remote_profile_dir = "/mnt/share/chisel-ncompute"
+        for file in files_to_sync:
+            self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
+            if file.endswith(".py"):
+                self._ensure_pytorch(droplet_with_gpu)
 
-        # Check if this is a Python file that needs to be synced
-        if is_python_file:
-            # For Python files, sync the file and construct the command
-            source_file = target.file_path or Path(target.raw_target)
-            remote_script = f"{remote_profile_dir}/{source_file.name}"
-            command_to_run = f"python {remote_script}"
+        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        result = droplet_with_gpu.run_container_command(RESET_CMD)
+        if result["exit_code"] != 0:
+            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
-            # Sync the Python file to remote
-            reset_cmd = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
-            result = droplet_info.run_container_command(reset_cmd)
-            if result["exit_code"] != 0:
-                raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
-
-            _ = self._sync_file(droplet_info, source_file, remote_profile_dir)
-        else:
-            # For other commands (non-Python files or direct commands), use as-is
-            command_to_run = target.raw_target
-
-        # Combine setup and profiling into a single atomic command to ensure cd works properly
-        def make_full_cmd(remote_profile_dir: str, extra_flags: str):
-            if is_python_file:
-                # For Python files, we already set up the directory above
-                return f"cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command_to_run}"
-            else:
-                # For other commands, set up directory as part of the command
-                return f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir} && cd {remote_profile_dir} && ncu {extra_flags or '--set full --force-overwrite'} -o nvidia_ncompute_profile -- {command_to_run}"
-
-        full_cmd = make_full_cmd(remote_profile_dir, extra_flags or "--set full --force-overwrite")
-        console.print(f"[cyan]Running NVIDIA ncu with flags '{full_cmd}'[/cyan]")
-        ncu_result = droplet_info.run_container_command(full_cmd, timeout=600)
+        CD_CMD = f"cd {remote_profile_dir}"
+        PROFILE_CMD = f"ncu {ncompute_flags} -o nvidia_ncompute_profile -- {command_to_profile}"
+        FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
+        console.print(f"[cyan]Running NVIDIA ncu with command: {FULL_CMD}[/cyan]")
+        ncu_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
         if ncu_result["exit_code"] != 0:
             raise RuntimeError(f"ncu profiling failed with exit code {ncu_result['exit_code']}")
 
-        nvidia_files = self._download_results(droplet_info, remote_profile_dir, local_output_dir)
+        nvidia_files = self._download_results(droplet_with_gpu, remote_profile_dir, output_dir)
+        self._cleanup_nvidia_remote(droplet_with_gpu, remote_profile_dir)
 
-        self._cleanup_nvidia_remote(droplet_info, remote_profile_dir)
-
-        return {
-            "local_output_dir": local_output_dir,
-            "stdout": "NVIDIA ncu profiling completed successfully",
-            "stderr": "",
-            "summary": {
-                "profile_files": nvidia_files,
-                "summary_file": nvidia_files[0] if nvidia_files else None,
-                "profile_type": "ncompute",
-                "message": "NVIDIA ncu profiling completed. Generated profile data.",
-            },
-        }
+        return ProfilerResult(
+            local_output_dir=output_dir,
+            stdout="NVIDIA ncu profiling completed successfully",
+            stderr="",
+            profile_files=nvidia_files,
+            summary_file=nvidia_files[0] if nvidia_files else None,
+            profile_type="ncompute",
+            message="NVIDIA ncu profiling completed. Generated profile data.",
+        )
 
     def _get_target_info(self, target: str) -> TargetInfo:
         """Analyze the target to determine if it's a file or command."""
@@ -532,7 +431,7 @@ class ProfilingManager:
     def _ensure_nvidia_profilers(self, droplet_info: Droplet):
         """Ensure both nsight-compute and nsight-systems are installed on the droplet."""
         try:
-            # Check if both profilers are already available
+            # First check if the container exists and is working
             check_cmd = "which ncu && ncu --version && which nsys && nsys --version"
             result = droplet_info.run_container_command(check_cmd)
 
@@ -540,26 +439,115 @@ class ProfilingManager:
                 console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
                 return
 
+            # If container command failed, check if it's a container issue
+            console.print("[yellow]Profilers not found, checking container status...[/yellow]")
+
+            # Debug the container status
+            self.debug_droplet_container_status(droplet_info)
+
+            # Try to fix the container
+            if not self.fix_droplet_container(droplet_info):
+                raise RuntimeError("Failed to fix droplet container setup")
+
+            # Now try installing profilers in the working container
             console.print(
                 "[yellow]Installing NVIDIA profilers (nsight-compute + nsight-systems)...[/yellow]"
             )
 
-            # Install both profilers with timeout
-            install_cmd = """
-            timeout 600 bash -c '
+            # First, try installing from snap (most reliable)
+            snap_install_cmd = """
+            timeout 900 bash -c '
             apt-get update -y && 
-            apt-get install -y nvidia-nsight-compute nvidia-nsight-systems
+            apt-get install -y snapd && 
+            snap install nsight-compute nsight-systems && 
+            ln -sf /snap/nsight-compute/current/bin/ncu /usr/local/bin/ncu && 
+            ln -sf /snap/nsight-systems/current/bin/nsys /usr/local/bin/nsys &&
+            echo "✓ Installed via snap"
             '
             """
 
-            install_result = droplet_info.run_container_command(install_cmd, timeout=700)
+            console.print("[cyan]Trying snap installation...[/cyan]")
+            snap_result = droplet_info.run_container_command(snap_install_cmd, timeout=1000)
 
-            if install_result["exit_code"] != 0:
-                raise RuntimeError(
-                    "Failed to install NVIDIA profilers. This may be due to package repository issues or network connectivity."
+            if snap_result["exit_code"] == 0:
+                console.print("[green]✓ NVIDIA profilers installed via snap[/green]")
+            else:
+                console.print(
+                    "[yellow]Snap installation failed, trying alternative methods...[/yellow]"
                 )
 
-            # Verify both installations
+                # Try installing from NVIDIA's CUDA repositories
+                cuda_repo_install_cmd = """
+                timeout 900 bash -c '
+                apt-get update -y && 
+                apt-get install -y wget gnupg && 
+                wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub | apt-key add - && 
+                echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64 /" > /etc/apt/sources.list.d/cuda.list && 
+                apt-get update -y && 
+                apt-get install -y nsight-compute nsight-systems-cli && 
+                echo "✓ Installed via NVIDIA CUDA repository"
+                '
+                """
+
+                console.print("[cyan]Trying NVIDIA CUDA repository installation...[/cyan]")
+                cuda_result = droplet_info.run_container_command(
+                    cuda_repo_install_cmd, timeout=1000
+                )
+
+                if cuda_result["exit_code"] != 0:
+                    console.print(
+                        "[yellow]CUDA repository installation failed, trying direct download...[/yellow]"
+                    )
+
+                    # Last resort: Download and install manually
+                    direct_install_cmd = """
+                    timeout 1200 bash -c '
+                    cd /tmp && 
+                    wget -q https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2023_3_1/nsight-compute-linux-2023.3.1.4-33567449.run && 
+                    wget -q https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2023_4_1/nsight-systems-linux-public-2023.4.1.97-33513133.run && 
+                    chmod +x nsight-compute-linux-*.run && 
+                    chmod +x nsight-systems-linux-*.run && 
+                    ./nsight-compute-linux-*.run --silent --toolkit --installpath=/opt/nvidia/nsight-compute && 
+                    ./nsight-systems-linux-*.run --silent --accept && 
+                    ln -sf /opt/nvidia/nsight-compute/ncu /usr/local/bin/ncu && 
+                    ln -sf /opt/nvidia/nsight-systems/bin/nsys /usr/local/bin/nsys && 
+                    echo "✓ Installed via direct download"
+                    '
+                    """
+
+                    console.print("[cyan]Trying direct download installation...[/cyan]")
+                    direct_result = droplet_info.run_container_command(
+                        direct_install_cmd, timeout=1300
+                    )
+
+                    if direct_result["exit_code"] != 0:
+                        # Show detailed error information for debugging
+                        console.print(
+                            "[yellow]All installation methods failed. Checking what's available...[/yellow]"
+                        )
+
+                        debug_cmd = """
+                        echo "=== Available packages ===" && 
+                        apt search nsight 2>/dev/null | head -10 && 
+                        echo "=== CUDA toolkit ===" && 
+                        ls -la /usr/local/cuda*/bin/ncu* 2>/dev/null || echo "No CUDA toolkit found" && 
+                        echo "=== System info ===" && 
+                        lsb_release -a && 
+                        uname -a
+                        """
+
+                        debug_result = droplet_info.run_container_command(debug_cmd)
+                        console.print("[cyan]Debug information:[/cyan]")
+                        console.print(debug_result.get("stdout", "No debug output"))
+                        console.print("[red]Debug stderr:[/red]")
+                        console.print(debug_result.get("stderr", "No debug stderr"))
+
+                        raise RuntimeError(
+                            "Failed to install NVIDIA profilers using all available methods. "
+                            "The droplet may not have the required NVIDIA drivers or repositories configured."
+                        )
+
+            # Verify both installations work
             verify_ncu_result = droplet_info.run_container_command("which ncu && ncu --version")
             verify_nsys_result = droplet_info.run_container_command("which nsys && nsys --version")
 
@@ -573,7 +561,9 @@ class ProfilingManager:
                     "nsight-systems installation verification failed. The nsys command is not available after installation."
                 )
 
-            console.print("[green]✓ NVIDIA profilers installed successfully (ncu + nsys)[/green]")
+            console.print(
+                "[green]✓ NVIDIA profilers installed and verified successfully (ncu + nsys)[/green]"
+            )
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
@@ -618,9 +608,6 @@ class ProfilingManager:
     def _ensure_rocprofv3(self, droplet_info: Droplet):
         """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
         try:
-            # First validate that ROCm is properly installed
-            self._validate_rocm_installation(droplet_info)
-
             # Check if rocprofv3 is already available
             check_cmd = "which rocprofv3 && echo 'rocprofv3 available'"
             result = droplet_info.run_container_command(check_cmd)
@@ -628,6 +615,19 @@ class ProfilingManager:
             if result["exit_code"] == 0:
                 console.print("[green]✓ rocprofv3 already available[/green]")
                 return
+
+            # If container command failed, check if it's a container issue
+            console.print("[yellow]rocprofv3 not found, checking container status...[/yellow]")
+
+            # Debug the container status
+            self.debug_droplet_container_status(droplet_info)
+
+            # Try to fix the container
+            if not self.fix_droplet_container(droplet_info):
+                raise RuntimeError("Failed to fix droplet container setup")
+
+            # First validate that ROCm is properly installed
+            self._validate_rocm_installation(droplet_info)
 
             console.print("[yellow]Installing rocprofv3 and dependencies...[/yellow]")
 
@@ -1093,3 +1093,161 @@ class ProfilingManager:
         except Exception as e:
             console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
             console.print("[yellow]Continuing anyway - container may still be starting[/yellow]")
+
+    def debug_droplet_container_status(self, droplet_info: Droplet):
+        """Debug the Docker container status on the droplet."""
+        try:
+            console.print("[cyan]🔍 Debugging droplet container status...[/cyan]")
+
+            # Check if Docker is running
+            docker_status_cmd = "systemctl status docker --no-pager -l"
+            result = droplet_info.run_command(docker_status_cmd)
+            console.print("[cyan]Docker service status:[/cyan]")
+            console.print(result.get("stdout", "No output"))
+
+            # Check Docker containers
+            containers_cmd = "docker ps -a"
+            result = droplet_info.run_command(containers_cmd)
+            console.print("[cyan]Docker containers:[/cyan]")
+            console.print(result.get("stdout", "No containers"))
+
+            # Check Docker images
+            images_cmd = "docker images"
+            result = droplet_info.run_command(images_cmd)
+            console.print("[cyan]Docker images:[/cyan]")
+            console.print(result.get("stdout", "No images"))
+
+            # Check if ml container exists but is stopped
+            ml_status_cmd = "docker inspect ml 2>/dev/null || echo 'Container ml does not exist'"
+            result = droplet_info.run_command(ml_status_cmd)
+            console.print("[cyan]ML container status:[/cyan]")
+            console.print(result.get("stdout", "No ml container info"))
+
+            # Check cloud-init logs
+            cloud_init_cmd = "cloud-init status && tail -50 /var/log/cloud-init-output.log"
+            result = droplet_info.run_command(cloud_init_cmd)
+            console.print("[cyan]Cloud-init status and logs:[/cyan]")
+            console.print(result.get("stdout", "No cloud-init logs"))
+
+            # Check GPU devices
+            gpu_cmd = "ls -la /dev/kfd /dev/dri/ 2>/dev/null || echo 'No GPU devices found'"
+            result = droplet_info.run_command(gpu_cmd)
+            console.print("[cyan]GPU devices:[/cyan]")
+            console.print(result.get("stdout", "No GPU info"))
+
+        except Exception as e:
+            console.print(f"[red]Debug failed: {e}[/red]")
+
+    def wait_for_cloud_init(self, droplet_info: Droplet, timeout: int = 600):
+        """Wait for cloud-init to complete setup."""
+        import time
+
+        console.print("[cyan]⏳ Waiting for cloud-init to complete initial setup...[/cyan]")
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            # Check cloud-init status
+            result = droplet_info.run_command("cloud-init status")
+            status = result.get("stdout", "").strip()
+
+            if "status: done" in status:
+                console.print("[green]✓ Cloud-init setup completed[/green]")
+                return True
+            elif "status: error" in status:
+                console.print(
+                    "[yellow]⚠️ Cloud-init completed with errors, but continuing...[/yellow]"
+                )
+                return True
+            elif "status: running" in status:
+                console.print(
+                    f"[cyan]Cloud-init still running... ({int(time.time() - start_time)}s elapsed)[/cyan]"
+                )
+                time.sleep(10)
+            else:
+                console.print(f"[yellow]Unknown cloud-init status: {status}[/yellow]")
+                time.sleep(10)
+
+        console.print("[yellow]⚠️ Cloud-init timeout, but continuing anyway...[/yellow]")
+        return False
+
+    def fix_droplet_container(self, droplet_info: Droplet):
+        """Try to fix the droplet container setup."""
+        try:
+            console.print("[yellow]🔧 Attempting to fix droplet container setup...[/yellow]")
+
+            # Wait for cloud-init to finish if it's still running
+            self.wait_for_cloud_init(droplet_info)
+
+            # First, try to start the existing ml container if it exists but is stopped
+            start_existing_cmd = "docker start ml"
+            result = droplet_info.run_command(start_existing_cmd)
+
+            if result.get("exit_code") == 0:
+                console.print("[green]✓ Started existing ml container[/green]")
+                return True
+
+            # If that fails, try to create the container from scratch
+            console.print("[yellow]Creating new ml container...[/yellow]")
+
+            # Pull the image if it doesn't exist
+            pull_cmd = "docker pull rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0"
+            result = droplet_info.run_command(pull_cmd, timeout=600)
+
+            if result.get("exit_code") != 0:
+                console.print("[red]Failed to pull Docker image[/red]")
+                return False
+
+            # Create and start the ml container
+            create_container_cmd = """
+            docker run -dit \\
+              --name ml \\
+              --restart=always \\
+              --network host \\
+              --ipc=host \\
+              --device=/dev/kfd \\
+              --device=/dev/dri \\
+              --group-add video \\
+              --cap-add=SYS_PTRACE \\
+              --security-opt seccomp=unconfined \\
+              -v /mnt/share:/workspace \\
+              rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0 bash
+            """
+
+            result = droplet_info.run_command(create_container_cmd, timeout=120)
+
+            if result.get("exit_code") != 0:
+                console.print(
+                    f"[red]Failed to create ml container: {result.get('stderr', '')}[/red]"
+                )
+                return False
+
+            # Set up the container environment
+            setup_cmd = """
+            docker exec ml bash -c "
+              apt-get update && \\
+              apt-get install -y rocprofiler-dev roctracer-dev rocm-dev rocm-profiler wget gnupg build-essential || echo 'Some packages may not be available' && \\
+              python -m venv /opt/venv && \\
+              source /opt/venv/bin/activate && \\
+              pip install --upgrade pip setuptools && \\
+              echo 'source /opt/venv/bin/activate' >> /root/.bashrc && \\
+              echo 'export ROCM_PATH=/opt/rocm' >> /root/.bashrc && \\
+              echo 'export PATH=$PATH:/opt/rocm/bin' >> /root/.bashrc && \\
+              echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc && \\
+              mkdir -p /mnt/share
+            "
+            """
+
+            result = droplet_info.run_command(setup_cmd, timeout=300)
+
+            if result.get("exit_code") == 0:
+                console.print("[green]✓ Container setup completed successfully[/green]")
+                return True
+            else:
+                console.print(
+                    f"[yellow]Container setup had some issues but may still work: {result.get('stderr', '')}[/yellow]"
+                )
+                return True  # Continue anyway, basic container should work
+
+        except Exception as e:
+            console.print(f"[red]Failed to fix container: {e}[/red]")
+            return False

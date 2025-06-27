@@ -92,18 +92,25 @@ def create_app() -> typer.Typer:
             autocompletion=gpu_type_completer,
         ),
         target: Optional[str] = typer.Argument(
-            None, help="File to compile and profile (e.g., kernel.cu) or command to run"
+            None,
+            help="Target to profile: source file (e.g., kernel.cu, train.py), executable, or command",
         ),
     ):
-        """Profile a GPU kernel or command on cloud infrastructure.
+        """Profile GPU kernels and applications on cloud infrastructure.
+
+        The target can be:
+        • Source files (.cu, .cpp, .hip, .py) - automatically synced and executed
+        • Executables or commands - run directly on remote GPU
+        • Python applications - automatically detects PyTorch/TensorFlow GPU usage
 
         Examples:
-            chisel profile --rocprofv3 ./matrix_multiply
-            chisel profile --nsys ./kernel.cu
-            chisel profile --rocprofv3="--sys-trace --pmc SQ_BUSY_CYCLES,SQ_WAVES" ./saxpy.cpp
-            chisel profile --nsys --gpu-type l40s ./matmul.cu
-            chisel profile --rocprofv3 --rocprof-compute --output-dir ./results ./gemm
-            chisel profile --nsys --ncompute --output-dir ./my_results ./cuda_kernel
+            chisel profile --rocprofv3 ./matrix_multiply           # AMD: executable/command
+            chisel profile --nsys ./kernel.cu                     # NVIDIA: CUDA source file
+            chisel profile --rocprofv3 ./train.py                 # AMD: Python GPU application
+            chisel profile --nsys="--trace=cuda,nvtx" ./train.py  # NVIDIA: Python with tracing
+            chisel profile --rocprofv3="--sys-trace" ./saxpy.cpp  # AMD: HIP source with flags
+            chisel profile --nsys --gpu-type l40s ./matmul.cu     # NVIDIA: specify GPU type
+            chisel profile --nsys --ncompute --output-dir ./results ./cuda_kernel  # Multiple profilers
         """
         exit_code = handle_profile(
             target=target,

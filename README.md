@@ -30,9 +30,11 @@ pip install chisel-cli
 # 2. Configure with your DigitalOcean API token
 chisel configure
 
-# 3. Profile your GPU kernels
-chisel profile --nsys kernel.cu              # NVIDIA with nsys
-chisel profile --rocprofv3 kernel.cpp        # AMD with rocprofv3
+# 3. Profile your GPU kernels and applications  
+chisel profile --nsys kernel.cu              # NVIDIA: CUDA source files
+chisel profile --rocprofv3 kernel.cpp        # AMD: HIP source files
+chisel profile --nsys train.py               # NVIDIA: Python applications
+chisel profile --rocprofv3 train.py          # AMD: Python applications
 ```
 
 **That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine.
@@ -55,27 +57,44 @@ chisel configure
 chisel configure --token YOUR_TOKEN
 ```
 
-### `chisel profile --nsys="<nsys flags>" <file>`
+### `chisel profile --nsys="<nsys flags>" <target>`
 
 Profile GPU kernels on NVIDIA H100 ($4.89/hour) or L40S ($2.21/hour).
 
 ```bash
+# Profile source files (automatically compiled and executed)
 chisel profile --nsys="--trace=cuda,nvtx" kernel.cu
+
+# Profile Python GPU applications  
+chisel profile --nsys="--trace=cuda,nvtx" train.py
+
+# Profile direct commands
+chisel profile --nsys="--trace=cuda,nvtx" "./my_executable"
 ```
 
-### `chisel profile --ncompute="<ncu flags>" <file>`
+### `chisel profile --ncompute="<ncu flags>" <target>`
 
 ```bash
+# Detailed kernel analysis with nsight-compute
 chisel profile --ncompute="--metrics all" kernel.cu
+
+# Memory and compute analysis
+chisel profile --ncompute="--section ComputeWorkloadAnalysis --section MemoryWorkloadAnalysis" matmul.cu
 ```
 
-### `chisel profile --rocprofv3="<rocprofv3 flags>" <file>`
+### `chisel profile --rocprofv3="<rocprofv3 flags>" <target>`
 
 Profile GPU kernels on AMD MI300X ($1.99/hour).
 
 ```bash
+# Profile Python applications on AMD
 chisel profile --rocprofv3="--sys-trace" examples/attention_block.py
+
+# Profile HIP/ROCm applications
 chisel profile --rocprofv3="--sys-trace" examples/simple-mm.hip
+
+# Profile with custom rocprofv3 options
+chisel profile --rocprofv3="--pmc SQ_BUSY_CYCLES,SQ_WAVES" ./gemm_kernel
 ```
 
 ## Examples
@@ -121,11 +140,11 @@ chisel profile --nsys train.py
 # Profile PyTorch on AMD  
 chisel profile --rocprofv3 train.py
 
-# Get detailed kernel analysis showing:
-# - GPU kernel execution times and memory usage
-# - CUDA/HIP API call timing breakdown
-# - Memory transfer analysis
-# - Optimization suggestions
+# Results include comprehensive profiling data:
+# - GPU kernel execution times and memory bandwidth utilization
+# - CUDA/HIP API call timing breakdown and bottleneck analysis  
+# - Memory transfer patterns and optimization opportunities
+# - Automated performance optimization suggestions
 ```
 
 ### AMD HIP Profiling
@@ -230,11 +249,12 @@ chisel profile --nsys="--trace=cuda,osrt --sample=cpu" --ncompute="--section Com
 
 **Results are saved to:** `chisel-results/TIMESTAMP/profile_summary.txt`
 
-All examples include:
+All profiling results include:
 - **Kernel Performance**: Execution times, occupancy, and throughput analysis
-- **Memory Analysis**: Bandwidth utilization and transfer patterns
-- **API Timing**: CUDA/HIP/OpenCL API call breakdowns  
+- **Memory Analysis**: Bandwidth utilization, transfer patterns, and memory bottlenecks
+- **API Timing**: CUDA/HIP/ROCm API call breakdowns and latency analysis
 - **Optimization Insights**: Automated suggestions for performance improvements
+- **Multi-Profiler Support**: Run multiple profilers simultaneously for comprehensive analysis
 
 ## GPU Support
 

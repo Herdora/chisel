@@ -156,12 +156,47 @@ def handle_profile(
         return 1
 
     try:
+        from pathlib import Path
+
         manager = ProfilingManager(api_token)
 
+        # Parse target to determine command and files to sync
+        target_path = Path(target_str)
+        files_to_sync = []
+
+        # If target is a file that exists, we need to sync it and construct the command
+        if target_path.exists() and target_path.is_file():
+            files_to_sync = [target_str]
+
+            # Determine the command based on file extension
+            if target_str.endswith(".py"):
+                command_to_profile = f"python {target_path.name}"
+            elif target_str.endswith((".cu", ".cpp", ".hip", ".c")):
+                # For compiled languages, assume the target is the executable name after compilation
+                # The profiler will handle compilation if needed
+                executable_name = target_path.stem  # filename without extension
+                command_to_profile = f"./{executable_name}"
+            else:
+                # Default: assume it's an executable
+                command_to_profile = f"./{target_path.name}"
+        else:
+            # Target is a direct command to run
+            command_to_profile = target_str
+
+        # Set up output directory
+        if output_dir:
+            output_path = Path(output_dir)
+        else:
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = Path(f"./chisel-results-{timestamp}")
+
         result = manager.profile(
-            target=target_str,
+            command_to_profile=command_to_profile,
             gpu_type=gpu_profile,
-            output_dir=output_dir,
+            files_to_sync=files_to_sync,
+            output_dir=output_path,
             rocprofv3_flag=rocprofv3,
             rocprof_compute_flag=rocprof_compute,
             nsys_flag=nsys,

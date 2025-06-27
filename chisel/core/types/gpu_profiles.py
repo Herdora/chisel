@@ -60,3 +60,25 @@ GPU_PROFILES: Dict[GPUType, GPUProfile] = {
     GPUType.NVIDIA_H100: NVIDIA_H100,
     GPUType.NVIDIA_L40S: NVIDIA_L40S,
 }
+
+
+GPU_TYPE_TO_STRING = {
+    GPUType.AMD_MI300X: "mi300x",
+    GPUType.NVIDIA_H100: "h100",
+    GPUType.NVIDIA_L40S: "l40s",
+}
+
+
+def get_gpu_type_from_command(command: str) -> GPUType:
+    """Get the GPU type from the command."""
+    if "mi300x" in command:
+        return GPUType.AMD_MI300X
+    elif "h100" in command:
+        return GPUType.NVIDIA_H100
+    elif "l40s" in command:
+        return GPUType.NVIDIA_L40S
+    else:
+        raise ValueError(f"Could not determine GPU type from command: {command}")
+
+
+# TODO: figure out best way to name these.
