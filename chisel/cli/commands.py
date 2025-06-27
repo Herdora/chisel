@@ -1,6 +1,7 @@
 """Command handlers for Chisel - contains the business logic for each CLI command."""
 
-from typing import Optional
+from typing import Optional, List
+from pathlib import Path
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -9,7 +10,7 @@ from rich.table import Table
 from chisel.core.droplet_service import DropletService
 from chisel.core.profiling_manager import ProfilingManager
 from chisel.core.config import get_token, save_token
-from chisel.core.types.gpu_profiles import GPUType
+from chisel.core.types.gpu_profiles import get_gpu_type_from_command
 
 console = Console()
 
@@ -91,7 +92,8 @@ def handle_configure(token: Optional[str] = None) -> int:
 
 
 def handle_profile(
-    target: Optional[str],
+    command_to_profile: Optional[str],
+    files_to_sync: Optional[List[str]],
     gpu_type: Optional[str] = None,
     output_dir: Optional[str] = None,
     rocprofv3: Optional[str] = None,
@@ -113,15 +115,14 @@ def handle_profile(
     Returns:
         Exit code (0 for success, 1 for failure)
     """
-    if rocprof_compute is not None:
-        console.print("[red]Error: --rocprof-compute support is not yet implemented[/red]")
-        return 1
-    if target is None:
+    if command_to_profile is None:
         console.print("[red]Error: Target file or command is required[/red]")
         return 1
 
-    assert target is not None
-    target_str = target
+    if rocprof_compute is not None:
+        console.print("[red]Error: --rocprof-compute support is not yet implemented[/red]")
+        return 1
+
     profilers_enabled = [p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None]
     if not profilers_enabled:
         console.print(
@@ -129,11 +130,7 @@ def handle_profile(
             "[yellow]Use one or more of: --rocprofv3, --nsys, --ncompute[/yellow]"
         )
         return 1
-
-    # Check gpu_type is valid
-    if gpu_type and gpu_type not in ["h100", "l40s"]:
-        console.print("[red]Error: --gpu-type flag is only supported for NVIDIA profiling[/red]")
-        return 1
+    console.print(f"Profilers enabled: {profilers_enabled}")
 
     api_token = get_token()
     if not api_token:
@@ -143,60 +140,20 @@ def handle_profile(
         )
         return 1
 
-    # Determine GPU type based on profiler
-    if rocprofv3:
-        gpu_profile = GPUType.AMD_MI300X
-    elif nsys or ncompute:
-        if gpu_type == "l40s":
-            gpu_profile = GPUType.NVIDIA_L40S
-        else:
-            gpu_profile = GPUType.NVIDIA_H100
-    else:
-        console.print("[red]Error: Could not determine GPU type from profiler flags[/red]")
-        return 1
+    if gpu_type is None:
+        # TODO: infer gpu type from command; later, we change this to use the --gpu-type flag
+        gpu_type = "mi300x" if rocprofv3 in profilers_enabled else "h100"
+
+    files_to_sync = files_to_sync or []
+    output_dir = output_dir or "./chisel-results"
 
     try:
-        from pathlib import Path
-
         manager = ProfilingManager(api_token)
-
-        # Parse target to determine command and files to sync
-        target_path = Path(target_str)
-        files_to_sync = []
-
-        # If target is a file that exists, we need to sync it and construct the command
-        if target_path.exists() and target_path.is_file():
-            files_to_sync = [target_str]
-
-            # Determine the command based on file extension
-            if target_str.endswith(".py"):
-                command_to_profile = f"python {target_path.name}"
-            elif target_str.endswith((".cu", ".cpp", ".hip", ".c")):
-                # For compiled languages, assume the target is the executable name after compilation
-                # The profiler will handle compilation if needed
-                executable_name = target_path.stem  # filename without extension
-                command_to_profile = f"./{executable_name}"
-            else:
-                # Default: assume it's an executable
-                command_to_profile = f"./{target_path.name}"
-        else:
-            # Target is a direct command to run
-            command_to_profile = target_str
-
-        # Set up output directory
-        if output_dir:
-            output_path = Path(output_dir)
-        else:
-            from datetime import datetime
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = Path(f"./chisel-results-{timestamp}")
-
         result = manager.profile(
             command_to_profile=command_to_profile,
-            gpu_type=gpu_profile,
+            gpu_type=get_gpu_type_from_command(gpu_type),
             files_to_sync=files_to_sync,
-            output_dir=output_path,
+            output_dir=Path(output_dir),
             rocprofv3_flag=rocprofv3,
             rocprof_compute_flag=rocprof_compute,
             nsys_flag=nsys,

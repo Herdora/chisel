@@ -1,6 +1,4 @@
 import socket
-import subprocess
-from pathlib import Path
 import time
 from typing import Any, Dict, List, Optional, cast
 
@@ -36,61 +34,77 @@ class DropletService:
         ssh_keys = self.list_account_ssh_keys()
 
         # ----------------------------------------------------------------- #
-        # New cloud-init script: installs Docker, pulls ROCm 6.4.1 PyTorch image,
-        # starts it, creates virtual environment, and drops every future SSH login
-        # straight into the container with activated venv.
-        # Enhanced with ROCm validation and dev packages.
+        # Cloud-init script: installs ROCm, PyTorch, and development tools
+        # directly on the host system with automatic virtual environment activation.
         # ----------------------------------------------------------------- #
         user_data = """#!/bin/bash
 set -e
 
 ### System prep -----------------------------------------------------------
 apt-get update
-apt-get install -y docker.io python3-venv build-essential cmake git python3-pip wget curl
-systemctl enable docker
-systemctl start docker
-usermod -aG docker root
+apt-get install -y python3-venv build-essential cmake git python3-pip wget curl gnupg software-properties-common
 
-### Pull the ROCm 6.4.1 PyTorch image ------------------------------------
-docker pull rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
+### Create working directory ---------------------------------------------- 
+mkdir -p /workspace
+chmod 755 /workspace
 
-### Start a long-running container called "ml" ----------------------------
-docker run -dit \\
-  --name ml \\
-  --restart=always \\
-  --network host \\
-  --ipc=host \\
-  --device=/dev/kfd \\
-  --device=/dev/dri \\
-  --group-add video \\
-  --cap-add=SYS_PTRACE \\
-  --security-opt seccomp=unconfined \\
-  -v /mnt/share:/workspace \\
-  rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0 bash
+### Install ROCm (for AMD GPUs) -------------------------------------------
+# Add ROCm repository
+wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
+echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.4.1 jammy main' > /etc/apt/sources.list.d/rocm.list
+apt-get update
 
-### Inside the container: create + preload a venv and install ROCm dev packages -------------------------
-docker exec ml bash -c "
-  # Update package list and install ROCm dev packages
-  apt-get update && \\
-  apt-get install -y rocprofiler-dev roctracer-dev rocm-dev rocm-profiler || echo 'Some ROCm packages may not be available' && \\
-  
-  # Create virtual environment
-  python -m venv /opt/venv && \\
-  source /opt/venv/bin/activate && \\
-  pip install --upgrade pip setuptools && \\
-  pip install rich pydo paramiko jupyterlab vllm triton sglang && \\
-  echo 'source /opt/venv/bin/activate' >> /root/.bashrc && \\
-  
-  # Set up ROCm environment
-  echo 'export ROCM_PATH=/opt/rocm' >> /root/.bashrc && \\
-  echo 'export PATH=\$PATH:/opt/rocm/bin' >> /root/.bashrc && \\
-  echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc
-"
+# Install ROCm packages
+apt-get install -y rocm-dev rocm-libs rocprofiler-dev roctracer-dev rocm-profiler || echo 'Some ROCm packages may not be available for this GPU type'
 
-### Make every SSH login jump straight into the container -----------------
-echo 'exec docker exec -it ml bash' >> /root/.bash_profile
+# Add user to video and render groups
+usermod -aG video root
+usermod -aG render root
 
-echo "Setup complete"
+### Install NVIDIA CUDA (for NVIDIA GPUs) ---------------------------------
+# Add NVIDIA repository
+wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+dpkg -i cuda-keyring_1.1-1_all.deb
+apt-get update
+
+# Install CUDA toolkit and profiling tools
+apt-get install -y cuda-toolkit-12-6 || echo 'CUDA packages not available for this GPU type'
+
+### Create Python virtual environment -------------------------------------
+python3 -m venv /opt/venv
+source /opt/venv/bin/activate
+
+# Upgrade pip and install base packages
+pip install --upgrade pip setuptools wheel
+
+# Install PyTorch with ROCm support (for AMD)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1 || echo 'ROCm PyTorch not available, trying CUDA version'
+
+# Install PyTorch with CUDA support (for NVIDIA) - fallback if ROCm fails
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 || echo 'CUDA PyTorch not available, using CPU version'
+
+# Install additional ML and profiling packages
+pip install rich pydo paramiko jupyterlab transformers accelerate || echo 'Some Python packages may have failed to install'
+
+### Set up environment variables ------------------------------------------
+# ROCm environment
+echo 'export ROCM_PATH=/opt/rocm' >> /root/.bashrc
+echo 'export PATH=$PATH:/opt/rocm/bin' >> /root/.bashrc
+echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc
+
+# CUDA environment  
+echo 'export CUDA_HOME=/usr/local/cuda' >> /root/.bashrc
+echo 'export PATH=$PATH:/usr/local/cuda/bin' >> /root/.bashrc
+echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64' >> /root/.bashrc
+
+# Automatically activate virtual environment on login
+echo 'source /opt/venv/bin/activate' >> /root/.bashrc
+echo 'cd /workspace' >> /root/.bashrc
+
+# Set up bash_profile to ensure environment is loaded
+echo 'source ~/.bashrc' >> /root/.bash_profile
+
+echo "Setup complete - ROCm/CUDA and PyTorch installed with virtual environment"
 """
 
         body = {

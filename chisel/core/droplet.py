@@ -28,7 +28,7 @@ class Droplet:
         # Infer GPU type from droplet name
         self.gpu_type = self.name
 
-    def sync_file(self, local_path: str, remote_path: str = "/root/chisel/") -> bool:
+    def sync_file(self, local_path: str, remote_path: str) -> bool:
         """
         Sync a file or directory from local_path to remote_path on this droplet using rsync.
         Returns True on success, False on failure.
@@ -41,8 +41,7 @@ class Droplet:
         if not source_path.exists():
             console.print(f"[red]Error: Source path '{local_path}' does not exist[/red]")
             return False
-        if source_path.is_dir() and not str(local_path).endswith("/"):
-            source = str(source_path) + "/"
+        # We copy the entire directory, so we don't need to add a trailing slash
         else:
             source = str(source_path)
 
@@ -99,14 +98,15 @@ class Droplet:
         return result
 
     def run_container_command(self, command: str, timeout: int = 30) -> Dict[str, Any]:
-        """Run a command inside the Docker container 'ml' where PyTorch and tools are installed."""
-        # Translate paths: /mnt/share -> /workspace (container mount point)
-        container_command = command.replace("/mnt/share", "/workspace")
+        """Run a command on the host system with the virtual environment activated.
 
-        # Wrap command to run inside Docker container where all tools are installed
-        # This ensures we're using the container environment with PyTorch, ROCm, etc.
-        docker_exec_command = f"docker exec ml bash -c '{container_command}'"
-        return self.run_command(docker_exec_command, timeout=timeout)
+        This method is kept for compatibility but now runs commands directly on the host
+        since we no longer use Docker containers.
+        """
+        # Ensure the command runs with the virtual environment activated
+        # and in the workspace directory
+        venv_command = f"source /opt/venv/bin/activate && cd /workspace && {command}"
+        return self.run_command(venv_command, timeout=timeout)
 
     def is_ssh_ready(self, timeout: int = 5) -> bool:
         """Check if SSH is available on the droplet."""

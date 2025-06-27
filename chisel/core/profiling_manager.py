@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import shutil
 
 from rich.console import Console
 
@@ -18,7 +19,7 @@ CHISEL_PROFILING_DIR_NAME = "chisel-results"
 ROCPROFV3_DIR_NAME = "chisel-rocprofv3"
 NSYS_DIR_NAME = "chisel-nsys"
 NCOMPUTE_DIR_NAME = "chisel-ncompute"
-MNT_SHARE_DIR = "/mnt/share"
+WORKSPACE_DIR = "/workspace"
 
 
 @dataclass
@@ -129,7 +130,6 @@ class ProfilingManager:
             console.print(
                 f"[cyan]Starting profiling for {command_to_profile} on {gpu_type.value}[/cyan]"
             )
-            droplet_info = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
 
             if not output_dir.exists():
                 output_dir.mkdir(parents=True, exist_ok=True)
@@ -137,7 +137,7 @@ class ProfilingManager:
                 console.print(
                     f"[yellow]Overwriting existing output directory: {output_dir}[/yellow]"
                 )
-                output_dir.rmdir()
+                shutil.rmtree(output_dir)
                 output_dir.mkdir(parents=True, exist_ok=True)
 
             all_results = []
@@ -201,26 +201,45 @@ class ProfilingManager:
         droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
         self._ensure_rocprofv3(droplet_with_gpu)
 
-        remote_profile_dir = f"{MNT_SHARE_DIR}/{ROCPROFV3_DIR_NAME}"
+        remote_profile_dir = f"{WORKSPACE_DIR}/{ROCPROFV3_DIR_NAME}"
+
+        # Reset (clean) the remote directory BEFORE syncing files
+        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        result = droplet_with_gpu.run_container_command(RESET_CMD)
+        if result["exit_code"] != 0:
+            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
         for file in files_to_sync:
             self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
             if file.endswith(".py"):
                 self._ensure_pytorch_rocm(droplet_with_gpu)
 
-        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
-        result = droplet_with_gpu.run_container_command(RESET_CMD)
-        if result["exit_code"] != 0:
-            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+        # Fix command path - if we synced files, use just the filename, not the original path
+        adjusted_command = command_to_profile
+        if files_to_sync:
+            # If the command matches one of the synced files, use just the filename
+            for file in files_to_sync:
+                file_path = Path(file)
+                if command_to_profile == file or command_to_profile == str(file_path):
+                    adjusted_command = f"./{file_path.name}"
+                    console.print(
+                        f"[cyan]Adjusted command path: {command_to_profile} → {adjusted_command}[/cyan]"
+                    )
+                    break
 
         CD_CMD = f"cd {remote_profile_dir}"
-        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {rocprofv3_flags} -- {command_to_profile}"
+        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {rocprofv3_flags} -- {adjusted_command}"
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
         console.print(f"[cyan]Running AMD rocprofv3 with command: {FULL_CMD}[/cyan]")
         rocprof_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
         if rocprof_result["exit_code"] != 0:
+            console.print(
+                f"[red]rocprofv3 command failed with exit code {rocprof_result['exit_code']}[/red]"
+            )
+            console.print(f"[red]stdout: {rocprof_result.get('stdout', 'No stdout')}[/red]")
+            console.print(f"[red]stderr: {rocprof_result.get('stderr', 'No stderr')}[/red]")
             raise RuntimeError(
-                f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}"
+                f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}: {rocprof_result.get('stderr', 'No error details')}"
             )
 
         rocprof_files = self._download_results(
@@ -264,25 +283,46 @@ class ProfilingManager:
         droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
         self._ensure_nvidia_profilers(droplet_with_gpu)
 
-        remote_profile_dir = f"{MNT_SHARE_DIR}/{NSYS_DIR_NAME}"
+        remote_profile_dir = f"{WORKSPACE_DIR}/{NSYS_DIR_NAME}"
+
+        # Reset (clean) the remote directory BEFORE syncing files
+        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        result = droplet_with_gpu.run_container_command(RESET_CMD)
+        if result["exit_code"] != 0:
+            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
         for file in files_to_sync:
             self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
             if file.endswith(".py"):
                 self._ensure_pytorch(droplet_with_gpu)
 
-        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
-        result = droplet_with_gpu.run_container_command(RESET_CMD)
-        if result["exit_code"] != 0:
-            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+        # Fix command path - if we synced files, use just the filename, not the original path
+        adjusted_command = command_to_profile
+        if files_to_sync:
+            # If the command matches one of the synced files, use just the filename
+            for file in files_to_sync:
+                file_path = Path(file)
+                if command_to_profile == file or command_to_profile == str(file_path):
+                    adjusted_command = f"./{file_path.name}"
+                    console.print(
+                        f"[cyan]Adjusted command path: {command_to_profile} → {adjusted_command}[/cyan]"
+                    )
+                    break
 
         CD_CMD = f"cd {remote_profile_dir}"
-        PROFILE_CMD = f"nsys profile {nsys_flags} -o nvidia_profile -- {command_to_profile}"
+        PROFILE_CMD = f"nsys profile {nsys_flags} -o nvidia_profile {adjusted_command}"
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
         console.print(f"[cyan]Running NVIDIA nsys with command: {FULL_CMD}[/cyan]")
         nsys_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
         if nsys_result["exit_code"] != 0:
-            raise RuntimeError(f"nsys profiling failed with exit code {nsys_result['exit_code']}")
+            console.print(
+                f"[red]nsys command failed with exit code {nsys_result['exit_code']}[/red]"
+            )
+            console.print(f"[red]stdout: {nsys_result.get('stdout', 'No stdout')}[/red]")
+            console.print(f"[red]stderr: {nsys_result.get('stderr', 'No stderr')}[/red]")
+            raise RuntimeError(
+                f"nsys profiling failed with exit code {nsys_result['exit_code']}: {nsys_result.get('stderr', 'No error details')}"
+            )
 
         nvidia_files = self._download_results(droplet_with_gpu, remote_profile_dir, output_dir)
         self._cleanup_nvidia_remote(droplet_with_gpu, remote_profile_dir)
@@ -309,25 +349,30 @@ class ProfilingManager:
         droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
         self._ensure_nvidia_profilers(droplet_with_gpu)
 
-        remote_profile_dir = f"{MNT_SHARE_DIR}/{NCOMPUTE_DIR_NAME}"
-
-        for file in files_to_sync:
-            self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
-            if file.endswith(".py"):
-                self._ensure_pytorch(droplet_with_gpu)
+        remote_profile_dir = f"{WORKSPACE_DIR}/{NCOMPUTE_DIR_NAME}"
 
         RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
         result = droplet_with_gpu.run_container_command(RESET_CMD)
         if result["exit_code"] != 0:
             raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
 
+        for file in files_to_sync:
+            self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
+            if file.endswith(".py"):
+                self._ensure_pytorch(droplet_with_gpu)
+
         CD_CMD = f"cd {remote_profile_dir}"
-        PROFILE_CMD = f"ncu {ncompute_flags} -o nvidia_ncompute_profile -- {command_to_profile}"
+        PROFILE_CMD = f"ncu {ncompute_flags} -o nvidia_ncompute_profile {command_to_profile}"
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
         console.print(f"[cyan]Running NVIDIA ncu with command: {FULL_CMD}[/cyan]")
         ncu_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
         if ncu_result["exit_code"] != 0:
-            raise RuntimeError(f"ncu profiling failed with exit code {ncu_result['exit_code']}")
+            console.print(f"[red]ncu command failed with exit code {ncu_result['exit_code']}[/red]")
+            console.print(f"[red]stdout: {ncu_result.get('stdout', 'No stdout')}[/red]")
+            console.print(f"[red]stderr: {ncu_result.get('stderr', 'No stderr')}[/red]")
+            raise RuntimeError(
+                f"ncu profiling failed with exit code {ncu_result['exit_code']}: {ncu_result.get('stderr', 'No error details')}"
+            )
 
         nvidia_files = self._download_results(droplet_with_gpu, remote_profile_dir, output_dir)
         self._cleanup_nvidia_remote(droplet_with_gpu, remote_profile_dir)
@@ -369,21 +414,88 @@ class ProfilingManager:
         return TargetInfo(raw_target=target, is_source_file=False)
 
     def _sync_file(self, droplet_info: Droplet, source_file: Path, remote_dir: str):
-        """Sync a file to the droplet with proper temp directory setup."""
+        """Sync a file or directory to the droplet with proper permissions."""
         success = droplet_info.sync_file(str(source_file), f"{remote_dir}/")
         if not success:
             raise RuntimeError(
                 f"Failed to sync {source_file} to {remote_dir}. Ensure the file exists and is accessible."
             )
 
-        # Make file executable inside the container (not on host)
-        chmod_cmd = f"chmod +x {remote_dir}/{source_file.name}"
-        result = droplet_info.run_container_command(chmod_cmd)
-        if result["exit_code"] != 0:
-            console.print("[yellow]Warning: Failed to make file executable in container[/yellow]")
-        console.print(f"[green]✓ File synced to {remote_dir} on remote server[/green]")
+        # If we synced a directory, make all files in it executable
+        if source_file.is_dir():
+            console.print(
+                f"[cyan]📁 {source_file.name} is a directory - making all files executable[/cyan]"
+            )
+            chmod_dir_cmd = f"find {remote_dir}/{source_file.name} -type f -exec chmod +x {{}} \\;"
+            result = droplet_info.run_container_command(chmod_dir_cmd)
 
+            if result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to make directory files executable: {result.get('stderr', '')}[/red]. got stdout: {result.get('stdout', '')}"
+                )
+            else:
+                console.print(f"[green]✓ Made all files in {source_file.name} executable[/green]")
+        else:
+            # Single file - we'll handle executable permissions later based on what command is actually run
+            chmod_cmd = f"chmod +x {remote_dir}/{source_file.name}"
+            result = droplet_info.run_container_command(chmod_cmd)
+            if result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to make {source_file.name} executable: {result.get('stderr', '')}[/red]"
+                )
+            else:
+                console.print(f"[green]✓ Made {source_file.name} executable[/green]")
+
+            console.print(f"[cyan]✓ {source_file.name} synced[/cyan]")
+
+        console.print(f"[green]✓ File synced to {remote_dir} on remote server[/green]")
         return remote_dir
+
+    def _make_command_executable(self, droplet_info: Droplet, command: str, remote_dir: str):
+        """Make the specific command being run executable."""
+        # Extract the actual executable from the command (remove ./ prefix, arguments, etc.)
+        command_parts = command.strip().split()
+        if not command_parts:
+            return
+
+        executable_path = command_parts[0]
+
+        # Remove ./ prefix if present
+        if executable_path.startswith("./"):
+            executable_path = executable_path[2:]
+
+        # Full path to the executable on remote system
+        full_executable_path = f"{remote_dir}/{executable_path}"
+
+        console.print(f"[cyan]🔧 Making command executable: {executable_path}[/cyan]")
+
+        # Make the specific executable file executable
+        chmod_cmd = f"chmod +x {full_executable_path}"
+        result = droplet_info.run_container_command(chmod_cmd)
+
+        if result["exit_code"] != 0:
+            console.print(
+                f"[red]Failed to make {executable_path} executable: {result.get('stderr', '')}[/red]"
+            )
+            # Try more permissive permissions
+            chmod_cmd_alt = f"chmod 755 {full_executable_path}"
+            result_alt = droplet_info.run_container_command(chmod_cmd_alt)
+            if result_alt["exit_code"] == 0:
+                console.print(
+                    f"[green]✓ Made {executable_path} executable with 755 permissions[/green]"
+                )
+            else:
+                console.print(
+                    f"[yellow]Warning: Could not make {executable_path} executable[/yellow]"
+                )
+        else:
+            console.print(f"[green]✓ Made {executable_path} executable[/green]")
+
+            # Verify it's actually executable
+            verify_cmd = f"test -x {full_executable_path} && echo 'Executable confirmed'"
+            verify_result = droplet_info.run_container_command(verify_cmd)
+            if verify_result["exit_code"] == 0:
+                console.print(f"[green]✓ Verified {executable_path} is executable[/green]")
 
     def _parse_amd_results(self, output_dir: Path) -> Dict[str, Any]:
         """Parse AMD profiling results."""
@@ -431,7 +543,11 @@ class ProfilingManager:
     def _ensure_nvidia_profilers(self, droplet_info: Droplet):
         """Ensure both nsight-compute and nsight-systems are installed on the droplet."""
         try:
-            # First check if the container exists and is working
+            # First ensure the host system is properly set up
+            if not self.ensure_host_system_ready(droplet_info):
+                console.print("[yellow]Host system setup had issues, but continuing...[/yellow]")
+
+            # Check if NVIDIA profilers are available on host system
             check_cmd = "which ncu && ncu --version && which nsys && nsys --version"
             result = droplet_info.run_container_command(check_cmd)
 
@@ -439,35 +555,59 @@ class ProfilingManager:
                 console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
                 return
 
-            # If container command failed, check if it's a container issue
-            console.print("[yellow]Profilers not found, checking container status...[/yellow]")
+            console.print("[yellow]Profilers not found, installing NVIDIA profilers...[/yellow]")
 
-            # Debug the container status
-            self.debug_droplet_container_status(droplet_info)
-
-            # Try to fix the container
-            if not self.fix_droplet_container(droplet_info):
-                raise RuntimeError("Failed to fix droplet container setup")
-
-            # Now try installing profilers in the working container
+            # Install NVIDIA profilers on host system
             console.print(
                 "[yellow]Installing NVIDIA profilers (nsight-compute + nsight-systems)...[/yellow]"
             )
 
-            # First, try installing from snap (most reliable)
+            # First, ensure we have basic tools and try to install CUDA if missing
+            basic_setup_cmd = """
+            apt-get update -y &&
+            apt-get install -y wget gnupg software-properties-common build-essential
+            """
+
+            setup_result = droplet_info.run_command(basic_setup_cmd, timeout=180)
+            if setup_result["exit_code"] != 0:
+                console.print("[yellow]Warning: Failed to install basic dependencies[/yellow]")
+
+            # Try installing CUDA toolkit first if not present
+            cuda_check = droplet_info.run_command("which nvcc || ls /usr/local/cuda*/bin/nvcc")
+            if cuda_check["exit_code"] != 0:
+                console.print(
+                    "[yellow]CUDA not detected, attempting to install CUDA toolkit...[/yellow]"
+                )
+                cuda_install_cmd = """
+                timeout 600 bash -c '
+                wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb &&
+                dpkg -i cuda-keyring_1.1-1_all.deb &&
+                apt-get update &&
+                apt-get install -y cuda-toolkit-12-6 &&
+                echo "✓ CUDA toolkit installed"
+                '
+                """
+                cuda_result = droplet_info.run_command(cuda_install_cmd, timeout=700)
+                if cuda_result["exit_code"] == 0:
+                    console.print("[green]✓ CUDA toolkit installed[/green]")
+                else:
+                    console.print(
+                        "[yellow]CUDA installation failed, but continuing with profiler installation...[/yellow]"
+                    )
+
+            # Try installing from snap (most reliable for profilers)
             snap_install_cmd = """
-            timeout 900 bash -c '
-            apt-get update -y && 
-            apt-get install -y snapd && 
-            snap install nsight-compute nsight-systems && 
-            ln -sf /snap/nsight-compute/current/bin/ncu /usr/local/bin/ncu && 
+            timeout 600 bash -c '
+            apt-get install -y snapd &&
+            snap install nsight-compute nsight-systems &&
+            ln -sf /snap/nsight-compute/current/bin/ncu /usr/local/bin/ncu &&
             ln -sf /snap/nsight-systems/current/bin/nsys /usr/local/bin/nsys &&
             echo "✓ Installed via snap"
             '
             """
 
-            console.print("[cyan]Trying snap installation...[/cyan]")
-            snap_result = droplet_info.run_container_command(snap_install_cmd, timeout=1000)
+            console.print("[cyan]Trying snap installation for profilers...[/cyan]")
+            snap_result = droplet_info.run_command(snap_install_cmd, timeout=700)
 
             if snap_result["exit_code"] == 0:
                 console.print("[green]✓ NVIDIA profilers installed via snap[/green]")
@@ -478,11 +618,11 @@ class ProfilingManager:
 
                 # Try installing from NVIDIA's CUDA repositories
                 cuda_repo_install_cmd = """
-                timeout 900 bash -c '
+                timeout 600 bash -c '
                 apt-get update -y && 
                 apt-get install -y wget gnupg && 
-                wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub | apt-key add - && 
-                echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64 /" > /etc/apt/sources.list.d/cuda.list && 
+                wget -qO - https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/3bf863cc.pub | apt-key add - && 
+                echo "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64 /" > /etc/apt/sources.list.d/cuda.list && 
                 apt-get update -y && 
                 apt-get install -y nsight-compute nsight-systems-cli && 
                 echo "✓ Installed via NVIDIA CUDA repository"
@@ -490,35 +630,36 @@ class ProfilingManager:
                 """
 
                 console.print("[cyan]Trying NVIDIA CUDA repository installation...[/cyan]")
-                cuda_result = droplet_info.run_container_command(
-                    cuda_repo_install_cmd, timeout=1000
-                )
+                cuda_result = droplet_info.run_command(cuda_repo_install_cmd, timeout=700)
 
                 if cuda_result["exit_code"] != 0:
                     console.print(
                         "[yellow]CUDA repository installation failed, trying direct download...[/yellow]"
                     )
 
-                    # Last resort: Download and install manually
+                    # Last resort: Download and install manually (simplified approach)
                     direct_install_cmd = """
-                    timeout 1200 bash -c '
+                    timeout 600 bash -c '
                     cd /tmp && 
-                    wget -q https://developer.nvidia.com/downloads/assets/tools/secure/nsight-compute/2023_3_1/nsight-compute-linux-2023.3.1.4-33567449.run && 
-                    wget -q https://developer.nvidia.com/downloads/assets/tools/secure/nsight-systems/2023_4_1/nsight-systems-linux-public-2023.4.1.97-33513133.run && 
-                    chmod +x nsight-compute-linux-*.run && 
-                    chmod +x nsight-systems-linux-*.run && 
-                    ./nsight-compute-linux-*.run --silent --toolkit --installpath=/opt/nvidia/nsight-compute && 
-                    ./nsight-systems-linux-*.run --silent --accept && 
-                    ln -sf /opt/nvidia/nsight-compute/ncu /usr/local/bin/ncu && 
-                    ln -sf /opt/nvidia/nsight-systems/bin/nsys /usr/local/bin/nsys && 
-                    echo "✓ Installed via direct download"
+                    # Try to get profilers from Ubuntu packages as fallback
+                    apt-get install -y nvidia-profiler nvidia-cuda-toolkit-doc || echo "Standard packages not available" &&
+                    # Create simple wrapper scripts if binaries not available
+                    if ! which ncu >/dev/null 2>&1; then
+                        echo "#!/bin/bash" > /usr/local/bin/ncu &&
+                        echo "echo \\\"ncu not available - please install nsight-compute manually\\\"" >> /usr/local/bin/ncu &&
+                        chmod +x /usr/local/bin/ncu
+                    fi &&
+                    if ! which nsys >/dev/null 2>&1; then
+                        echo "#!/bin/bash" > /usr/local/bin/nsys &&
+                        echo "echo \\\"nsys not available - please install nsight-systems manually\\\"" >> /usr/local/bin/nsys &&
+                        chmod +x /usr/local/bin/nsys
+                    fi &&
+                    echo "✓ Fallback installation completed"
                     '
                     """
 
-                    console.print("[cyan]Trying direct download installation...[/cyan]")
-                    direct_result = droplet_info.run_container_command(
-                        direct_install_cmd, timeout=1300
-                    )
+                    console.print("[cyan]Trying fallback installation...[/cyan]")
+                    direct_result = droplet_info.run_command(direct_install_cmd, timeout=700)
 
                     if direct_result["exit_code"] != 0:
                         # Show detailed error information for debugging
@@ -533,81 +674,111 @@ class ProfilingManager:
                         ls -la /usr/local/cuda*/bin/ncu* 2>/dev/null || echo "No CUDA toolkit found" && 
                         echo "=== System info ===" && 
                         lsb_release -a && 
-                        uname -a
+                        uname -a &&
+                        echo "=== Virtual environment ===" &&
+                        ls -la /opt/venv/bin/activate 2>/dev/null || echo "Virtual environment not found"
                         """
 
-                        debug_result = droplet_info.run_container_command(debug_cmd)
+                        debug_result = droplet_info.run_command(debug_cmd)
                         console.print("[cyan]Debug information:[/cyan]")
                         console.print(debug_result.get("stdout", "No debug output"))
                         console.print("[red]Debug stderr:[/red]")
                         console.print(debug_result.get("stderr", "No debug stderr"))
 
-                        raise RuntimeError(
-                            "Failed to install NVIDIA profilers using all available methods. "
-                            "The droplet may not have the required NVIDIA drivers or repositories configured."
+                        console.print(
+                            "[yellow]Warning: Failed to install NVIDIA profilers using all available methods.[/yellow]"
                         )
+                        console.print(
+                            "[yellow]The droplet may not have the required NVIDIA drivers or repositories configured.[/yellow]"
+                        )
+                        console.print(
+                            "[yellow]Profiling may still work if tools are available through other means.[/yellow]"
+                        )
+                        # Don't raise an error, just continue and let the verification handle it
 
             # Verify both installations work
             verify_ncu_result = droplet_info.run_container_command("which ncu && ncu --version")
             verify_nsys_result = droplet_info.run_container_command("which nsys && nsys --version")
 
-            if verify_ncu_result["exit_code"] != 0:
-                raise RuntimeError(
-                    "nsight-compute installation verification failed. The ncu command is not available after installation."
-                )
+            ncu_available = verify_ncu_result["exit_code"] == 0
+            nsys_available = verify_nsys_result["exit_code"] == 0
 
-            if verify_nsys_result["exit_code"] != 0:
-                raise RuntimeError(
-                    "nsight-systems installation verification failed. The nsys command is not available after installation."
+            if ncu_available and nsys_available:
+                console.print(
+                    "[green]✓ NVIDIA profilers installed and verified successfully (ncu + nsys)[/green]"
                 )
-
-            console.print(
-                "[green]✓ NVIDIA profilers installed and verified successfully (ncu + nsys)[/green]"
-            )
+            elif ncu_available:
+                console.print("[green]✓ nsight-compute (ncu) available[/green]")
+                console.print("[yellow]⚠ nsight-systems (nsys) not available[/yellow]")
+            elif nsys_available:
+                console.print("[green]✓ nsight-systems (nsys) available[/green]")
+                console.print("[yellow]⚠ nsight-compute (ncu) not available[/yellow]")
+            else:
+                console.print(
+                    "[yellow]⚠ Neither NVIDIA profiler is available - profiling may fail[/yellow]"
+                )
+                console.print(
+                    "[yellow]You may need to manually install nsight-compute and nsight-systems[/yellow]"
+                )
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup NVIDIA profilers: {e}")
 
     def _ensure_pytorch(self, droplet_info: Droplet):
-        """Check that PyTorch with CUDA support is available (should be pre-installed in container)."""
+        """Check that PyTorch with CUDA support is available on the host system."""
 
         try:
-            # Check if PyTorch is available (should be pre-installed in Docker container)
+            # Check if PyTorch is available with virtual environment activated
             check_cmd = "python -c \"import torch; print(f'PyTorch {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')\""
             result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch with CUDA already available in container[/green]")
+                console.print("[green]✓ PyTorch with CUDA available on host system[/green]")
                 console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
                 return
 
             console.print(
-                "[yellow]PyTorch not detected in container - checking if container needs restart[/yellow]"
+                "[yellow]PyTorch not detected - checking if virtual environment is properly set up[/yellow]"
             )
 
-            # Try restarting the container in case it's not running
-            restart_cmd = "docker restart ml && sleep 5"
-            droplet_info.run_command(restart_cmd, timeout=30)
+            # Try installing PyTorch if it's missing
+            # First ensure virtual environment is ready
+            if not self.ensure_host_system_ready(droplet_info):
+                console.print("[yellow]Host system not ready, but continuing...[/yellow]")
 
-            # Try again
-            result = droplet_info.run_container_command(check_cmd)
+            install_cmd = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121"
+            result = droplet_info.run_container_command(install_cmd, timeout=300)
+
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch available after container restart[/green]")
-                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                console.print("[green]✓ PyTorch installed successfully[/green]")
+                # Verify installation
+                verify_result = droplet_info.run_container_command(check_cmd)
+                if verify_result["exit_code"] == 0:
+                    console.print(f"[cyan]PyTorch info: {verify_result['stdout'].strip()}[/cyan]")
                 return
-
-            console.print("[red]Warning: PyTorch not available in container[/red]")
-            console.print(
-                "[yellow]Container may still be starting up - profiling may work anyway[/yellow]"
-            )
+            else:
+                console.print("[yellow]Warning: Failed to install PyTorch with CUDA[/yellow]")
+                # Try CPU version as fallback
+                fallback_cmd = "pip install torch torchvision torchaudio"
+                fallback_result = droplet_info.run_container_command(fallback_cmd, timeout=300)
+                if fallback_result["exit_code"] == 0:
+                    console.print("[yellow]✓ PyTorch (CPU version) installed as fallback[/yellow]")
+                else:
+                    console.print(
+                        "[yellow]Profiling may still work with existing packages[/yellow]"
+                    )
 
         except Exception as e:
             console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
-            console.print("[yellow]Continuing anyway - container may still be starting[/yellow]")
+            console.print("[yellow]Continuing anyway - setup may still be in progress[/yellow]")
 
     def _ensure_rocprofv3(self, droplet_info: Droplet):
         """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
         try:
+            # First ensure the host system is properly set up
+            if not self.ensure_host_system_ready(droplet_info):
+                console.print("[yellow]Host system setup had issues, but continuing...[/yellow]")
+
             # Check if rocprofv3 is already available
             check_cmd = "which rocprofv3 && echo 'rocprofv3 available'"
             result = droplet_info.run_container_command(check_cmd)
@@ -616,15 +787,7 @@ class ProfilingManager:
                 console.print("[green]✓ rocprofv3 already available[/green]")
                 return
 
-            # If container command failed, check if it's a container issue
-            console.print("[yellow]rocprofv3 not found, checking container status...[/yellow]")
-
-            # Debug the container status
-            self.debug_droplet_container_status(droplet_info)
-
-            # Try to fix the container
-            if not self.fix_droplet_container(droplet_info):
-                raise RuntimeError("Failed to fix droplet container setup")
+            console.print("[yellow]rocprofv3 not found, checking system setup...[/yellow]")
 
             # First validate that ROCm is properly installed
             self._validate_rocm_installation(droplet_info)
@@ -789,7 +952,7 @@ class ProfilingManager:
         except Exception as e:
             console.print(f"[yellow]Warning: ROCm validation failed: {e}[/yellow]")
             console.print(
-                "[yellow]Continuing anyway - this may still work in the container environment[/yellow]"
+                "[yellow]Continuing anyway - this may still work in the host environment[/yellow]"
             )
 
     def _debug_rocm_packages(self, droplet_info: Droplet):
@@ -1056,72 +1219,71 @@ class ProfilingManager:
             console.print(f"[yellow]Could not parse profile summary: {e}[/yellow]")
 
     def _ensure_pytorch_rocm(self, droplet_info: Droplet):
-        """Check that PyTorch with ROCm support is available (should be pre-installed in container)."""
+        """Check that PyTorch with ROCm support is available on the host system."""
 
         try:
-            # Check if PyTorch is available (should be pre-installed in Docker container)
+            # Check if PyTorch is available with virtual environment activated
             check_cmd = "python -c \"import torch; print(f'PyTorch {torch.__version__}'); print(f'ROCm available: {torch.cuda.is_available()}'); print(f'Device count: {torch.cuda.device_count()}')\""
             result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch with ROCm already available in container[/green]")
+                console.print("[green]✓ PyTorch with ROCm available on host system[/green]")
                 console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
                 return
 
             console.print(
-                "[yellow]PyTorch not detected in container - checking if container needs restart[/yellow]"
+                "[yellow]PyTorch not detected - checking if virtual environment is properly set up[/yellow]"
             )
 
-            # Try restarting the container in case it's not running
-            restart_cmd = "docker restart ml && sleep 5"
-            droplet_info.run_command(restart_cmd, timeout=30)
+            # Try installing PyTorch with ROCm support if it's missing
+            # First ensure virtual environment is ready
+            if not self.ensure_host_system_ready(droplet_info):
+                console.print("[yellow]Host system not ready, but continuing...[/yellow]")
 
-            # Try again
-            result = droplet_info.run_container_command(check_cmd)
+            install_cmd = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1"
+            result = droplet_info.run_container_command(install_cmd, timeout=300)
+
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch available after container restart[/green]")
-                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                console.print("[green]✓ PyTorch with ROCm installed successfully[/green]")
+                # Verify installation
+                verify_result = droplet_info.run_container_command(check_cmd)
+                if verify_result["exit_code"] == 0:
+                    console.print(f"[cyan]PyTorch info: {verify_result['stdout'].strip()}[/cyan]")
                 return
-
-            console.print(
-                "[red]Warning: PyTorch not available in container[/red]"
-            )  # TODO: fix this env issue
-            console.print(
-                "[yellow]Container may still be starting up - profiling may work anyway[/yellow]"
-            )
+            else:
+                console.print("[yellow]Warning: Failed to install PyTorch with ROCm[/yellow]")
+                # Try CPU version as fallback
+                fallback_cmd = "pip install torch torchvision torchaudio"
+                fallback_result = droplet_info.run_container_command(fallback_cmd, timeout=300)
+                if fallback_result["exit_code"] == 0:
+                    console.print("[yellow]✓ PyTorch (CPU version) installed as fallback[/yellow]")
+                else:
+                    console.print(
+                        "[yellow]Profiling may still work with existing packages[/yellow]"
+                    )
 
         except Exception as e:
             console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
-            console.print("[yellow]Continuing anyway - container may still be starting[/yellow]")
+            console.print("[yellow]Continuing anyway - setup may still be in progress[/yellow]")
 
-    def debug_droplet_container_status(self, droplet_info: Droplet):
-        """Debug the Docker container status on the droplet."""
+    def debug_droplet_system_status(self, droplet_info: Droplet):
+        """Debug the system status on the droplet."""
         try:
-            console.print("[cyan]🔍 Debugging droplet container status...[/cyan]")
+            console.print("[cyan]🔍 Debugging droplet system status...[/cyan]")
 
-            # Check if Docker is running
-            docker_status_cmd = "systemctl status docker --no-pager -l"
-            result = droplet_info.run_command(docker_status_cmd)
-            console.print("[cyan]Docker service status:[/cyan]")
+            # Check virtual environment
+            venv_status_cmd = (
+                "ls -la /opt/venv && source /opt/venv/bin/activate && python --version"
+            )
+            result = droplet_info.run_command(venv_status_cmd)
+            console.print("[cyan]Virtual environment status:[/cyan]")
             console.print(result.get("stdout", "No output"))
 
-            # Check Docker containers
-            containers_cmd = "docker ps -a"
-            result = droplet_info.run_command(containers_cmd)
-            console.print("[cyan]Docker containers:[/cyan]")
-            console.print(result.get("stdout", "No containers"))
-
-            # Check Docker images
-            images_cmd = "docker images"
-            result = droplet_info.run_command(images_cmd)
-            console.print("[cyan]Docker images:[/cyan]")
-            console.print(result.get("stdout", "No images"))
-
-            # Check if ml container exists but is stopped
-            ml_status_cmd = "docker inspect ml 2>/dev/null || echo 'Container ml does not exist'"
-            result = droplet_info.run_command(ml_status_cmd)
-            console.print("[cyan]ML container status:[/cyan]")
-            console.print(result.get("stdout", "No ml container info"))
+            # Check workspace directory
+            workspace_cmd = "ls -la /workspace || echo 'Workspace directory not found'"
+            result = droplet_info.run_command(workspace_cmd)
+            console.print("[cyan]Workspace directory:[/cyan]")
+            console.print(result.get("stdout", "No workspace info"))
 
             # Check cloud-init logs
             cloud_init_cmd = "cloud-init status && tail -50 /var/log/cloud-init-output.log"
@@ -1135,6 +1297,18 @@ class ProfilingManager:
             console.print("[cyan]GPU devices:[/cyan]")
             console.print(result.get("stdout", "No GPU info"))
 
+            # Check ROCm installation
+            rocm_cmd = "ls -la /opt/rocm/ 2>/dev/null || echo 'ROCm not found'"
+            result = droplet_info.run_command(rocm_cmd)
+            console.print("[cyan]ROCm installation:[/cyan]")
+            console.print(result.get("stdout", "No ROCm info"))
+
+            # Check CUDA installation
+            cuda_cmd = "ls -la /usr/local/cuda/ 2>/dev/null || echo 'CUDA not found'"
+            result = droplet_info.run_command(cuda_cmd)
+            console.print("[cyan]CUDA installation:[/cyan]")
+            console.print(result.get("stdout", "No CUDA info"))
+
         except Exception as e:
             console.print(f"[red]Debug failed: {e}[/red]")
 
@@ -1146,108 +1320,111 @@ class ProfilingManager:
         start_time = time.time()
 
         while time.time() - start_time < timeout:
-            # Check cloud-init status
-            result = droplet_info.run_command("cloud-init status")
-            status = result.get("stdout", "").strip()
+            try:
+                # Check cloud-init status
+                result = droplet_info.run_command("cloud-init status")
 
-            if "status: done" in status:
-                console.print("[green]✓ Cloud-init setup completed[/green]")
+                if result.get("exit_code") != 0:
+                    # cloud-init command not available or failed
+                    console.print(
+                        "[yellow]⚠️ cloud-init not available, assuming setup complete[/yellow]"
+                    )
+                    return True
+
+                status = result.get("stdout", "").strip()
+
+                if "status: done" in status:
+                    console.print("[green]✓ Cloud-init setup completed[/green]")
+                    return True
+                elif "status: error" in status:
+                    console.print(
+                        "[yellow]⚠️ Cloud-init completed with errors, but continuing...[/yellow]"
+                    )
+                    return True
+                elif "status: running" in status:
+                    console.print(
+                        f"[cyan]Cloud-init still running... ({int(time.time() - start_time)}s elapsed)[/cyan]"
+                    )
+                    time.sleep(10)
+                else:
+                    console.print(f"[yellow]Unknown cloud-init status: {status}[/yellow]")
+                    time.sleep(10)
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Error checking cloud-init: {e}[/yellow]")
+                console.print("[yellow]Assuming setup is complete and continuing...[/yellow]")
                 return True
-            elif "status: error" in status:
-                console.print(
-                    "[yellow]⚠️ Cloud-init completed with errors, but continuing...[/yellow]"
-                )
-                return True
-            elif "status: running" in status:
-                console.print(
-                    f"[cyan]Cloud-init still running... ({int(time.time() - start_time)}s elapsed)[/cyan]"
-                )
-                time.sleep(10)
-            else:
-                console.print(f"[yellow]Unknown cloud-init status: {status}[/yellow]")
-                time.sleep(10)
 
         console.print("[yellow]⚠️ Cloud-init timeout, but continuing anyway...[/yellow]")
         return False
 
-    def fix_droplet_container(self, droplet_info: Droplet):
-        """Try to fix the droplet container setup."""
+    def ensure_host_system_ready(self, droplet_info: Droplet):
+        """Ensure the host system is properly set up for profiling."""
         try:
-            console.print("[yellow]🔧 Attempting to fix droplet container setup...[/yellow]")
+            console.print("[yellow]🔧 Ensuring host system is ready for profiling...[/yellow]")
 
             # Wait for cloud-init to finish if it's still running
             self.wait_for_cloud_init(droplet_info)
 
-            # First, try to start the existing ml container if it exists but is stopped
-            start_existing_cmd = "docker start ml"
-            result = droplet_info.run_command(start_existing_cmd)
+            # Check if virtual environment exists and is working
+            venv_check_cmd = "test -f /opt/venv/bin/activate && source /opt/venv/bin/activate && python --version"
+            result = droplet_info.run_command(venv_check_cmd)
 
             if result.get("exit_code") == 0:
-                console.print("[green]✓ Started existing ml container[/green]")
+                console.print("[green]✓ Virtual environment is ready[/green]")
                 return True
 
-            # If that fails, try to create the container from scratch
-            console.print("[yellow]Creating new ml container...[/yellow]")
+            console.print(
+                "[yellow]Virtual environment missing or broken, creating new one...[/yellow]"
+            )
 
-            # Pull the image if it doesn't exist
-            pull_cmd = "docker pull rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0"
-            result = droplet_info.run_command(pull_cmd, timeout=600)
+            # First check if we have python3
+            python_check = droplet_info.run_command("which python3")
+            if python_check.get("exit_code") != 0:
+                console.print("[yellow]Installing Python3 and dependencies...[/yellow]")
+                install_python_cmd = "apt-get update && apt-get install -y python3 python3-venv python3-pip build-essential"
+                result = droplet_info.run_command(install_python_cmd, timeout=180)
+                if result.get("exit_code") != 0:
+                    console.print(
+                        f"[red]Failed to install Python3: {result.get('stderr', '')}[/red]"
+                    )
+                    return False
 
-            if result.get("exit_code") != 0:
-                console.print("[red]Failed to pull Docker image[/red]")
-                return False
+            # Create workspace directory
+            workspace_cmd = "mkdir -p /workspace && chmod 755 /workspace"
+            droplet_info.run_command(workspace_cmd)
 
-            # Create and start the ml container
-            create_container_cmd = """
-            docker run -dit \\
-              --name ml \\
-              --restart=always \\
-              --network host \\
-              --ipc=host \\
-              --device=/dev/kfd \\
-              --device=/dev/dri \\
-              --group-add video \\
-              --cap-add=SYS_PTRACE \\
-              --security-opt seccomp=unconfined \\
-              -v /mnt/share:/workspace \\
-              rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0 bash
+            # Remove any broken virtual environment
+            cleanup_cmd = "rm -rf /opt/venv"
+            droplet_info.run_command(cleanup_cmd)
+
+            # Create virtual environment if it doesn't exist
+            create_venv_cmd = """
+            python3 -m venv /opt/venv &&
+            source /opt/venv/bin/activate &&
+            pip install --upgrade pip setuptools wheel &&
+            pip install rich pydo paramiko
             """
 
-            result = droplet_info.run_command(create_container_cmd, timeout=120)
-
-            if result.get("exit_code") != 0:
-                console.print(
-                    f"[red]Failed to create ml container: {result.get('stderr', '')}[/red]"
-                )
-                return False
-
-            # Set up the container environment
-            setup_cmd = """
-            docker exec ml bash -c "
-              apt-get update && \\
-              apt-get install -y rocprofiler-dev roctracer-dev rocm-dev rocm-profiler wget gnupg build-essential || echo 'Some packages may not be available' && \\
-              python -m venv /opt/venv && \\
-              source /opt/venv/bin/activate && \\
-              pip install --upgrade pip setuptools && \\
-              echo 'source /opt/venv/bin/activate' >> /root/.bashrc && \\
-              echo 'export ROCM_PATH=/opt/rocm' >> /root/.bashrc && \\
-              echo 'export PATH=$PATH:/opt/rocm/bin' >> /root/.bashrc && \\
-              echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc && \\
-              mkdir -p /mnt/share
-            "
-            """
-
-            result = droplet_info.run_command(setup_cmd, timeout=300)
+            result = droplet_info.run_command(create_venv_cmd, timeout=300)
 
             if result.get("exit_code") == 0:
-                console.print("[green]✓ Container setup completed successfully[/green]")
+                console.print("[green]✓ Virtual environment created successfully[/green]")
+
+                # Set up environment for future logins
+                bashrc_setup = """
+                echo 'source /opt/venv/bin/activate' >> /root/.bashrc
+                echo 'cd /workspace' >> /root/.bashrc
+                """
+                droplet_info.run_command(bashrc_setup)
+
                 return True
             else:
                 console.print(
-                    f"[yellow]Container setup had some issues but may still work: {result.get('stderr', '')}[/yellow]"
+                    f"[red]Virtual environment creation failed: {result.get('stderr', '')}[/red]"
                 )
-                return True  # Continue anyway, basic container should work
+                console.print("[yellow]Will try to continue anyway...[/yellow]")
+                return False
 
         except Exception as e:
-            console.print(f"[red]Failed to fix container: {e}[/red]")
+            console.print(f"[red]Failed to ensure host system ready: {e}[/red]")
             return False

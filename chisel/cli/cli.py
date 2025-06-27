@@ -1,6 +1,6 @@
 """Command-line interface for Chisel - pure argument parser."""
 
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
 import typer
 
@@ -91,7 +91,13 @@ def create_app() -> typer.Typer:
             help="GPU type: 'h100' (default) or 'l40s' (NVIDIA only)",
             autocompletion=gpu_type_completer,
         ),
-        target: Optional[str] = typer.Argument(
+        files_to_sync: Optional[List[str]] = typer.Option(
+            None,
+            "--files-to-sync",
+            "-f",
+            help="Files to sync to the remote machine. If not specified, no files will be synced.",
+        ),
+        command_to_profile: Optional[str] = typer.Argument(
             None,
             help="Target to profile: source file (e.g., kernel.cu, train.py), executable, or command",
         ),
@@ -113,7 +119,8 @@ def create_app() -> typer.Typer:
             chisel profile --nsys --ncompute --output-dir ./results ./cuda_kernel  # Multiple profilers
         """
         exit_code = handle_profile(
-            target=target,
+            command_to_profile=command_to_profile,
+            files_to_sync=files_to_sync,
             rocprofv3=rocprofv3,
             rocprof_compute=rocprof_compute,
             nsys=nsys,
