@@ -7,19 +7,32 @@
 
 > 🚀 **Recent Releases**
 >
-> ### Latest
 >
 > - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
 > - **AMD rocprofv3 Support**: Full integration with AMD's latest profiling tool
-> - **Automatic Cleanup**: Remote files are automatically cleaned up after profiling
 
 > 🔮 **Upcoming Features**
 >
-> ### In Development
 >
 > - **Web Dashboard**: Browser-based visualization of profiling results.
 > - **Multi-GPU Support**: Profile the same kernel across multiple GPU types simultaneously.
-> - **Profiling Backend**: Bypass the need for a DigitalOcean account by using a public backend.
+> - **Profiling Backend**: Use Chisel’s built-in backend to run profiling workloads—no cloud account or API token required.
+> - **More GPU Architectures**: Support for most requested GPU type.
+> - **Auto cleaning**: Smart cleaning and release of your DigitalOcean resources (destroying the droplet after you don't use it).
+
+
+> 💡 **Feature Requests**
+>
+> Got a feature idea you'd love to see in Chisel? We'd love to hear from you!
+>
+> - Open a feature request on [GitHub Issues](https://github.com/Herdora/chisel/issues)
+> - Or email us directly at **contact [at] herdora [dot] com**
+>
+> Please include a short description of the feature, how you'd use it, and any context that might help us prioritize.
+
+## About
+
+Testing and profiling GPU kernels across different hardware is time-consuming and hardware-dependent, as it often involves complex setup, driver compatibility issues, dependency mismatches, and access to specialized GPUs. Chisel removes that friction by letting you run and profile GPU code in the cloud with a single command - no GPU required. It’s the fastest way to validate kernel performance on real NVIDIA and AMD GPUs.
 
 ## Quick Start
 
@@ -48,8 +61,9 @@ chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "pytho
 # TODO: make names in examples/ directory more descriptive.
 ```
 
-**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine.
+**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine. 
 
+> Ensure to destroy your DigitalOcean droplet via their dashboard after your done.
 > **Need a DigitalOcean API token?** Get one [here](https://amd.digitalocean.com/account/api/tokens) (requires read/write access).
 
 ## Commands
@@ -70,11 +84,11 @@ chisel configure --token YOUR_TOKEN
 
 ## GPU Support
 
-| GPU         | Size                | Region | Cost/Hour | Profiling                       |
-| ----------- | ------------------- | ------ | --------- | ------------------------------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | $4.89     | nsight-compute + nsight-systems |
-| NVIDIA L40S | `gpu-l40sx1-48gb`   | TOR1   | $2.21     | nsight-compute + nsight-systems |
-| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | $1.99     | rocprofv3                       |
+| GPU         | Size                | Region  | Profiling                       |
+| ----------- | ------------------- | ------  | ------------------------------- |
+| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2    | nsight-compute + nsight-systems |
+| NVIDIA L40S | `gpu-l40sx1-48gb`   | TOR1    | nsight-compute + nsight-systems |
+| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1    | rocprofv3                       |
 
 ## Development Setup
 
