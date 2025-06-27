@@ -1,20 +1,22 @@
 <div align="center">
-  <img width="300" height="300" src="https://i.imgur.com/KISXGnH.png" alt="Chisel CLI logo" /> 
+  <img width="300" height="300" src="https://i.imgur.com/H32IKRZ.jpeg" alt="Chisel CLI logo" /> 
 	<h1>chisel</h1>
 </div>
 
 **TL;DR:** Seamless GPU kernel profiling on cloud infrastructure. Write GPU code, run one command, get profiling results. Zero GPU hardware required.
 
 > 🚀 **Recent Releases**
-> 
+>
 > ### Latest
+>
 > - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
 > - **AMD rocprofv3 Support**: Full integration with AMD's latest profiling tool
 > - **Automatic Cleanup**: Remote files are automatically cleaned up after profiling
 
 > 🔮 **Upcoming Features**
-> 
+>
 > ### In Development
+>
 > - **Web Dashboard**: Browser-based visualization of profiling results.
 > - **Multi-GPU Support**: Profile the same kernel across multiple GPU types simultaneously.
 > - **Profiling Backend**: Bypass the need for a DigitalOcean account by using a public backend.
@@ -37,7 +39,7 @@ nvcc -arch=sm_90 -o examples/my_kernel examples/my_kernel.cu
 nvcc -arch=sm_90 -Xcompiler -fPIC -shared -o examples/libvector_add.so examples/vector_add.cu # for inlined kernels to python on nvidia.
 
 
-# 4. Profile your GPU kernels and applications  
+# 4. Profile your GPU kernels and applications
 chisel profile --rocprofv3="--sys-trace" -f examples/simple-mm.hip "./simple-mm" # since this just copies the file, it isn't placed in a dir on the server.
 chisel profile --rocprofv3="--sys-trace" -f examples/hip_vector_add_test.py -f examples/libvector_add_hip.so "python hip_vector_add_test.py"
 chisel profile --rocprofv3="--sys-trace" -f examples/attention_block.py "python attention_block.py"
@@ -90,4 +92,3 @@ pip install -e .
 ```bash
 rm -rf dist/ build/ *.egg-info && python -m build && twine upload dist/*
 ```
-
