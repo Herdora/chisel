@@ -30,11 +30,20 @@ pip install chisel-cli
 # 2. Configure with your DigitalOcean API token
 chisel configure
 
-# 3. Profile your GPU kernels and applications  
-chisel profile --nsys kernel.cu              # NVIDIA: CUDA source files
-chisel profile --rocprofv3 kernel.cpp        # AMD: HIP source files
-chisel profile --nsys train.py               # NVIDIA: Python applications
-chisel profile --rocprofv3 train.py          # AMD: Python applications
+# 3. Compile your code into an executable
+hipcc --amdgpu-target=gfx940 -o examples/simple-mm examples/simple-mm.hip
+hipcc --amdgpu-target=gfx940 -fPIC -shared -o examples/libvector_add_hip.so examples/vector_add_hip.hip # for inlined kernels to python on amd.
+nvcc -arch=sm_90 -o examples/my_kernel examples/my_kernel.cu
+nvcc -arch=sm_90 -Xcompiler -fPIC -shared -o examples/libvector_add.so examples/vector_add.cu # for inlined kernels to python on nvidia.
+
+
+# 4. Profile your GPU kernels and applications  
+chisel profile --rocprofv3="--sys-trace" -f examples/simple-mm.hip "./simple-mm" # since this just copies the file, it isn't placed in a dir on the server.
+chisel profile --rocprofv3="--sys-trace" -f examples/hip_vector_add_test.py -f examples/libvector_add_hip.so "python hip_vector_add_test.py"
+chisel profile --rocprofv3="--sys-trace" -f examples/attention_block.py "python attention_block.py"
+chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "python examples/main.py" # syncs the entire examples directory and runs main.py
+# TODO: add the case for when user has "-f examples/"
+# TODO: make names in examples/ directory more descriptive.
 ```
 
 **That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine.
@@ -56,205 +65,6 @@ chisel configure
 # Non-interactive with token
 chisel configure --token YOUR_TOKEN
 ```
-
-### `chisel profile --nsys="<nsys flags>" <target>`
-
-Profile GPU kernels on NVIDIA H100 ($4.89/hour) or L40S ($2.21/hour).
-
-```bash
-# Profile source files (automatically compiled and executed)
-chisel profile --nsys="--trace=cuda,nvtx" kernel.cu
-
-# Profile Python GPU applications  
-chisel profile --nsys="--trace=cuda,nvtx" train.py
-
-# Profile direct commands
-chisel profile --nsys="--trace=cuda,nvtx" "./my_executable"
-```
-
-### `chisel profile --ncompute="<ncu flags>" <target>`
-
-```bash
-# Detailed kernel analysis with nsight-compute
-chisel profile --ncompute="--metrics all" kernel.cu
-
-# Memory and compute analysis
-chisel profile --ncompute="--section ComputeWorkloadAnalysis --section MemoryWorkloadAnalysis" matmul.cu
-```
-
-### `chisel profile --rocprofv3="<rocprofv3 flags>" <target>`
-
-Profile GPU kernels on AMD MI300X ($1.99/hour).
-
-```bash
-# Profile Python applications on AMD
-chisel profile --rocprofv3="--sys-trace" examples/attention_block.py
-
-# Profile HIP/ROCm applications
-chisel profile --rocprofv3="--sys-trace" examples/simple-mm.hip
-
-# Profile with custom rocprofv3 options
-chisel profile --rocprofv3="--pmc SQ_BUSY_CYCLES,SQ_WAVES" ./gemm_kernel
-```
-
-## Examples
-
-### Python GPU Applications
-
-```bash
-# Create a PyTorch training script
-cat > train.py << 'EOF'
-import torch
-import torch.nn as nn
-import time
-
-# Simple neural network
-model = nn.Sequential(
-    nn.Linear(1024, 512),
-    nn.ReLU(),
-    nn.Linear(512, 256),
-    nn.ReLU(),
-    nn.Linear(256, 10)
-).cuda()
-
-# Generate some data
-x = torch.randn(1000, 1024).cuda()
-y = torch.randint(0, 10, (1000,)).cuda()
-
-# Training loop
-optimizer = torch.optim.Adam(model.parameters())
-criterion = nn.CrossEntropyLoss()
-
-for epoch in range(5):
-    output = model(x)
-    loss = criterion(output, y)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    print(f"Epoch {epoch}, Loss: {loss.item()}")
-EOF
-
-# Profile PyTorch on NVIDIA
-chisel profile --nsys train.py
-
-# Profile PyTorch on AMD  
-chisel profile --rocprofv3 train.py
-
-# Results include comprehensive profiling data:
-# - GPU kernel execution times and memory bandwidth utilization
-# - CUDA/HIP API call timing breakdown and bottleneck analysis  
-# - Memory transfer patterns and optimization opportunities
-# - Automated performance optimization suggestions
-```
-
-### AMD HIP Profiling
-
-```bash
-# Create a simple HIP kernel
-cat > matrix_add.cpp << 'EOF'
-#include <hip/hip_runtime.h>
-#include <iostream>
-#include <vector>
-
-__global__ void matrixAdd(float *A, float *B, float *C, int N) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-    
-    if (i < N && j < N) {
-        int idx = i * N + j;
-        C[idx] = A[idx] + B[idx];
-    }
-}
-
-int main() {
-    const int N = 1024;
-    size_t size = N * N * sizeof(float);
-    
-    // Allocate and run kernel
-    float *d_A, *d_B, *d_C;
-    hipMalloc(&d_A, size);
-    hipMalloc(&d_B, size);
-    hipMalloc(&d_C, size);
-    
-    dim3 threadsPerBlock(16, 16);
-    dim3 numBlocks((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                   (N + threadsPerBlock.y - 1) / threadsPerBlock.y);
-    
-    hipLaunchKernelGGL(matrixAdd, numBlocks, threadsPerBlock, 0, 0, d_A, d_B, d_C, N);
-    hipDeviceSynchronize();
-    
-    std::cout << "Matrix addition completed!" << std::endl;
-    return 0;
-}
-EOF
-
-# Profile with detailed system tracing
-chisel profile --rocprofv3="--sys-trace" matrix_add.cpp
-```
-
-### NVIDIA CUDA Profiling
-
-```bash
-# Create a CUDA matrix multiplication kernel
-cat > matmul.cu << 'EOF'
-#include <cuda_runtime.h>
-#include <cublas_v2.h>
-#include <iostream>
-
-__global__ void matmul_kernel(float *A, float *B, float *C, int N) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (row < N && col < N) {
-        float sum = 0.0f;
-        for (int k = 0; k < N; k++) {
-            sum += A[row * N + k] * B[k * N + col];
-        }
-        C[row * N + col] = sum;
-    }
-}
-
-int main() {
-    const int N = 1024;
-    size_t size = N * N * sizeof(float);
-    
-    float *d_A, *d_B, *d_C;
-    cudaMalloc(&d_A, size);
-    cudaMalloc(&d_B, size);
-    cudaMalloc(&d_C, size);
-    
-    dim3 threadsPerBlock(16, 16);
-    dim3 numBlocks((N + 15) / 16, (N + 15) / 16);
-    
-    matmul_kernel<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_C, N);
-    cudaDeviceSynchronize();
-    
-    std::cout << "Matrix multiplication completed!" << std::endl;
-    return 0;
-}
-EOF
-
-# Profile on H100 (default) with kernel launch and memory trace
-chisel profile --nsys="--trace=cuda,osrt,mem" matmul.cu
-
-# Profile on L40S with CUDA API and NVTX trace, limit to 10 seconds
-chisel profile --nsys="--trace=cuda,nvtx --duration=10" matmul.cu --gpu-type l40s
-
-# Profile with detailed metrics using nsight-compute, including memory and instruction stats
-chisel profile --ncompute="--metrics sm__throughput.avg.pct_of_peak_sustained_active,dram__throughput.avg.pct_of_peak_sustained_active,sm__warps_active.avg,smsp__sass_average_branch_targets_threads_per_inst.avg" matmul.cu
-
-# Profile with both nsys and ncompute, with timeline and kernel stats
-chisel profile --nsys="--trace=cuda,osrt --sample=cpu" --ncompute="--section ComputeWorkloadAnalysis --section MemoryWorkloadAnalysis" matmul.cu
-```
-
-**Results are saved to:** `chisel-results/TIMESTAMP/profile_summary.txt`
-
-All profiling results include:
-- **Kernel Performance**: Execution times, occupancy, and throughput analysis
-- **Memory Analysis**: Bandwidth utilization, transfer patterns, and memory bottlenecks
-- **API Timing**: CUDA/HIP/ROCm API call breakdowns and latency analysis
-- **Optimization Insights**: Automated suggestions for performance improvements
-- **Multi-Profiler Support**: Run multiple profilers simultaneously for comprehensive analysis
 
 ## GPU Support
 
