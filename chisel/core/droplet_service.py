@@ -39,13 +39,14 @@ class DropletService:
         # New cloud-init script: installs Docker, pulls ROCm 6.4.1 PyTorch image,
         # starts it, creates virtual environment, and drops every future SSH login
         # straight into the container with activated venv.
+        # Enhanced with ROCm validation and dev packages.
         # ----------------------------------------------------------------- #
         user_data = """#!/bin/bash
 set -e
 
 ### System prep -----------------------------------------------------------
 apt-get update
-apt-get install -y docker.io python3-venv  # venv helper for later
+apt-get install -y docker.io python3-venv build-essential cmake git python3-pip wget curl
 systemctl enable docker
 systemctl start docker
 usermod -aG docker root
@@ -67,12 +68,23 @@ docker run -dit \\
   -v /mnt/share:/workspace \\
   rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0 bash
 
-### Inside the container: create + preload a venv -------------------------
+### Inside the container: create + preload a venv and install ROCm dev packages -------------------------
 docker exec ml bash -c "
+  # Update package list and install ROCm dev packages
+  apt-get update && \\
+  apt-get install -y rocprofiler-dev roctracer-dev rocm-dev rocm-profiler || echo 'Some ROCm packages may not be available' && \\
+  
+  # Create virtual environment
   python -m venv /opt/venv && \\
   source /opt/venv/bin/activate && \\
-  pip install --upgrade pip rich pydo paramiko jupyterlab vllm triton sglang && \\
-  echo 'source /opt/venv/bin/activate' >> /root/.bashrc   # auto-activate on each shell
+  pip install --upgrade pip setuptools && \\
+  pip install rich pydo paramiko jupyterlab vllm triton sglang && \\
+  echo 'source /opt/venv/bin/activate' >> /root/.bashrc && \\
+  
+  # Set up ROCm environment
+  echo 'export ROCM_PATH=/opt/rocm' >> /root/.bashrc && \\
+  echo 'export PATH=\$PATH:/opt/rocm/bin' >> /root/.bashrc && \\
+  echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc
 "
 
 ### Make every SSH login jump straight into the container -----------------

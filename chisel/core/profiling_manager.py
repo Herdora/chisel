@@ -176,6 +176,7 @@ class ProfilingManager:
     ) -> Dict[str, Any]:
         """Run rocprofv3 on the droplet."""
 
+        # Validate ROCm and ensure rocprofv3 is available
         self._ensure_rocprofv3(droplet_info)
 
         # Check if this is a Python file and ensure ROCm Python libraries are available
@@ -617,6 +618,9 @@ class ProfilingManager:
     def _ensure_rocprofv3(self, droplet_info: Droplet):
         """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
         try:
+            # First validate that ROCm is properly installed
+            self._validate_rocm_installation(droplet_info)
+
             # Check if rocprofv3 is already available
             check_cmd = "which rocprofv3 && echo 'rocprofv3 available'"
             result = droplet_info.run_container_command(check_cmd)
@@ -627,16 +631,21 @@ class ProfilingManager:
 
             console.print("[yellow]Installing rocprofv3 and dependencies...[/yellow]")
 
-            # Install build dependencies and build tools
+            # Install build dependencies and build tools with verbose output
             setup_cmd = """
             timeout 1800 bash -c '
             apt-get update -y && 
-            apt-get install -y git cmake build-essential python3 python3-pip wget
+            apt-get install -y git cmake build-essential python3 python3-pip wget && \\
+            echo "✓ Build dependencies installed"
             '
             """
 
+            console.print("[cyan]Installing build dependencies...[/cyan]")
             setup_result = droplet_info.run_container_command(setup_cmd, timeout=1900)
             if setup_result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to install build dependencies: {setup_result.get('stderr', '')}[/red]"
+                )
                 raise RuntimeError("Failed to install build dependencies")
 
             # Build aqlprofile from mainline
@@ -645,12 +654,16 @@ class ProfilingManager:
             git clone https://github.com/ROCm/aqlprofile.git && 
             cd aqlprofile && 
             mkdir build && cd build && 
-            cmake .. && make -j$(nproc) && make install
+            cmake .. && make -j$(nproc) && make install && \\
+            echo "✓ aqlprofile built and installed"
             """
 
             console.print("[cyan]Building aqlprofile...[/cyan]")
             aql_result = droplet_info.run_container_command(build_aqlprofile_cmd, timeout=1200)
             if aql_result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to build aqlprofile: {aql_result.get('stderr', '')}[/red]"
+                )
                 raise RuntimeError("Failed to build aqlprofile")
 
             # Build rocprofiler-sdk from mainline
@@ -659,7 +672,8 @@ class ProfilingManager:
             git clone https://github.com/ROCm/rocprofiler-sdk.git && 
             cd rocprofiler-sdk && 
             mkdir build && cd build && 
-            cmake .. && make -j$(nproc) && make install
+            cmake .. && make -j$(nproc) && make install && \\
+            echo "✓ rocprofiler-sdk built and installed"
             """
 
             console.print("[cyan]Building rocprofiler-sdk...[/cyan]")
@@ -667,6 +681,9 @@ class ProfilingManager:
                 build_rocprofiler_cmd, timeout=1200
             )
             if profiler_result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to build rocprofiler-sdk: {profiler_result.get('stderr', '')}[/red]"
+                )
                 raise RuntimeError("Failed to build rocprofiler-sdk")
 
             # Download rocprof-trace-decoder binary
@@ -674,35 +691,136 @@ class ProfilingManager:
             cd /tmp && 
             wget -O /opt/rocm/lib/rocprof-trace-decoder https://github.com/ROCm/rocprof-trace-decoder/releases/latest/download/rocprof-trace-decoder && 
             chmod +x /opt/rocm/lib/rocprof-trace-decoder &&
-            ln -sf /opt/rocm/lib/rocprof-trace-decoder /opt/rocm/lib/libatt_decoder_trace.so
+            ln -sf /opt/rocm/lib/rocprof-trace-decoder /opt/rocm/lib/libatt_decoder_trace.so && \\
+            echo "✓ rocprof-trace-decoder installed"
             """
 
             console.print("[cyan]Installing rocprof-trace-decoder...[/cyan]")
             decoder_result = droplet_info.run_container_command(download_decoder_cmd, timeout=300)
             if decoder_result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to install rocprof-trace-decoder: {decoder_result.get('stderr', '')}[/red]"
+                )
                 raise RuntimeError("Failed to install rocprof-trace-decoder")
 
             # Set up environment
             env_setup_cmd = """
             echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc &&
-            export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/
+            export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && \\
+            echo "✓ Environment variables set"
             """
 
             env_result = droplet_info.run_container_command(env_setup_cmd)
             if env_result["exit_code"] != 0:
+                console.print(
+                    f"[red]Failed to set up environment: {env_result.get('stderr', '')}[/red]"
+                )
                 raise RuntimeError("Failed to set up environment")
 
-            # Verify installation
-            verify_cmd = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && which rocprofv3 && rocprofv3 --help"
+            # Verify installation with detailed output
+            verify_cmd = "export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/ && which rocprofv3 && rocprofv3 --help | head -10"
             verify_result = droplet_info.run_container_command(verify_cmd)
 
             if verify_result["exit_code"] != 0:
+                console.print(
+                    f"[red]rocprofv3 verification failed: {verify_result.get('stderr', '')}[/red]"
+                )
                 raise RuntimeError("rocprofv3 installation verification failed")
 
             console.print("[green]✓ rocprofv3 and dependencies installed successfully[/green]")
+            console.print(f"[cyan]rocprofv3 help preview:[/cyan]")
+            console.print(verify_result.get("stdout", "").strip())
 
         except Exception as e:
             raise RuntimeError(f"Failed to setup rocprofv3: {e}")
+
+    def _validate_rocm_installation(self, droplet_info: Droplet):
+        """Validate that ROCm is properly installed and working."""
+        try:
+            console.print("[cyan]Validating ROCm installation...[/cyan]")
+
+            # Check if rocminfo is available and working
+            rocminfo_cmd = "/opt/rocm/bin/rocminfo"
+            result = droplet_info.run_container_command(rocminfo_cmd)
+
+            if result["exit_code"] != 0:
+                console.print(
+                    "[yellow]rocminfo not found or failed, checking ROCm installation...[/yellow]"
+                )
+
+                # Check if ROCm directory exists
+                rocm_check_cmd = "ls -la /opt/rocm/ && echo 'ROCm directory exists'"
+                rocm_result = droplet_info.run_container_command(rocm_check_cmd)
+
+                if rocm_result["exit_code"] != 0:
+                    raise RuntimeError("ROCm installation not found at /opt/rocm/")
+
+                # Try alternative rocminfo locations
+                alt_rocminfo_cmd = "which rocminfo || find /opt -name rocminfo 2>/dev/null || echo 'rocminfo not found'"
+                alt_result = droplet_info.run_container_command(alt_rocminfo_cmd)
+
+                if "rocminfo not found" in alt_result.get("stdout", ""):
+                    console.print(
+                        "[yellow]Warning: rocminfo not available, but ROCm directory exists[/yellow]"
+                    )
+                    console.print("[yellow]This may still work for profiling[/yellow]")
+                else:
+                    console.print(
+                        f"[green]Found rocminfo at: {alt_result.get('stdout', '').strip()}[/green]"
+                    )
+            else:
+                # rocminfo worked, show some output
+                console.print("[green]✓ ROCm installation validated[/green]")
+                stdout = result.get("stdout", "")
+                # Show first few lines of rocminfo output
+                lines = stdout.split("\n")[:5]
+                for line in lines:
+                    if line.strip():
+                        console.print(f"[cyan]  {line.strip()}[/cyan]")
+
+                # Check for GPU devices
+                if "GPU" in stdout or "gfx" in stdout:
+                    console.print("[green]✓ GPU device(s) detected by ROCm[/green]")
+                else:
+                    console.print(
+                        "[yellow]Warning: No GPU devices detected in rocminfo output[/yellow]"
+                    )
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: ROCm validation failed: {e}[/yellow]")
+            console.print(
+                "[yellow]Continuing anyway - this may still work in the container environment[/yellow]"
+            )
+
+    def _debug_rocm_packages(self, droplet_info: Droplet):
+        """Show debug information about ROCm packages for troubleshooting."""
+        try:
+            console.print("[cyan]ROCm Package Debug Information:[/cyan]")
+
+            # Check which ROCm packages are installed
+            package_check_cmd = """
+            echo "=== Installed ROCm packages ===" && \\
+            dpkg -l | grep -i rocm | head -10 && \\
+            echo "=== ROCm library files ===" && \\
+            ls -la /opt/rocm/lib/ | head -10 && \\
+            echo "=== ROCm binary files ===" && \\
+            ls -la /opt/rocm/bin/ | head -10 && \\
+            echo "=== Environment variables ===" && \\
+            env | grep -i rocm
+            """
+
+            result = droplet_info.run_container_command(package_check_cmd)
+
+            if result["exit_code"] == 0:
+                console.print(f"[cyan]Debug output:[/cyan]")
+                for line in result.get("stdout", "").split("\n"):
+                    if line.strip():
+                        console.print(f"  {line.strip()}")
+            else:
+                console.print("[yellow]Could not gather ROCm debug information[/yellow]")
+
+        except Exception as e:
+            console.print(f"[yellow]Debug information gathering failed: {e}[/yellow]")
 
     def _download_results(
         self,
