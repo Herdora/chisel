@@ -29,83 +29,75 @@ class DropletService:
         droplet_image: str,
         replace: bool = False,
     ) -> Droplet:
-        # (unchanged) tear down duplicates when replace=True …
+        """
+        Launch a droplet pre-loaded with either CUDA or ROCm, then install
+        the matching PyTorch wheel inside a venv.
 
+        * If an NVIDIA driver (`nvidia-smi`) is present → install CUDA 12.2 wheel.
+        * Otherwise (AMD or CPU) → install ROCm 6.1 wheel.
+        """
+        # (optional) destroy duplicates when replace=True …
         ssh_keys = self.list_account_ssh_keys()
 
-        # ----------------------------------------------------------------- #
-        # Cloud-init script: installs ROCm, PyTorch, and development tools
-        # directly on the host system with automatic virtual environment activation.
-        # ----------------------------------------------------------------- #
-        user_data = """#!/bin/bash
-set -e
+        # ------------------------------------------------------------------ #
+        # cloud-init script
+        # ------------------------------------------------------------------ #
+        user_data = r"""#!/bin/bash
+    set -e
 
-### System prep -----------------------------------------------------------
-apt-get update
-apt-get install -y python3-venv build-essential cmake git python3-pip wget curl gnupg software-properties-common
+    # ---------- System prep ------------------------------------------------
+    apt-get update -y
+    apt-get install -y python3-venv build-essential cmake git python3-pip \
+                    wget curl gnupg software-properties-common
 
-### Create working directory ---------------------------------------------- 
-mkdir -p /workspace
-chmod 755 /workspace
+    mkdir -p /workspace && chmod 755 /workspace
 
-### Install ROCm (for AMD GPUs) -------------------------------------------
-# Add ROCm repository
-wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
-echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.4.1 jammy main' > /etc/apt/sources.list.d/rocm.list
-apt-get update
+    # ---------- GPU-specific driver/toolkit --------------------------------
+    if command -v nvidia-smi &>/dev/null; then
+        # NVIDIA path: add CUDA repo + toolkit
+        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+        dpkg -i cuda-keyring_1.1-1_all.deb
+        apt-get update -y
+        apt-get install -y cuda-toolkit-12-6 nsight-compute nsight-systems || true
+    else
+        # AMD path: add ROCm repo + base libs
+        wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
+        echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.4.1 jammy main' \
+            > /etc/apt/sources.list.d/rocm.list
+        apt-get update -y
+        apt-get install -y rocm-dev rocm-libs rocprofiler-dev roctracer-dev || true
+    fi
 
-# Install ROCm packages
-apt-get install -y rocm-dev rocm-libs rocprofiler-dev roctracer-dev rocm-profiler || echo 'Some ROCm packages may not be available for this GPU type'
+    # ---------- Python venv -------------------------------------------------
+    python3 -m venv /opt/venv
+    source /opt/venv/bin/activate
+    pip install --upgrade pip setuptools wheel
 
-# Add user to video and render groups
-usermod -aG video root
-usermod -aG render root
+    # Install the *right* PyTorch wheel
+    if command -v nvidia-smi &>/dev/null; then
+        echo "⇢ NVIDIA GPU detected – installing CUDA wheel"
+        pip install torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/cu122
+    else
+        echo "⇢ Installing ROCm wheel"
+        pip install torch torchvision torchaudio \
+            --index-url https://download.pytorch.org/whl/rocm6.1
+    fi
 
-### Install NVIDIA CUDA (for NVIDIA GPUs) ---------------------------------
-# Add NVIDIA repository
-wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-dpkg -i cuda-keyring_1.1-1_all.deb
-apt-get update
+    # Misc utilities
+    pip install rich pydo paramiko jupyterlab transformers accelerate || true
 
-# Install CUDA toolkit and profiling tools
-apt-get install -y cuda-toolkit-12-6 || echo 'CUDA packages not available for this GPU type'
+    # ---------- Environment convenience ------------------------------------
+    echo 'export CUDA_HOME=/usr/local/cuda'           >> /root/.bashrc
+    echo 'export PATH=$PATH:/usr/local/cuda/bin'      >> /root/.bashrc
+    echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64' >> /root/.bashrc
+    echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc
+    echo 'source /opt/venv/bin/activate'              >> /root/.bashrc
+    echo 'cd /workspace'                              >> /root/.bashrc
+    echo 'source ~/.bashrc'                           >> /root/.bash_profile
 
-### Create Python virtual environment -------------------------------------
-python3 -m venv /opt/venv
-source /opt/venv/bin/activate
-
-# Upgrade pip and install base packages
-pip install --upgrade pip setuptools wheel
-
-# Install PyTorch with ROCm support (for AMD)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1 || echo 'ROCm PyTorch not available, trying CUDA version'
-
-# Install PyTorch with CUDA support (for NVIDIA) - fallback if ROCm fails
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 || echo 'CUDA PyTorch not available, using CPU version'
-
-# Install additional ML and profiling packages
-pip install rich pydo paramiko jupyterlab transformers accelerate || echo 'Some Python packages may have failed to install'
-
-### Set up environment variables ------------------------------------------
-# ROCm environment
-echo 'export ROCM_PATH=/opt/rocm' >> /root/.bashrc
-echo 'export PATH=$PATH:/opt/rocm/bin' >> /root/.bashrc
-echo 'export ROCPROF_ATT_LIBRARY_PATH=/opt/rocm/lib/' >> /root/.bashrc
-
-# CUDA environment  
-echo 'export CUDA_HOME=/usr/local/cuda' >> /root/.bashrc
-echo 'export PATH=$PATH:/usr/local/cuda/bin' >> /root/.bashrc
-echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64' >> /root/.bashrc
-
-# Automatically activate virtual environment on login
-echo 'source /opt/venv/bin/activate' >> /root/.bashrc
-echo 'cd /workspace' >> /root/.bashrc
-
-# Set up bash_profile to ensure environment is loaded
-echo 'source ~/.bashrc' >> /root/.bash_profile
-
-echo "Setup complete - ROCm/CUDA and PyTorch installed with virtual environment"
-"""
+    echo "✓ Cloud-init finished"
+    """
 
         body = {
             "name": gpu_type.value,
