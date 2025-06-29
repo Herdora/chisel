@@ -6,33 +6,30 @@ from typing import Any, Dict, Optional
 import paramiko
 from rich.console import Console
 
+from .types.pydo_create_api import PydoDropletObject
+
 console = Console()
 
 
 class Droplet:
     """
     Represents a DigitalOcean droplet with SSH functionality.
-    Initialized from pydo droplet data.
+    Initialized from DropletObject dataclass.
     """
 
-    def __init__(self, data: Dict[str, Any], ssh_username: str = "root"):
-        self.data = data
-        self.id = data.get("id")
-        self.name = data.get("name")
-        self.status = data.get("status")
-        self.region = data.get("region", {}).get("slug")
-        self.size = data.get("size_slug")
-        self.image = data.get("image", {}).get("slug")
+    def __init__(self, droplet_data: PydoDropletObject, ssh_username: str = "root"):
+        self.droplet = droplet_data
+        self.id = self.droplet.id
+        self.name = self.droplet.name
+        self.status = self.droplet.status
+        self.region = self.droplet.region.slug
+        self.size = self.droplet.size_slug
+        self.image = self.droplet.image.slug or str(self.droplet.image.id)
         self.ip = self._extract_public_ip()
         self.ssh_username = ssh_username
-        # Infer GPU type from droplet name
         self.gpu_type = self.name
 
     def sync_file(self, local_path: str, remote_path: str) -> bool:
-        """
-        Sync a file or directory from local_path to remote_path on this droplet using rsync.
-        Returns True on success, False on failure.
-        """
         if not self.ip:
             console.print("[red]Error: No public IP found for droplet.[/red]")
             return False
@@ -41,7 +38,6 @@ class Droplet:
         if not source_path.exists():
             console.print(f"[red]Error: Source path '{local_path}' does not exist[/red]")
             return False
-        # We copy the entire directory, so we don't need to add a trailing slash
         else:
             source = str(source_path)
 
@@ -68,14 +64,12 @@ class Droplet:
             return False
 
     def _extract_public_ip(self) -> Optional[str]:
-        networks = self.data.get("networks", {}).get("v4", [])
-        for net in networks:
-            if net.get("type") == "public":
-                return net.get("ip_address")
+        for net in self.droplet.networks.v4:
+            if net.type == "public":
+                return net.ip_address
         return None
 
     def get_ssh_client(self, timeout: int = 10) -> paramiko.SSHClient:
-        """Create and return a connected paramiko SSHClient."""
         if not self.ip:
             raise ValueError("No public IP found for droplet.")
         ssh = paramiko.SSHClient()
@@ -84,7 +78,6 @@ class Droplet:
         return ssh
 
     def run_command(self, command: str, timeout: int = 30) -> Dict[str, Any]:
-        """Run a command on the droplet via SSH and return output and exit code."""
         result = {"stdout": "", "stderr": "", "exit_code": None}
         try:
             ssh = self.get_ssh_client(timeout=timeout)
@@ -98,18 +91,10 @@ class Droplet:
         return result
 
     def run_container_command(self, command: str, timeout: int = 30) -> Dict[str, Any]:
-        """Run a command on the host system with the virtual environment activated.
-
-        This method is kept for compatibility but now runs commands directly on the host
-        since we no longer use Docker containers.
-        """
-        # Ensure the command runs with the virtual environment activated
-        # and in the workspace directory
-        venv_command = f"source /opt/venv/bin/activate && cd /workspace && {command}"
+        venv_command = f"source /opt/venv/bin/activate && cd /workspace && {command}"  # TODO: change name to run_command
         return self.run_command(venv_command, timeout=timeout)
 
     def is_ssh_ready(self, timeout: int = 5) -> bool:
-        """Check if SSH is available on the droplet."""
         if not self.ip:
             return False
         try:

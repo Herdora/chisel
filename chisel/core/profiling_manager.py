@@ -1,9 +1,6 @@
 """Profile manager for orchestrating GPU profiling workflows."""
 
-# TODO: Have the name of profile output be <target>-<vendor>-<gpu>-<time>-<date>
-
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import shutil
@@ -48,8 +45,6 @@ class ProfilerResult:
 
 @dataclass
 class ProfilingResults:
-    """Result of a profiling operation."""
-
     success: bool
     output_dir: Path
     stdout: str
@@ -57,18 +52,15 @@ class ProfilingResults:
     summary: Dict[str, Any]
 
     def display_summary(self):
-        """Display a summary of the profiling results."""
         if self.success:
             console.print("\n[green]✓ Profiling completed successfully[/green]")
             console.print(f"[cyan]Results saved to:[/cyan] {self.output_dir}")
 
-            # Show top kernels if available (AMD legacy profiling)
             if "top_kernels" in self.summary:
                 console.print("\n[cyan]Top GPU Kernels:[/cyan]")
                 for i, kernel in enumerate(self.summary["top_kernels"][:5], 1):
                     console.print(f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms")
 
-            # Show profiling results (both AMD and NVIDIA use same structure now)
             if "profile_files" in self.summary:
                 summary_file = self.summary.get("summary_file")
                 profile_type = self.summary.get("profile_type", "nvidia")
@@ -90,8 +82,6 @@ class ProfilingResults:
 
 
 class ProfilingManager:
-    """Manages the complete profiling workflow for GPU kernels."""
-
     def __init__(self, digital_ocean_token: Optional[str] = None):
         if not digital_ocean_token:
             raise RuntimeError("No API token configured. Run 'chisel configure' first.")
@@ -109,25 +99,8 @@ class ProfilingManager:
         nsys_flag: Optional[str] = None,
         ncompute_flag: Optional[str] = None,
     ) -> ProfilingResults:
-        """
-        Execute a complete profiling workflow.
-
-        Args:
-            command_to_profile: The command that will be profiled on the remote server.
-            gpu_type: The GPU type to use for profiling.
-            files_to_sync: List of files to sync to the remote server.
-            output_dir: Custom output directory for results.
-            rocprofv3_flag: Full command to run with rocprofv3 (AMD).
-            rocprof_compute_flag: Full command to run with rocprof-compute (AMD)
-            nsys_flag: Full command to run with nsys (NVIDIA)
-            ncompute_flag: Full command to run with ncu (NVIDIA)
-
-        Returns:
-            ProfilingResults with profiling data and summary
-        """
-
         try:
-            console.print(
+            console.print(  # TODO: implment logging functions
                 f"[cyan]Starting profiling for {command_to_profile} on {gpu_type.value}[/cyan]"
             )
 
@@ -197,13 +170,11 @@ class ProfilingManager:
         output_dir: Path,
         rocprofv3_flags: str,
     ) -> ProfilerResult:
-        """Run rocprofv3 on the droplet."""
         droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
         self._ensure_rocprofv3(droplet_with_gpu)
 
         remote_profile_dir = f"{WORKSPACE_DIR}/{ROCPROFV3_DIR_NAME}"
 
-        # Reset (clean) the remote directory BEFORE syncing files
         RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
         result = droplet_with_gpu.run_container_command(RESET_CMD)
         if result["exit_code"] != 0:
@@ -214,10 +185,8 @@ class ProfilingManager:
             if file.endswith(".py"):
                 self._ensure_pytorch_rocm(droplet_with_gpu)
 
-        # Fix command path - if we synced files, use just the filename, not the original path
         adjusted_command = command_to_profile
         if files_to_sync:
-            # If the command matches one of the synced files, use just the filename
             for file in files_to_sync:
                 file_path = Path(file)
                 if command_to_profile == file or command_to_profile == str(file_path):
@@ -265,7 +234,6 @@ class ProfilingManager:
         output_dir: Path,
         rocprof_compute_flags: str,
     ) -> ProfilerResult:
-        """Run rocprof-compute on the droplet."""
         # TODO: Implement rocprof-compute when ready
 
         console.print("[yellow]rocprof-compute support not yet implemented[/yellow]")
@@ -279,13 +247,11 @@ class ProfilingManager:
         output_dir: Path,
         nsys_flags: str,
     ) -> ProfilerResult:
-        """Run nsys on the droplet."""
         droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
         self._ensure_nvidia_profilers(droplet_with_gpu)
 
         remote_profile_dir = f"{WORKSPACE_DIR}/{NSYS_DIR_NAME}"
 
-        # Reset (clean) the remote directory BEFORE syncing files
         RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
         result = droplet_with_gpu.run_container_command(RESET_CMD)
         if result["exit_code"] != 0:
@@ -296,10 +262,8 @@ class ProfilingManager:
             if file.endswith(".py"):
                 self._ensure_pytorch(droplet_with_gpu)
 
-        # Fix command path - if we synced files, use just the filename, not the original path
         adjusted_command = command_to_profile
         if files_to_sync:
-            # If the command matches one of the synced files, use just the filename
             for file in files_to_sync:
                 file_path = Path(file)
                 if command_to_profile == file or command_to_profile == str(file_path):
@@ -345,7 +309,6 @@ class ProfilingManager:
         output_dir: Path,
         ncompute_flags: str,
     ) -> ProfilerResult:
-        """Run ncu (nsight-compute) on the droplet."""
         droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
         self._ensure_nvidia_profilers(droplet_with_gpu)
 
@@ -741,8 +704,7 @@ class ProfilingManager:
                 "[yellow]PyTorch not detected - checking if virtual environment is properly set up[/yellow]"
             )
 
-            # Try installing PyTorch if it's missing
-            # First ensure virtual environment is ready
+            # TODO: fix this logic; we should either chose to patch for the users or throw immediately.
             if not self.ensure_host_system_ready(droplet_info):
                 console.print("[yellow]Host system not ready, but continuing...[/yellow]")
 
@@ -1321,15 +1283,13 @@ class ProfilingManager:
 
         while time.time() - start_time < timeout:
             try:
-                # Check cloud-init status
                 result = droplet_info.run_command("cloud-init status")
 
                 if result.get("exit_code") != 0:
-                    # cloud-init command not available or failed
                     console.print(
-                        "[yellow]⚠️ cloud-init not available, assuming setup complete[/yellow]"
+                        f"[red]cloud-init not available, assuming setup complete: {result.get('stderr', '')}[/red]"
                     )
-                    return True
+                    return False
 
                 status = result.get("stdout", "").strip()
 
