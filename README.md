@@ -47,16 +47,16 @@ chisel configure
 
 # 3. Compile your code into an executable
 hipcc --amdgpu-target=gfx940 -o examples/simple-mm examples/simple-mm.hip
-hipcc --amdgpu-target=gfx940 -fPIC -shared -o examples/libvector_add_hip.so examples/vector_add_hip.hip # for inlined kernels to python on amd.
+ # for inlined kernels to python on amd.
 nvcc -arch=sm_90 -o examples/my_kernel examples/my_kernel.cu
 nvcc -arch=sm_90 -Xcompiler -fPIC -shared -o examples/libvector_add.so examples/vector_add.cu # for inlined kernels to python on nvidia.
 
 
 # 4. Profile your GPU kernels and applications
-chisel profile --rocprofv3="--sys-trace" -f examples/simple-mm.hip "./simple-mm" # since this just copies the file, it isn't placed in a dir on the server.
+chisel profile --rocprofv3="--sys-trace" -f examples/simple-mm "./simple-mm" # since this just copies the file, it isn't placed in a dir on the server.
 chisel profile --rocprofv3="--sys-trace" -f examples/hip_vector_add_test.py -f examples/libvector_add_hip.so "python hip_vector_add_test.py"
-chisel profile --rocprofv3="--sys-trace" -f examples/attention_block.py "python attention_block.py"
-chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "python examples/main.py" # syncs the entire examples directory and runs main.py
+chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples/kernel.out "./kernel.out"
+chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "python examples/simple_gpu_test.py" # syncs the entire examples directory and runs simple_gpu_test.py
 # TODO: add the case for when user has "-f examples/"
 # TODO: make names in examples/ directory more descriptive.
 ```
@@ -84,11 +84,11 @@ chisel configure --token YOUR_TOKEN
 
 ## GPU Support
 
-| GPU         | Size                | Region  | Profiling                       |
-| ----------- | ------------------- | ------  | ------------------------------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2    | nsight-compute + nsight-systems |
-| NVIDIA L40S | `gpu-l40sx1-48gb`   | TOR1    | nsight-compute + nsight-systems |
-| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1    | rocprofv3                       |
+| GPU         | Size                | Region | Profiling                       |
+| ----------- | ------------------- | ------ | ------------------------------- |
+| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | nsight-compute + nsight-systems |
+| NVIDIA L40S | `gpu-l40sx1-48gb`   | TOR1   | nsight-compute + nsight-systems |
+| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | rocprofv3                       |
 
 ## Development Setup
 
