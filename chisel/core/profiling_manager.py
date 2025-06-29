@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import shutil
+import random
 
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 
 from chisel.core.droplet_service import DropletService, Droplet
 from .types.gpu_profiles import GPUType
@@ -1095,7 +1097,7 @@ class ProfilingManager:
                     if (
                         event.get("ph") == "X"
                         and "pid" in event
-                        and event.get("pid") in [6, 7]  # GPU pids
+                        and event.get("pid") in [6, 7]
                         and "DurationNs" in event.get("args", {})
                     ):
                         kernel_name = event.get("name", "")
@@ -1275,47 +1277,520 @@ class ProfilingManager:
             console.print(f"[red]Debug failed: {e}[/red]")
 
     def wait_for_cloud_init(self, droplet_info: Droplet, timeout: int = 600):
-        """Wait for cloud-init to complete setup."""
         import time
 
-        console.print("[cyan]⏳ Waiting for cloud-init to complete initial setup...[/cyan]")
+        # First check if cloud-init has already completed
+        if self._is_cloud_init_already_complete(droplet_info):
+            console.print("[green]✓ Cloud-init already completed - system is ready![/green]")
+            return True
+
+        # Show progress with estimated timing
+        estimated_time = 120  # 2 minutes estimate
+        console.print("[cyan]🚀 Setting up GPU droplet (estimated: ~2 minutes)[/cyan]")
+        console.print("[dim cyan]📦 Downloading system dependencies and GPU drivers...[/dim cyan]")
+
         start_time = time.time()
+        last_log_lines_shown = 0
 
-        while time.time() - start_time < timeout:
-            try:
-                result = droplet_info.run_command("cloud-init status")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            console=console,
+            transient=False,
+        ) as progress:
+            setup_task = progress.add_task("Initializing system...", total=estimated_time)
 
-                if result.get("exit_code") != 0:
-                    console.print(
-                        f"[red]cloud-init not available, assuming setup complete: {result.get('stderr', '')}[/red]"
-                    )
-                    return False
+            while time.time() - start_time < timeout:
+                elapsed = time.time() - start_time
 
-                status = result.get("stdout", "").strip()
+                # Update progress based on elapsed time and estimated completion
+                progress_percentage = min(
+                    (elapsed / estimated_time) * 100, 95
+                )  # Cap at 95% until actually done
+                progress.update(setup_task, completed=min(elapsed, estimated_time * 0.95))
 
-                if "status: done" in status:
-                    console.print("[green]✓ Cloud-init setup completed[/green]")
-                    return True
-                elif "status: error" in status:
-                    console.print(
-                        "[yellow]⚠️ Cloud-init completed with errors, but continuing...[/yellow]"
-                    )
-                    return True
-                elif "status: running" in status:
-                    console.print(
-                        f"[cyan]Cloud-init still running... ({int(time.time() - start_time)}s elapsed)[/cyan]"
-                    )
-                    time.sleep(10)
+                # Update task description based on progress
+                if elapsed < 30:
+                    description = "Starting cloud-init and package manager..."
+                elif elapsed < 60:
+                    description = "Installing CUDA/ROCm drivers and toolkits..."
+                elif elapsed < 90:
+                    description = "Setting up Python environment and PyTorch..."
+                elif elapsed < 120:
+                    description = "Finalizing configuration and environment..."
                 else:
-                    console.print(f"[yellow]Unknown cloud-init status: {status}[/yellow]")
-                    time.sleep(10)
-            except Exception as e:
-                console.print(f"[yellow]⚠️ Error checking cloud-init: {e}[/yellow]")
-                console.print("[yellow]Assuming setup is complete and continuing...[/yellow]")
+                    description = "Completing final setup steps..."
+
+                progress.update(setup_task, description=description)
+
+                try:
+                    result = droplet_info.run_command("cloud-init status --long")
+
+                    if result.get("exit_code") != 0:
+                        # Try fallback methods
+                        simple_result = droplet_info.run_command("cloud-init status")
+                        if simple_result.get("exit_code") == 0:
+                            status = simple_result.get("stdout", "").strip()
+
+                            if "status: done" in status:
+                                progress.update(
+                                    setup_task,
+                                    completed=estimated_time,
+                                    description="✓ Setup completed!",
+                                )
+                                console.print(
+                                    "[green]✓ Cloud-init setup completed successfully![/green]"
+                                )
+                                self._show_cloud_init_summary(droplet_info)
+                                return True
+                            elif "status: running" in status:
+                                # Show some activity but continue with progress bar
+                                last_log_lines_shown = self._show_recent_activity(
+                                    droplet_info, last_log_lines_shown
+                                )
+                        else:
+                            # Check if cloud-init has actually completed using alternative methods
+                            if self._is_cloud_init_actually_complete(droplet_info):
+                                progress.update(
+                                    setup_task,
+                                    completed=estimated_time,
+                                    description="✓ Setup completed!",
+                                )
+                                console.print(
+                                    "[green]✓ Cloud-init setup completed (detected via fallback)![/green]"
+                                )
+                                return True
+
+                            # Show warning and continue with limited detection
+                            if int(elapsed) % 30 == 0:  # Show warning every 30 seconds
+                                console.print(
+                                    f"[yellow]⚠️ cloud-init status not available yet ({int(elapsed)}s) - trying fallback methods...[/yellow]"
+                                )
+                                self._check_system_activity_with_completion(droplet_info)
+
+                        time.sleep(5)
+                        continue
+
+                    status_output = result.get("stdout", "").strip()
+                    lines = status_output.split("\n")
+                    overall_status = lines[0] if lines else "unknown"
+
+                    if "status: done" in overall_status:
+                        progress.update(
+                            setup_task, completed=estimated_time, description="✓ Setup completed!"
+                        )
+                        console.print("[green]✓ Cloud-init setup completed successfully![/green]")
+                        self._show_cloud_init_summary(droplet_info)
+                        return True
+                    elif "status: error" in overall_status:
+                        progress.update(
+                            setup_task,
+                            completed=estimated_time,
+                            description="⚠️ Completed with warnings",
+                        )
+                        console.print("[yellow]⚠️ Cloud-init completed with errors[/yellow]")
+                        self._show_cloud_init_logs(droplet_info, lines=10)
+                        return True
+                    elif "status: running" in overall_status:
+                        # Show recent activity but keep progress bar going
+                        last_log_lines_shown = self._show_recent_activity(
+                            droplet_info, last_log_lines_shown
+                        )
+                        time.sleep(5)
+                    else:
+                        time.sleep(5)
+
+                except Exception as e:
+                    # Continue with progress bar even if status check fails
+                    time.sleep(5)
+
+        # If we exit the progress loop, show timeout message
+        console.print("[yellow]⚠️ Setup is taking longer than expected[/yellow]")
+        console.print(
+            "[cyan]💡 The system may still be working - this is normal for GPU droplets[/cyan]"
+        )
+        self._show_helpful_timeout_guidance(droplet_info)
+        return False
+
+    def _show_recent_activity(self, droplet_info: Droplet, last_lines_shown: int) -> int:
+        """Show recent activity without overwhelming the progress display."""
+        try:
+            # Only show activity every few checks to avoid spam
+            if random.randint(1, 3) == 1:  # Show activity roughly 1/3 of the time
+                result = droplet_info.run_command(
+                    "tail -n 3 /var/log/cloud-init-output.log 2>/dev/null"
+                )
+                if result.get("exit_code") == 0:
+                    output = result.get("stdout", "").strip()
+                    if output:
+                        lines = output.split("\n")
+                        # Show just one meaningful line
+                        for line in reversed(lines):
+                            if line.strip() and not line.startswith(" ") and len(line.strip()) > 10:
+                                console.print(f"[dim blue]  📋 {line.strip()}[/dim blue]")
+                                break
+            return last_lines_shown + 1
+        except Exception:
+            return last_lines_shown
+
+    def _is_cloud_init_already_complete(self, droplet_info: Droplet) -> bool:
+        """Check if cloud-init has already completed on this system."""
+        try:
+            result = droplet_info.run_command(
+                "test -f /var/lib/cloud/instance/boot-finished && echo 'completed'"
+            )
+            if result.get("exit_code") == 0 and "completed" in result.get("stdout", ""):
+                console.print("[dim green]✓ Found cloud-init completion marker[/dim green]")
                 return True
 
-        console.print("[yellow]⚠️ Cloud-init timeout, but continuing anyway...[/yellow]")
+            result = droplet_info.run_command("cloud-init status")
+            if result.get("exit_code") == 0:
+                status = result.get("stdout", "").strip()
+                if "status: done" in status:
+                    console.print("[dim green]✓ Cloud-init status shows completed[/dim green]")
+                    return True
+                elif "status: disabled" in status:
+                    console.print("[dim green]✓ Cloud-init is disabled - system ready[/dim green]")
+                    return True
+
+            result = droplet_info.run_command(
+                "grep -q 'Cloud-init.*finished' /var/log/cloud-init.log 2>/dev/null && echo 'finished'"
+            )
+            if result.get("exit_code") == 0 and "finished" in result.get("stdout", ""):
+                console.print("[dim green]✓ Cloud-init logs show completion[/dim green]")
+                return True
+
+            result = droplet_info.run_command(
+                "test -d /opt/venv && test -f /root/.bashrc && echo 'setup_complete'"
+            )
+            if result.get("exit_code") == 0 and "setup_complete" in result.get("stdout", ""):
+                console.print("[dim green]✓ System appears fully configured[/dim green]")
+                return True
+
+        except Exception as e:
+            console.print(
+                f"[dim yellow]Could not check cloud-init completion status: {e}[/dim yellow]"
+            )
+
         return False
+
+    def _check_system_activity(self, droplet_info: Droplet):
+        """Check for system activity when cloud-init status isn't available."""
+        try:
+            # Check if processes are running
+            result = droplet_info.run_command(
+                "ps aux | grep -E '(apt|dpkg|python|pip)' | grep -v grep | wc -l"
+            )
+            if result.get("exit_code") == 0:
+                process_count = int(result.get("stdout", "0").strip())
+                if process_count > 0:
+                    console.print(
+                        f"[dim cyan]System activity detected: {process_count} setup processes running[/dim cyan]"
+                    )
+
+            # Check if we can see any startup activity in logs
+            result = droplet_info.run_command(
+                "tail -n 3 /var/log/syslog 2>/dev/null || echo 'No syslog available'"
+            )
+            if result.get("exit_code") == 0:
+                output = result.get("stdout", "").strip()
+                if output and "No syslog available" not in output:
+                    console.print("[dim cyan]Recent system activity:[/dim cyan]")
+                    for line in output.split("\n")[-2:]:
+                        if line.strip():
+                            console.print(f"[dim cyan]  {line.strip()}[/dim cyan]")
+        except Exception:
+            pass
+
+    def _check_system_activity_with_completion(self, droplet_info: Droplet):
+        """Check for system activity and also look for completion signs."""
+        try:
+            # Check if processes are running
+            result = droplet_info.run_command(
+                "ps aux | grep -E '(cloud-init|apt|dpkg|python|pip)' | grep -v grep | wc -l"
+            )
+            if result.get("exit_code") == 0:
+                process_count = int(result.get("stdout", "0").strip())
+                if process_count > 0:
+                    console.print(f"Cloud-init not ready yet, checking system activity...")
+                    console.print(
+                        f"System activity detected: {process_count} setup processes running"
+                    )
+                else:
+                    console.print("No setup processes detected - system may be ready")
+
+            # Check recent system logs for completion or error patterns
+            result = droplet_info.run_command(
+                "tail -n 3 /var/log/syslog 2>/dev/null | grep -E '(session|Started|Deactivated)' || echo 'No recent activity'"
+            )
+            if result.get("exit_code") == 0:
+                output = result.get("stdout", "").strip()
+                if output and "No recent activity" not in output:
+                    console.print("Recent system activity:")
+                    for line in output.split("\n")[-2:]:
+                        if line.strip():
+                            console.print(f"  {line.strip()}")
+        except Exception:
+            pass
+
+    def _is_cloud_init_actually_complete(self, droplet_info: Droplet) -> bool:
+        """Robust check for cloud-init completion when status commands fail."""
+        try:
+            # Check 1: Look for completion marker file
+            result = droplet_info.run_command(
+                "test -f /var/lib/cloud/instance/boot-finished && echo 'boot_finished'"
+            )
+            if result.get("exit_code") == 0 and "boot_finished" in result.get("stdout", ""):
+                console.print("[dim green]✓ Found cloud-init boot completion marker[/dim green]")
+                return True
+
+            # Check 2: Look for completion in logs
+            result = droplet_info.run_command(
+                "grep -q 'Cloud-init.*finished' /var/log/cloud-init.log 2>/dev/null && echo 'log_finished'"
+            )
+            if result.get("exit_code") == 0 and "log_finished" in result.get("stdout", ""):
+                console.print(
+                    "[dim green]✓ Found completion message in cloud-init logs[/dim green]"
+                )
+                return True
+
+            # Check 3: Look for expected environment setup
+            result = droplet_info.run_command(
+                "test -d /opt/venv && test -f /root/.bashrc && ls /opt/venv/bin/activate >/dev/null 2>&1 && echo 'env_ready'"
+            )
+            if result.get("exit_code") == 0 and "env_ready" in result.get("stdout", ""):
+                console.print(
+                    "[dim green]✓ Python virtual environment appears configured[/dim green]"
+                )
+                return True
+
+            # Check 4: Look for evidence that user-data script completed
+            result = droplet_info.run_command(
+                "ls /var/lib/cloud/instances/*/sem/config_scripts_user >/dev/null 2>&1 && echo 'scripts_done'"
+            )
+            if result.get("exit_code") == 0 and "scripts_done" in result.get("stdout", ""):
+                console.print("[dim green]✓ User-data scripts appear to have completed[/dim green]")
+                return True
+
+            # Check 5: No active cloud-init processes and system looks configured
+            result = droplet_info.run_command("ps aux | grep 'cloud-init' | grep -v grep | wc -l")
+            if result.get("exit_code") == 0:
+                cloud_init_processes = int(result.get("stdout", "0").strip())
+                if cloud_init_processes == 0:
+                    # No cloud-init processes running, check if basic setup exists
+                    result = droplet_info.run_command(
+                        "which python3 >/dev/null && which pip >/dev/null && echo 'basic_tools_ready'"
+                    )
+                    if result.get("exit_code") == 0 and "basic_tools_ready" in result.get(
+                        "stdout", ""
+                    ):
+                        console.print(
+                            "[dim green]✓ No cloud-init processes running and basic tools available[/dim green]"
+                        )
+                        return True
+
+        except Exception as e:
+            console.print(f"[dim yellow]Error checking completion status: {e}[/dim yellow]")
+
+        return False
+
+    def _show_helpful_timeout_guidance(self, droplet_info: Droplet):
+        """Show helpful guidance when cloud-init monitoring times out."""
+        console.print("\n[cyan]💡 Helpful next steps:[/cyan]")
+        console.print(
+            "[dim cyan]  • The droplet might still be initializing in the background[/dim cyan]"
+        )
+        console.print(
+            "[dim cyan]  • You can check manually with: ssh root@<droplet-ip> 'cloud-init status'[/dim cyan]"
+        )
+        console.print("[dim cyan]  • GPU setup can take 5-10 minutes on first boot[/dim cyan]")
+        console.print("[dim cyan]  • Try connecting via SSH to see current progress[/dim cyan]")
+
+        # Try to give current droplet IP if available
+        if hasattr(droplet_info, "ip") and droplet_info.ip:
+            console.print(f"[dim cyan]  • Your droplet IP: {droplet_info.ip}[/dim cyan]")
+
+        console.print("[green]🚀 Chisel will continue - the system should be ready soon![/green]")
+
+    def _show_all_cloud_init_activity(self, droplet_info: Droplet, last_lines_shown: int) -> int:
+        try:
+            # Get total line count first
+            count_result = droplet_info.run_command(
+                "wc -l /var/log/cloud-init-output.log 2>/dev/null || echo '0'"
+            )
+            if count_result.get("exit_code") != 0:
+                return last_lines_shown
+
+            total_lines = int(count_result.get("stdout", "0").strip().split()[0])
+
+            if total_lines <= last_lines_shown:
+                return last_lines_shown
+
+            # Show new lines since last check
+            new_lines = total_lines - last_lines_shown
+            if new_lines > 0:
+                # Show the new lines (up to 50 at a time to avoid spam)
+                lines_to_show = min(new_lines, 50)
+                result = droplet_info.run_command(
+                    f"tail -n {lines_to_show} /var/log/cloud-init-output.log"
+                )
+
+                if result.get("exit_code") == 0:
+                    output = result.get("stdout", "").strip()
+                    if output:
+                        console.print(
+                            f"[dim yellow]Activity (showing last {lines_to_show} lines):[/dim yellow]"
+                        )
+                        for line in output.split("\n"):
+                            if line.strip():
+                                console.print(f"[dim yellow]  {line.strip()}[/dim yellow]")
+                        console.print()  # Empty line for readability
+
+            return total_lines
+
+        except Exception as e:
+            console.print(f"[dim red]Error reading activity log: {e}[/dim red]")
+            return last_lines_shown
+
+    def _show_final_cloud_init_activity(self, droplet_info: Droplet):
+        try:
+            # Show the full cloud-init output log on completion/timeout
+            result = droplet_info.run_command(
+                "wc -l /var/log/cloud-init-output.log 2>/dev/null || echo '0'"
+            )
+            if result.get("exit_code") == 0:
+                total_lines = int(result.get("stdout", "0").strip().split()[0])
+                console.print(
+                    f"[cyan]📋 Complete cloud-init activity log ({total_lines} lines total):[/cyan]"
+                )
+
+                # Show last 30 lines of the complete log
+                result = droplet_info.run_command("tail -n 30 /var/log/cloud-init-output.log")
+                if result.get("exit_code") == 0:
+                    output = result.get("stdout", "").strip()
+                    if output:
+                        for line in output.split("\n"):
+                            if line.strip():
+                                console.print(f"[dim green]  {line.strip()}[/dim green]")
+        except Exception:
+            pass
+
+    def _show_current_cloud_init_activity(self, droplet_info: Droplet, last_position: int):
+        # This method is now replaced by _show_all_cloud_init_activity but keeping for compatibility
+        pass
+
+    def _show_cloud_init_summary(self, droplet_info: Droplet):
+        try:
+            result = droplet_info.run_command("cloud-init analyze show")
+            if result.get("exit_code") == 0:
+                console.print("[green]Cloud-init modules completed:[/green]")
+                output = result.get("stdout", "")
+                for line in output.split("\n")[:10]:
+                    if line.strip() and "Analyzing" not in line:
+                        console.print(f"[dim green]  {line.strip()}[/dim green]")
+        except Exception:
+            pass
+
+    def _show_cloud_init_logs(self, droplet_info: Droplet, lines: int = 20):
+        try:
+            result = droplet_info.run_command(f"tail -n {lines} /var/log/cloud-init.log")
+            if result.get("exit_code") == 0:
+                console.print(f"[yellow]Last {lines} lines of cloud-init.log:[/yellow]")
+                output = result.get("stdout", "")
+                for line in output.split("\n")[-10:]:
+                    if line.strip():
+                        console.print(f"[dim yellow]  {line.strip()}[/dim yellow]")
+        except Exception:
+            pass
+
+    def get_cloud_init_detailed_status(self, droplet_info: Droplet) -> Dict[str, Any]:
+        status_info = {
+            "overall_status": "unknown",
+            "stages": {},
+            "modules": [],
+            "errors": [],
+            "timing": {},
+        }
+
+        try:
+            result = droplet_info.run_command("cloud-init status --long")
+            if result.get("exit_code") == 0:
+                status_info["overall_status"] = result.get("stdout", "").strip()
+
+            result = droplet_info.run_command("cloud-init analyze show")
+            if result.get("exit_code") == 0:
+                timing_output = result.get("stdout", "")
+                status_info["timing"]["raw"] = timing_output
+
+                for line in timing_output.split("\n"):
+                    if "took" in line and "seconds" in line:
+                        status_info["modules"].append(line.strip())
+
+            result = droplet_info.run_command("grep -i error /var/log/cloud-init.log | tail -5")
+            if result.get("exit_code") == 0:
+                errors = result.get("stdout", "").strip()
+                if errors:
+                    status_info["errors"] = errors.split("\n")
+
+            result = droplet_info.run_command(
+                "ls -la /var/lib/cloud/instances/*/sem/ 2>/dev/null | grep -E 'config|final' || echo 'No stage info'"
+            )
+            if result.get("exit_code") == 0:
+                stage_output = result.get("stdout", "")
+                if "No stage info" not in stage_output:
+                    status_info["stages"]["raw"] = stage_output
+
+        except Exception as e:
+            status_info["error"] = str(e)
+
+        return status_info
+
+    def get_full_cloud_init_log(self, droplet_info: Droplet) -> str:
+        """Get the complete cloud-init output log for debugging."""
+        try:
+            result = droplet_info.run_command("cat /var/log/cloud-init-output.log")
+            if result.get("exit_code") == 0:
+                return result.get("stdout", "")
+        except Exception:
+            pass
+        return "Could not retrieve cloud-init log"
+
+    def monitor_cloud_init_realtime(self, droplet_info: Droplet, duration: int = 300):
+        """Monitor cloud-init in real-time for a specified duration."""
+        import time
+
+        console.print(f"[cyan]🔍 Monitoring cloud-init activity for {duration} seconds...[/cyan]")
+        start_time = time.time()
+        last_lines_shown = 0
+
+        while time.time() - start_time < duration:
+            try:
+                # Check if cloud-init is still running
+                status_result = droplet_info.run_command("cloud-init status")
+                if status_result.get("exit_code") == 0:
+                    status = status_result.get("stdout", "").strip()
+                    elapsed = int(time.time() - start_time)
+                    console.print(f"[cyan]⏱️  {elapsed}s - {status}[/cyan]")
+
+                    if "status: done" in status:
+                        console.print("[green]✅ Cloud-init completed![/green]")
+                        break
+
+                # Show new activity
+                last_lines_shown = self._show_all_cloud_init_activity(
+                    droplet_info, last_lines_shown
+                )
+                time.sleep(5)  # More frequent updates for real-time monitoring
+
+            except Exception as e:
+                console.print(f"[red]Error during monitoring: {e}[/red]")
+                break
+
+        console.print("[cyan]📊 Final summary:[/cyan]")
+        self._show_cloud_init_summary(droplet_info)
 
     def ensure_host_system_ready(self, droplet_info: Droplet):
         """Ensure the host system is properly set up for profiling."""

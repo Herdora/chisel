@@ -176,7 +176,10 @@ class DropletService:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            progress.add_task("Activating droplet...", total=None)
+            progress.add_task(
+                "Activating droplet. (1-2 minutes remaining)...",
+                total=None,
+            )
 
             while time.time() - start_time < timeout:
                 response = self.pydo_client.droplets.get(droplet_id)
@@ -198,7 +201,9 @@ class DropletService:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            progress.add_task("Waiting for SSH to be ready...", total=None)
+            progress.add_task(
+                "Waiting for SSH to be ready. (< 30 seconds remaining)...", total=None
+            )
 
             while time.time() - start_time < timeout:
                 try:
