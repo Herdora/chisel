@@ -199,7 +199,7 @@ class ProfilingManager:
                     break
 
         CD_CMD = f"cd {remote_profile_dir}"
-        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary.txt {rocprofv3_flags} -- {adjusted_command}"
+        PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary {rocprofv3_flags} -- {adjusted_command}"
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
         console.print(f"[cyan]Running AMD rocprofv3 with command: {FULL_CMD}[/cyan]")
         rocprof_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)

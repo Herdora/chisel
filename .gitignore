@@ -240,5 +240,5 @@ logs/
 temp/
 
 # Chisel
-chisel**/
+chisel-results/
 .chisel-venv/
