@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chisel-cli"
-version = "0.1.22"
+version = "0.1.24"
 description = "A CLI tool for developing and profiling GPU kernels on DigitalOcean droplets"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -23,3 +23,9 @@ chisel = "chisel.cli.main:main"
 [tool.setuptools.packages.find]
 include = ["chisel*"]
 exclude = ["out*", "tests*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"chisel.core.startup_scripts" = ["*.sh"]
