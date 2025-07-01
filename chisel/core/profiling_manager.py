@@ -2,6 +2,7 @@
 
 import random
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -117,6 +118,41 @@ class ProfilingManager:
         )
         self.chisel_client = chisel_client
 
+    def _track_usage_if_managed(self, droplet_id: Optional[int], gpu_type: GPUType, start_time: float) -> None:
+        """Track usage for managed users"""
+        if not self.chisel_client or not droplet_id:
+            return
+        
+        # Calculate duration in minutes
+        end_time = time.time()
+        duration_minutes = int((end_time - start_time) / 60)
+        
+        # Minimum billing of 1 minute
+        if duration_minutes < 1:
+            duration_minutes = 1
+        
+        try:
+            result = self.chisel_client.track_usage(
+                droplet_id=str(droplet_id),
+                gpu_type=gpu_type.value,
+                duration_minutes=duration_minutes
+            )
+            
+            if result.get("success"):
+                cost = result.get("cost", 0)
+                credits_remaining = result.get("credits_remaining", 0)
+                console.print(
+                    f"[green]✓ Usage tracked: ${cost:.2f} for {duration_minutes} minutes[/green]"
+                )
+                console.print(
+                    f"[yellow]Credits remaining: ${credits_remaining:.2f}[/yellow]"
+                )
+            else:
+                console.print(f"[red]⚠ Failed to track usage: {result.get('error', 'Unknown error')}[/red]")
+                
+        except Exception as e:
+            console.print(f"[red]⚠ Usage tracking error: {e}[/red]")
+
     def profile(
         self,
         command_to_profile: str,
@@ -128,6 +164,10 @@ class ProfilingManager:
         nsys_flag: Optional[str] = None,
         ncompute_flag: Optional[str] = None,
     ) -> ProfilingResults:
+        # Track profiling start time for usage billing
+        start_time = time.time()
+        droplet_id = None
+        
         try:
             console.print(  # TODO: implment logging functions
                 f"[cyan]Starting profiling for {command_to_profile} on {gpu_type.value}[/cyan]"
@@ -143,6 +183,12 @@ class ProfilingManager:
                 output_dir.mkdir(parents=True, exist_ok=True)
 
             all_results = []
+            
+            # Get droplet ID for usage tracking (all profilers use the same droplet)
+            if any([rocprofv3_flag, rocprof_compute_flag, nsys_flag, ncompute_flag]):
+                droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+                droplet_id = droplet.id
+            
             if rocprofv3_flag:
                 result = self.run_rocprofv3(
                     command_to_profile,
@@ -180,6 +226,9 @@ class ProfilingManager:
                 )
                 all_results.append(result)
 
+            # Track usage for managed users
+            self._track_usage_if_managed(droplet_id, gpu_type, start_time)
+
             return ProfilingResults(
                 success=True,
                 output_dir=output_dir,
@@ -201,6 +250,8 @@ class ProfilingManager:
 
         except Exception as e:
             console.print(f"[red]Error during profiling: {e}[/red]")
+            # Track usage even on failure for managed users
+            self._track_usage_if_managed(droplet_id, gpu_type, start_time)
             return ProfilingResults(
                 success=False,
                 output_dir=Path(f"./{CHISEL_PROFILING_DIR_NAME}/failed"),

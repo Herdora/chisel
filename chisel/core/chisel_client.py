@@ -73,3 +73,20 @@ class ChiselClient:
         
         credits_remaining = status.get("credits_remaining", 0)
         return credits_remaining >= estimated_cost
+    
+    def register_droplet(self, droplet_id: str, gpu_type: str) -> Dict[str, Any]:
+        """Register a droplet for usage tracking"""
+        try:
+            response = requests.post(
+                f"{self.api_url}/droplets/register",
+                json={
+                    "chisel_token": self.chisel_token,
+                    "droplet_id": droplet_id,
+                    "gpu_type": gpu_type
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            return {"success": False, "error": str(e)}

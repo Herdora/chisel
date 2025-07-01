@@ -152,6 +152,9 @@ class DropletService:
             console.print(
                 f"[green]Found existing droplet: {existing.name}[/green]"
             )
+            # Register/update activity for managed users
+            if self._managed_mode and self.chisel_client and existing.id:
+                self.chisel_client.register_droplet(str(existing.id), gpu_type.value)
             return existing
 
         gpu_profile_for_gpu_type = GPU_PROFILES[gpu_type]
@@ -173,6 +176,12 @@ class DropletService:
             if not self.wait_for_ssh(droplet.ip)
             else f"[green]{gpu_type} droplet ready![/green]"
         )
+
+        # Register newly created droplet for managed users
+        if self._managed_mode and self.chisel_client and droplet.id:
+            result = self.chisel_client.register_droplet(str(droplet.id), gpu_type.value)
+            if result.get("success"):
+                console.print(f"[green]✓ Droplet registered for usage tracking[/green]")
 
         return droplet
 
