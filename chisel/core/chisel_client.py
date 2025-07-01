@@ -7,7 +7,7 @@ class ChiselClient:
     
     def __init__(self, chisel_token: str, api_url: Optional[str] = None):
         self.chisel_token = chisel_token
-        self.api_url = api_url or os.getenv("CHISEL_API_URL", "http://127.0.0.1:8002")
+        self.api_url = api_url or os.getenv("CHISEL_API_URL", "https://chisel-production-0736.up.railway.app")
         
     def validate_token(self) -> Dict[str, Any]:
         """Validate chisel token and get user info"""
