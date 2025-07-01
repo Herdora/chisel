@@ -154,6 +154,31 @@ async def get_user_status(chisel_token: str, db: Session = Depends(get_db)):
         "created_at": user.created_at,
     }
 
+@app.post("/users/add")
+async def add_user(request: dict, db: Session = Depends(get_db)):
+    """Add a new user with credits"""
+    chisel_token = request.get("chisel_token")
+    credits = request.get("credits_remaining", 10.00)
+    
+    if not chisel_token:
+        raise HTTPException(status_code=400, detail="chisel_token required")
+    
+    # Check if user already exists
+    existing = db.query(User).filter(User.chisel_token == chisel_token).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    user = User(chisel_token=chisel_token, credits_remaining=Decimal(str(credits)))
+    db.add(user)
+    db.commit()
+    
+    return {
+        "success": True, 
+        "chisel_token": chisel_token, 
+        "credits_remaining": float(credits),
+        "message": f"User {chisel_token} created with ${credits:.2f} credits"
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
