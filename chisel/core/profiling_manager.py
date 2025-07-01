@@ -1,15 +1,22 @@
 """Profile manager for orchestrating GPU profiling workflows."""
 
+import random
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import shutil
-import random
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
-from chisel.core.droplet_service import DropletService, Droplet
+from chisel.core.droplet_service import Droplet, DropletService
+
 from .types.gpu_profiles import GPUType
 
 console = Console()
@@ -61,22 +68,32 @@ class ProfilingResults:
             if "top_kernels" in self.summary:
                 console.print("\n[cyan]Top GPU Kernels:[/cyan]")
                 for i, kernel in enumerate(self.summary["top_kernels"][:5], 1):
-                    console.print(f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms")
+                    console.print(
+                        f"  {i}. {kernel['name'][:50]:<50} {kernel['time_ms']:8.3f} ms"
+                    )
 
             if "profile_files" in self.summary:
                 summary_file = self.summary.get("summary_file")
                 profile_type = self.summary.get("profile_type", "nvidia")
 
                 if summary_file:
-                    vendor_name = "AMD rocprofv3" if profile_type == "rocprofv3" else "NVIDIA"
+                    vendor_name = (
+                        "AMD rocprofv3"
+                        if profile_type == "rocprofv3"
+                        else "NVIDIA"
+                    )
                     console.print(
                         f"\n[cyan]{vendor_name} profile summary generated:[/cyan] {summary_file}"
                     )
 
                     console.print("\n[cyan]Analysis tools:[/cyan]")
-                    console.print("  • View text summary for human-readable kernel analysis")
+                    console.print(
+                        "  • View text summary for human-readable kernel analysis"
+                    )
                 else:
-                    console.print("\n[cyan]Profile files generated:[/cyan] 0 files")
+                    console.print(
+                        "\n[cyan]Profile files generated:[/cyan] 0 files"
+                    )
         else:
             console.print("\n[red]✗ Profiling failed[/red]")
             if self.stderr:
@@ -86,7 +103,9 @@ class ProfilingResults:
 class ProfilingManager:
     def __init__(self, digital_ocean_token: Optional[str] = None):
         if not digital_ocean_token:
-            raise RuntimeError("No API token configured. Run 'chisel configure' first.")
+            raise RuntimeError(
+                "No API token configured. Run 'chisel configure' first."
+            )
 
         self.droplet_service = DropletService(digital_ocean_token)
 
@@ -118,7 +137,11 @@ class ProfilingManager:
             all_results = []
             if rocprofv3_flag:
                 result = self.run_rocprofv3(
-                    command_to_profile, gpu_type, files_to_sync, output_dir, rocprofv3_flag
+                    command_to_profile,
+                    gpu_type,
+                    files_to_sync,
+                    output_dir,
+                    rocprofv3_flag,
                 )
                 all_results.append(result)
             if rocprof_compute_flag:
@@ -132,12 +155,20 @@ class ProfilingManager:
                 all_results.append(result)
             if nsys_flag:
                 result = self.run_nsys(
-                    command_to_profile, gpu_type, files_to_sync, output_dir, nsys_flag
+                    command_to_profile,
+                    gpu_type,
+                    files_to_sync,
+                    output_dir,
+                    nsys_flag,
                 )
                 all_results.append(result)
             if ncompute_flag:
                 result = self.run_ncompute(
-                    command_to_profile, gpu_type, files_to_sync, output_dir, ncompute_flag
+                    command_to_profile,
+                    gpu_type,
+                    files_to_sync,
+                    output_dir,
+                    ncompute_flag,
                 )
                 all_results.append(result)
 
@@ -147,9 +178,15 @@ class ProfilingManager:
                 stdout="",
                 stderr="",
                 summary={
-                    "profile_files": [result.local_output_dir for result in all_results],
-                    "summary_file": all_results[0].summary_file if all_results else None,
-                    "profile_type": all_results[0].profile_type if all_results else "unknown",
+                    "profile_files": [
+                        result.local_output_dir for result in all_results
+                    ],
+                    "summary_file": all_results[0].summary_file
+                    if all_results
+                    else None,
+                    "profile_type": all_results[0].profile_type
+                    if all_results
+                    else "unknown",
                     "message": "Profiling completed. Generated profile data.",
                 },
             )
@@ -172,15 +209,21 @@ class ProfilingManager:
         output_dir: Path,
         rocprofv3_flags: str,
     ) -> ProfilerResult:
-        droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        droplet_with_gpu: Droplet = (
+            self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        )
         self._ensure_rocprofv3(droplet_with_gpu)
 
         remote_profile_dir = f"{WORKSPACE_DIR}/{ROCPROFV3_DIR_NAME}"
 
-        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        RESET_CMD = (
+            f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        )
         result = droplet_with_gpu.run_container_command(RESET_CMD)
         if result["exit_code"] != 0:
-            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+            raise RuntimeError(
+                f"Failed to reset remote directory: {result['exit_code']}"
+            )
 
         for file in files_to_sync:
             self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
@@ -191,7 +234,9 @@ class ProfilingManager:
         if files_to_sync:
             for file in files_to_sync:
                 file_path = Path(file)
-                if command_to_profile == file or command_to_profile == str(file_path):
+                if command_to_profile == file or command_to_profile == str(
+                    file_path
+                ):
                     adjusted_command = f"./{file_path.name}"
                     console.print(
                         f"[cyan]Adjusted command path: {command_to_profile} → {adjusted_command}[/cyan]"
@@ -201,14 +246,22 @@ class ProfilingManager:
         CD_CMD = f"cd {remote_profile_dir}"
         PROFILE_CMD = f"rocprofv3 -S --summary-output-file amd_profile_summary {rocprofv3_flags} -- {adjusted_command}"
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
-        console.print(f"[cyan]Running AMD rocprofv3 with command: {FULL_CMD}[/cyan]")
-        rocprof_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
+        console.print(
+            f"[cyan]Running AMD rocprofv3 with command: {FULL_CMD}[/cyan]"
+        )
+        rocprof_result = droplet_with_gpu.run_container_command(
+            FULL_CMD, timeout=600
+        )
         if rocprof_result["exit_code"] != 0:
             console.print(
                 f"[red]rocprofv3 command failed with exit code {rocprof_result['exit_code']}[/red]"
             )
-            console.print(f"[red]stdout: {rocprof_result.get('stdout', 'No stdout')}[/red]")
-            console.print(f"[red]stderr: {rocprof_result.get('stderr', 'No stderr')}[/red]")
+            console.print(
+                f"[red]stdout: {rocprof_result.get('stdout', 'No stdout')}[/red]"
+            )
+            console.print(
+                f"[red]stderr: {rocprof_result.get('stderr', 'No stderr')}[/red]"
+            )
             raise RuntimeError(
                 f"rocprofv3 profiling failed with exit code {rocprof_result['exit_code']}: {rocprof_result.get('stderr', 'No error details')}"
             )
@@ -238,7 +291,9 @@ class ProfilingManager:
     ) -> ProfilerResult:
         # TODO: Implement rocprof-compute when ready
 
-        console.print("[yellow]rocprof-compute support not yet implemented[/yellow]")
+        console.print(
+            "[yellow]rocprof-compute support not yet implemented[/yellow]"
+        )
         raise RuntimeError("rocprof-compute is not yet supported")
 
     def run_nsys(
@@ -249,15 +304,21 @@ class ProfilingManager:
         output_dir: Path,
         nsys_flags: str,
     ) -> ProfilerResult:
-        droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        droplet_with_gpu: Droplet = (
+            self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        )
         self._ensure_nvidia_profilers(droplet_with_gpu)
 
         remote_profile_dir = f"{WORKSPACE_DIR}/{NSYS_DIR_NAME}"
 
-        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        RESET_CMD = (
+            f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        )
         result = droplet_with_gpu.run_container_command(RESET_CMD)
         if result["exit_code"] != 0:
-            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+            raise RuntimeError(
+                f"Failed to reset remote directory: {result['exit_code']}"
+            )
 
         for file in files_to_sync:
             self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
@@ -268,7 +329,9 @@ class ProfilingManager:
         if files_to_sync:
             for file in files_to_sync:
                 file_path = Path(file)
-                if command_to_profile == file or command_to_profile == str(file_path):
+                if command_to_profile == file or command_to_profile == str(
+                    file_path
+                ):
                     adjusted_command = f"./{file_path.name}"
                     console.print(
                         f"[cyan]Adjusted command path: {command_to_profile} → {adjusted_command}[/cyan]"
@@ -276,21 +339,33 @@ class ProfilingManager:
                     break
 
         CD_CMD = f"cd {remote_profile_dir}"
-        PROFILE_CMD = f"nsys profile {nsys_flags} -o nvidia_profile {adjusted_command}"
+        PROFILE_CMD = (
+            f"nsys profile {nsys_flags} -o nvidia_profile {adjusted_command}"
+        )
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
-        console.print(f"[cyan]Running NVIDIA nsys with command: {FULL_CMD}[/cyan]")
-        nsys_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
+        console.print(
+            f"[cyan]Running NVIDIA nsys with command: {FULL_CMD}[/cyan]"
+        )
+        nsys_result = droplet_with_gpu.run_container_command(
+            FULL_CMD, timeout=600
+        )
         if nsys_result["exit_code"] != 0:
             console.print(
                 f"[red]nsys command failed with exit code {nsys_result['exit_code']}[/red]"
             )
-            console.print(f"[red]stdout: {nsys_result.get('stdout', 'No stdout')}[/red]")
-            console.print(f"[red]stderr: {nsys_result.get('stderr', 'No stderr')}[/red]")
+            console.print(
+                f"[red]stdout: {nsys_result.get('stdout', 'No stdout')}[/red]"
+            )
+            console.print(
+                f"[red]stderr: {nsys_result.get('stderr', 'No stderr')}[/red]"
+            )
             raise RuntimeError(
                 f"nsys profiling failed with exit code {nsys_result['exit_code']}: {nsys_result.get('stderr', 'No error details')}"
             )
 
-        nvidia_files = self._download_results(droplet_with_gpu, remote_profile_dir, output_dir)
+        nvidia_files = self._download_results(
+            droplet_with_gpu, remote_profile_dir, output_dir
+        )
         self._cleanup_nvidia_remote(droplet_with_gpu, remote_profile_dir)
 
         return ProfilerResult(
@@ -311,15 +386,21 @@ class ProfilingManager:
         output_dir: Path,
         ncompute_flags: str,
     ) -> ProfilerResult:
-        droplet_with_gpu: Droplet = self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        droplet_with_gpu: Droplet = (
+            self.droplet_service.get_or_create_droplet_by_type(gpu_type)
+        )
         self._ensure_nvidia_profilers(droplet_with_gpu)
 
         remote_profile_dir = f"{WORKSPACE_DIR}/{NCOMPUTE_DIR_NAME}"
 
-        RESET_CMD = f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        RESET_CMD = (
+            f"rm -rf {remote_profile_dir} && mkdir -p {remote_profile_dir}"
+        )
         result = droplet_with_gpu.run_container_command(RESET_CMD)
         if result["exit_code"] != 0:
-            raise RuntimeError(f"Failed to reset remote directory: {result['exit_code']}")
+            raise RuntimeError(
+                f"Failed to reset remote directory: {result['exit_code']}"
+            )
 
         for file in files_to_sync:
             self._sync_file(droplet_with_gpu, Path(file), remote_profile_dir)
@@ -329,17 +410,29 @@ class ProfilingManager:
         CD_CMD = f"cd {remote_profile_dir}"
         PROFILE_CMD = f"ncu {ncompute_flags} -o nvidia_ncompute_profile {command_to_profile}"
         FULL_CMD = f"{CD_CMD} && {PROFILE_CMD}"
-        console.print(f"[cyan]Running NVIDIA ncu with command: {FULL_CMD}[/cyan]")
-        ncu_result = droplet_with_gpu.run_container_command(FULL_CMD, timeout=600)
+        console.print(
+            f"[cyan]Running NVIDIA ncu with command: {FULL_CMD}[/cyan]"
+        )
+        ncu_result = droplet_with_gpu.run_container_command(
+            FULL_CMD, timeout=600
+        )
         if ncu_result["exit_code"] != 0:
-            console.print(f"[red]ncu command failed with exit code {ncu_result['exit_code']}[/red]")
-            console.print(f"[red]stdout: {ncu_result.get('stdout', 'No stdout')}[/red]")
-            console.print(f"[red]stderr: {ncu_result.get('stderr', 'No stderr')}[/red]")
+            console.print(
+                f"[red]ncu command failed with exit code {ncu_result['exit_code']}[/red]"
+            )
+            console.print(
+                f"[red]stdout: {ncu_result.get('stdout', 'No stdout')}[/red]"
+            )
+            console.print(
+                f"[red]stderr: {ncu_result.get('stderr', 'No stderr')}[/red]"
+            )
             raise RuntimeError(
                 f"ncu profiling failed with exit code {ncu_result['exit_code']}: {ncu_result.get('stderr', 'No error details')}"
             )
 
-        nvidia_files = self._download_results(droplet_with_gpu, remote_profile_dir, output_dir)
+        nvidia_files = self._download_results(
+            droplet_with_gpu, remote_profile_dir, output_dir
+        )
         self._cleanup_nvidia_remote(droplet_with_gpu, remote_profile_dir)
 
         return ProfilerResult(
@@ -378,7 +471,9 @@ class ProfilingManager:
 
         return TargetInfo(raw_target=target, is_source_file=False)
 
-    def _sync_file(self, droplet_info: Droplet, source_file: Path, remote_dir: str):
+    def _sync_file(
+        self, droplet_info: Droplet, source_file: Path, remote_dir: str
+    ):
         """Sync a file or directory to the droplet with proper permissions."""
         success = droplet_info.sync_file(str(source_file), f"{remote_dir}/")
         if not success:
@@ -399,7 +494,9 @@ class ProfilingManager:
                     f"[red]Failed to make directory files executable: {result.get('stderr', '')}[/red]. got stdout: {result.get('stdout', '')}"
                 )
             else:
-                console.print(f"[green]✓ Made all files in {source_file.name} executable[/green]")
+                console.print(
+                    f"[green]✓ Made all files in {source_file.name} executable[/green]"
+                )
         else:
             # Single file - we'll handle executable permissions later based on what command is actually run
             chmod_cmd = f"chmod +x {remote_dir}/{source_file.name}"
@@ -409,14 +506,20 @@ class ProfilingManager:
                     f"[red]Failed to make {source_file.name} executable: {result.get('stderr', '')}[/red]"
                 )
             else:
-                console.print(f"[green]✓ Made {source_file.name} executable[/green]")
+                console.print(
+                    f"[green]✓ Made {source_file.name} executable[/green]"
+                )
 
             console.print(f"[cyan]✓ {source_file.name} synced[/cyan]")
 
-        console.print(f"[green]✓ File synced to {remote_dir} on remote server[/green]")
+        console.print(
+            f"[green]✓ File synced to {remote_dir} on remote server[/green]"
+        )
         return remote_dir
 
-    def _make_command_executable(self, droplet_info: Droplet, command: str, remote_dir: str):
+    def _make_command_executable(
+        self, droplet_info: Droplet, command: str, remote_dir: str
+    ):
         """Make the specific command being run executable."""
         # Extract the actual executable from the command (remove ./ prefix, arguments, etc.)
         command_parts = command.strip().split()
@@ -432,7 +535,9 @@ class ProfilingManager:
         # Full path to the executable on remote system
         full_executable_path = f"{remote_dir}/{executable_path}"
 
-        console.print(f"[cyan]🔧 Making command executable: {executable_path}[/cyan]")
+        console.print(
+            f"[cyan]🔧 Making command executable: {executable_path}[/cyan]"
+        )
 
         # Make the specific executable file executable
         chmod_cmd = f"chmod +x {full_executable_path}"
@@ -457,10 +562,14 @@ class ProfilingManager:
             console.print(f"[green]✓ Made {executable_path} executable[/green]")
 
             # Verify it's actually executable
-            verify_cmd = f"test -x {full_executable_path} && echo 'Executable confirmed'"
+            verify_cmd = (
+                f"test -x {full_executable_path} && echo 'Executable confirmed'"
+            )
             verify_result = droplet_info.run_container_command(verify_cmd)
             if verify_result["exit_code"] == 0:
-                console.print(f"[green]✓ Verified {executable_path} is executable[/green]")
+                console.print(
+                    f"[green]✓ Verified {executable_path} is executable[/green]"
+                )
 
     def _parse_amd_results(self, output_dir: Path) -> Dict[str, Any]:
         """Parse AMD profiling results."""
@@ -492,7 +601,8 @@ class ProfilingManager:
                         kernels.append(
                             {
                                 "name": event.get("name", ""),
-                                "time_ms": event["args"]["DurationNs"] / 1_000_000,
+                                "time_ms": event["args"]["DurationNs"]
+                                / 1_000_000,
                             }
                         )
 
@@ -501,7 +611,9 @@ class ProfilingManager:
                 summary["top_kernels"] = kernels[:10]
 
             except Exception as e:
-                console.print(f"[yellow]Could not parse JSON results: {e}[/yellow]")
+                console.print(
+                    f"[yellow]Could not parse JSON results: {e}[/yellow]"
+                )
 
         return summary
 
@@ -510,17 +622,25 @@ class ProfilingManager:
         try:
             # First ensure the host system is properly set up
             if not self.ensure_host_system_ready(droplet_info):
-                console.print("[yellow]Host system setup had issues, but continuing...[/yellow]")
+                console.print(
+                    "[yellow]Host system setup had issues, but continuing...[/yellow]"
+                )
 
             # Check if NVIDIA profilers are available on host system
-            check_cmd = "which ncu && ncu --version && which nsys && nsys --version"
+            check_cmd = (
+                "which ncu && ncu --version && which nsys && nsys --version"
+            )
             result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]")
+                console.print(
+                    "[green]✓ NVIDIA profilers (ncu + nsys) already available[/green]"
+                )
                 return
 
-            console.print("[yellow]Profilers not found, installing NVIDIA profilers...[/yellow]")
+            console.print(
+                "[yellow]Profilers not found, installing NVIDIA profilers...[/yellow]"
+            )
 
             # Install NVIDIA profilers on host system
             console.print(
@@ -533,12 +653,18 @@ class ProfilingManager:
             apt-get install -y wget gnupg software-properties-common build-essential
             """
 
-            setup_result = droplet_info.run_command(basic_setup_cmd, timeout=180)
+            setup_result = droplet_info.run_command(
+                basic_setup_cmd, timeout=180
+            )
             if setup_result["exit_code"] != 0:
-                console.print("[yellow]Warning: Failed to install basic dependencies[/yellow]")
+                console.print(
+                    "[yellow]Warning: Failed to install basic dependencies[/yellow]"
+                )
 
             # Try installing CUDA toolkit first if not present
-            cuda_check = droplet_info.run_command("which nvcc || ls /usr/local/cuda*/bin/nvcc")
+            cuda_check = droplet_info.run_command(
+                "which nvcc || ls /usr/local/cuda*/bin/nvcc"
+            )
             if cuda_check["exit_code"] != 0:
                 console.print(
                     "[yellow]CUDA not detected, attempting to install CUDA toolkit...[/yellow]"
@@ -552,7 +678,9 @@ class ProfilingManager:
                 echo "✓ CUDA toolkit installed"
                 '
                 """
-                cuda_result = droplet_info.run_command(cuda_install_cmd, timeout=700)
+                cuda_result = droplet_info.run_command(
+                    cuda_install_cmd, timeout=700
+                )
                 if cuda_result["exit_code"] == 0:
                     console.print("[green]✓ CUDA toolkit installed[/green]")
                 else:
@@ -571,11 +699,17 @@ class ProfilingManager:
             '
             """
 
-            console.print("[cyan]Trying snap installation for profilers...[/cyan]")
-            snap_result = droplet_info.run_command(snap_install_cmd, timeout=700)
+            console.print(
+                "[cyan]Trying snap installation for profilers...[/cyan]"
+            )
+            snap_result = droplet_info.run_command(
+                snap_install_cmd, timeout=700
+            )
 
             if snap_result["exit_code"] == 0:
-                console.print("[green]✓ NVIDIA profilers installed via snap[/green]")
+                console.print(
+                    "[green]✓ NVIDIA profilers installed via snap[/green]"
+                )
             else:
                 console.print(
                     "[yellow]Snap installation failed, trying alternative methods...[/yellow]"
@@ -594,8 +728,12 @@ class ProfilingManager:
                 '
                 """
 
-                console.print("[cyan]Trying NVIDIA CUDA repository installation...[/cyan]")
-                cuda_result = droplet_info.run_command(cuda_repo_install_cmd, timeout=700)
+                console.print(
+                    "[cyan]Trying NVIDIA CUDA repository installation...[/cyan]"
+                )
+                cuda_result = droplet_info.run_command(
+                    cuda_repo_install_cmd, timeout=700
+                )
 
                 if cuda_result["exit_code"] != 0:
                     console.print(
@@ -623,8 +761,12 @@ class ProfilingManager:
                     '
                     """
 
-                    console.print("[cyan]Trying fallback installation...[/cyan]")
-                    direct_result = droplet_info.run_command(direct_install_cmd, timeout=700)
+                    console.print(
+                        "[cyan]Trying fallback installation...[/cyan]"
+                    )
+                    direct_result = droplet_info.run_command(
+                        direct_install_cmd, timeout=700
+                    )
 
                     if direct_result["exit_code"] != 0:
                         # Show detailed error information for debugging
@@ -646,9 +788,13 @@ class ProfilingManager:
 
                         debug_result = droplet_info.run_command(debug_cmd)
                         console.print("[cyan]Debug information:[/cyan]")
-                        console.print(debug_result.get("stdout", "No debug output"))
+                        console.print(
+                            debug_result.get("stdout", "No debug output")
+                        )
                         console.print("[red]Debug stderr:[/red]")
-                        console.print(debug_result.get("stderr", "No debug stderr"))
+                        console.print(
+                            debug_result.get("stderr", "No debug stderr")
+                        )
 
                         console.print(
                             "[yellow]Warning: Failed to install NVIDIA profilers using all available methods.[/yellow]"
@@ -662,8 +808,12 @@ class ProfilingManager:
                         # Don't raise an error, just continue and let the verification handle it
 
             # Verify both installations work
-            verify_ncu_result = droplet_info.run_container_command("which ncu && ncu --version")
-            verify_nsys_result = droplet_info.run_container_command("which nsys && nsys --version")
+            verify_ncu_result = droplet_info.run_container_command(
+                "which ncu && ncu --version"
+            )
+            verify_nsys_result = droplet_info.run_container_command(
+                "which nsys && nsys --version"
+            )
 
             ncu_available = verify_ncu_result["exit_code"] == 0
             nsys_available = verify_nsys_result["exit_code"] == 0
@@ -674,10 +824,16 @@ class ProfilingManager:
                 )
             elif ncu_available:
                 console.print("[green]✓ nsight-compute (ncu) available[/green]")
-                console.print("[yellow]⚠ nsight-systems (nsys) not available[/yellow]")
+                console.print(
+                    "[yellow]⚠ nsight-systems (nsys) not available[/yellow]"
+                )
             elif nsys_available:
-                console.print("[green]✓ nsight-systems (nsys) available[/green]")
-                console.print("[yellow]⚠ nsight-compute (ncu) not available[/yellow]")
+                console.print(
+                    "[green]✓ nsight-systems (nsys) available[/green]"
+                )
+                console.print(
+                    "[yellow]⚠ nsight-compute (ncu) not available[/yellow]"
+                )
             else:
                 console.print(
                     "[yellow]⚠ Neither NVIDIA profiler is available - profiling may fail[/yellow]"
@@ -698,8 +854,12 @@ class ProfilingManager:
             result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch with CUDA available on host system[/green]")
-                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                console.print(
+                    "[green]✓ PyTorch with CUDA available on host system[/green]"
+                )
+                console.print(
+                    f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]"
+                )
                 return
 
             console.print(
@@ -708,40 +868,58 @@ class ProfilingManager:
 
             # TODO: fix this logic; we should either chose to patch for the users or throw immediately.
             if not self.ensure_host_system_ready(droplet_info):
-                console.print("[yellow]Host system not ready, but continuing...[/yellow]")
+                console.print(
+                    "[yellow]Host system not ready, but continuing...[/yellow]"
+                )
 
             install_cmd = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121"
-            result = droplet_info.run_container_command(install_cmd, timeout=300)
+            result = droplet_info.run_container_command(
+                install_cmd, timeout=300
+            )
 
             if result["exit_code"] == 0:
                 console.print("[green]✓ PyTorch installed successfully[/green]")
                 # Verify installation
                 verify_result = droplet_info.run_container_command(check_cmd)
                 if verify_result["exit_code"] == 0:
-                    console.print(f"[cyan]PyTorch info: {verify_result['stdout'].strip()}[/cyan]")
+                    console.print(
+                        f"[cyan]PyTorch info: {verify_result['stdout'].strip()}[/cyan]"
+                    )
                 return
             else:
-                console.print("[yellow]Warning: Failed to install PyTorch with CUDA[/yellow]")
+                console.print(
+                    "[yellow]Warning: Failed to install PyTorch with CUDA[/yellow]"
+                )
                 # Try CPU version as fallback
                 fallback_cmd = "pip install torch torchvision torchaudio"
-                fallback_result = droplet_info.run_container_command(fallback_cmd, timeout=300)
+                fallback_result = droplet_info.run_container_command(
+                    fallback_cmd, timeout=300
+                )
                 if fallback_result["exit_code"] == 0:
-                    console.print("[yellow]✓ PyTorch (CPU version) installed as fallback[/yellow]")
+                    console.print(
+                        "[yellow]✓ PyTorch (CPU version) installed as fallback[/yellow]"
+                    )
                 else:
                     console.print(
                         "[yellow]Profiling may still work with existing packages[/yellow]"
                     )
 
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
-            console.print("[yellow]Continuing anyway - setup may still be in progress[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]"
+            )
+            console.print(
+                "[yellow]Continuing anyway - setup may still be in progress[/yellow]"
+            )
 
     def _ensure_rocprofv3(self, droplet_info: Droplet):
         """Ensure rocprofv3 and dependencies are installed on the AMD droplet."""
         try:
             # First ensure the host system is properly set up
             if not self.ensure_host_system_ready(droplet_info):
-                console.print("[yellow]Host system setup had issues, but continuing...[/yellow]")
+                console.print(
+                    "[yellow]Host system setup had issues, but continuing...[/yellow]"
+                )
 
             # Check if rocprofv3 is already available
             check_cmd = "which rocprofv3 && echo 'rocprofv3 available'"
@@ -751,12 +929,16 @@ class ProfilingManager:
                 console.print("[green]✓ rocprofv3 already available[/green]")
                 return
 
-            console.print("[yellow]rocprofv3 not found, checking system setup...[/yellow]")
+            console.print(
+                "[yellow]rocprofv3 not found, checking system setup...[/yellow]"
+            )
 
             # First validate that ROCm is properly installed
             self._validate_rocm_installation(droplet_info)
 
-            console.print("[yellow]Installing rocprofv3 and dependencies...[/yellow]")
+            console.print(
+                "[yellow]Installing rocprofv3 and dependencies...[/yellow]"
+            )
 
             # Install build dependencies and build tools with verbose output
             setup_cmd = """
@@ -768,7 +950,9 @@ class ProfilingManager:
             """
 
             console.print("[cyan]Installing build dependencies...[/cyan]")
-            setup_result = droplet_info.run_container_command(setup_cmd, timeout=1900)
+            setup_result = droplet_info.run_container_command(
+                setup_cmd, timeout=1900
+            )
             if setup_result["exit_code"] != 0:
                 console.print(
                     f"[red]Failed to install build dependencies: {setup_result.get('stderr', '')}[/red]"
@@ -786,7 +970,9 @@ class ProfilingManager:
             """
 
             console.print("[cyan]Building aqlprofile...[/cyan]")
-            aql_result = droplet_info.run_container_command(build_aqlprofile_cmd, timeout=1200)
+            aql_result = droplet_info.run_container_command(
+                build_aqlprofile_cmd, timeout=1200
+            )
             if aql_result["exit_code"] != 0:
                 console.print(
                     f"[red]Failed to build aqlprofile: {aql_result.get('stderr', '')}[/red]"
@@ -823,7 +1009,9 @@ class ProfilingManager:
             """
 
             console.print("[cyan]Installing rocprof-trace-decoder...[/cyan]")
-            decoder_result = droplet_info.run_container_command(download_decoder_cmd, timeout=300)
+            decoder_result = droplet_info.run_container_command(
+                download_decoder_cmd, timeout=300
+            )
             if decoder_result["exit_code"] != 0:
                 console.print(
                     f"[red]Failed to install rocprof-trace-decoder: {decoder_result.get('stderr', '')}[/red]"
@@ -854,8 +1042,10 @@ class ProfilingManager:
                 )
                 raise RuntimeError("rocprofv3 installation verification failed")
 
-            console.print("[green]✓ rocprofv3 and dependencies installed successfully[/green]")
-            console.print(f"[cyan]rocprofv3 help preview:[/cyan]")
+            console.print(
+                "[green]✓ rocprofv3 and dependencies installed successfully[/green]"
+            )
+            console.print("[cyan]rocprofv3 help preview:[/cyan]")
             console.print(verify_result.get("stdout", "").strip())
 
         except Exception as e:
@@ -876,21 +1066,29 @@ class ProfilingManager:
                 )
 
                 # Check if ROCm directory exists
-                rocm_check_cmd = "ls -la /opt/rocm/ && echo 'ROCm directory exists'"
+                rocm_check_cmd = (
+                    "ls -la /opt/rocm/ && echo 'ROCm directory exists'"
+                )
                 rocm_result = droplet_info.run_container_command(rocm_check_cmd)
 
                 if rocm_result["exit_code"] != 0:
-                    raise RuntimeError("ROCm installation not found at /opt/rocm/")
+                    raise RuntimeError(
+                        "ROCm installation not found at /opt/rocm/"
+                    )
 
                 # Try alternative rocminfo locations
                 alt_rocminfo_cmd = "which rocminfo || find /opt -name rocminfo 2>/dev/null || echo 'rocminfo not found'"
-                alt_result = droplet_info.run_container_command(alt_rocminfo_cmd)
+                alt_result = droplet_info.run_container_command(
+                    alt_rocminfo_cmd
+                )
 
                 if "rocminfo not found" in alt_result.get("stdout", ""):
                     console.print(
                         "[yellow]Warning: rocminfo not available, but ROCm directory exists[/yellow]"
                     )
-                    console.print("[yellow]This may still work for profiling[/yellow]")
+                    console.print(
+                        "[yellow]This may still work for profiling[/yellow]"
+                    )
                 else:
                     console.print(
                         f"[green]Found rocminfo at: {alt_result.get('stdout', '').strip()}[/green]"
@@ -907,14 +1105,18 @@ class ProfilingManager:
 
                 # Check for GPU devices
                 if "GPU" in stdout or "gfx" in stdout:
-                    console.print("[green]✓ GPU device(s) detected by ROCm[/green]")
+                    console.print(
+                        "[green]✓ GPU device(s) detected by ROCm[/green]"
+                    )
                 else:
                     console.print(
                         "[yellow]Warning: No GPU devices detected in rocminfo output[/yellow]"
                     )
 
         except Exception as e:
-            console.print(f"[yellow]Warning: ROCm validation failed: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: ROCm validation failed: {e}[/yellow]"
+            )
             console.print(
                 "[yellow]Continuing anyway - this may still work in the host environment[/yellow]"
             )
@@ -939,15 +1141,19 @@ class ProfilingManager:
             result = droplet_info.run_container_command(package_check_cmd)
 
             if result["exit_code"] == 0:
-                console.print(f"[cyan]Debug output:[/cyan]")
+                console.print("[cyan]Debug output:[/cyan]")
                 for line in result.get("stdout", "").split("\n"):
                     if line.strip():
                         console.print(f"  {line.strip()}")
             else:
-                console.print("[yellow]Could not gather ROCm debug information[/yellow]")
+                console.print(
+                    "[yellow]Could not gather ROCm debug information[/yellow]"
+                )
 
         except Exception as e:
-            console.print(f"[yellow]Debug information gathering failed: {e}[/yellow]")
+            console.print(
+                f"[yellow]Debug information gathering failed: {e}[/yellow]"
+            )
 
     def _download_results(
         self,
@@ -971,7 +1177,9 @@ class ProfilingManager:
         ]
 
         try:
-            result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+                scp_cmd, capture_output=True, text=True, timeout=300
+            )
             if result.returncode != 0:
                 console.print(
                     f"[yellow]Warning: Failed to download profiling results: {result.stderr}[/yellow]"
@@ -1006,10 +1214,13 @@ class ProfilingManager:
                         name_parts = clean_name.rsplit(".", 1)
                         if len(name_parts) == 2:
                             target_path = (
-                                local_output_dir / f"{name_parts[0]}_{counter}.{name_parts[1]}"
+                                local_output_dir
+                                / f"{name_parts[0]}_{counter}.{name_parts[1]}"
                             )
                         else:
-                            target_path = local_output_dir / f"{clean_name}_{counter}"
+                            target_path = (
+                                local_output_dir / f"{clean_name}_{counter}"
+                            )
                         counter += 1
 
                     file_path.rename(target_path)
@@ -1026,10 +1237,13 @@ class ProfilingManager:
                             name_parts = clean_name.rsplit(".", 1)
                             if len(name_parts) == 2:
                                 target_path = (
-                                    local_output_dir / f"{name_parts[0]}_{counter}.{name_parts[1]}"
+                                    local_output_dir
+                                    / f"{name_parts[0]}_{counter}.{name_parts[1]}"
                                 )
                             else:
-                                target_path = local_output_dir / f"{clean_name}_{counter}"
+                                target_path = (
+                                    local_output_dir / f"{clean_name}_{counter}"
+                                )
                             counter += 1
 
                         if target_path != file_path:
@@ -1039,7 +1253,9 @@ class ProfilingManager:
                         )
                         downloaded_files.append(target_path.name)
                     else:
-                        console.print(f"[green]✓ Downloaded: {original_name}[/green]")
+                        console.print(
+                            f"[green]✓ Downloaded: {original_name}[/green]"
+                        )
                         downloaded_files.append(original_name)
 
             # Remove any empty subdirectories
@@ -1047,13 +1263,17 @@ class ProfilingManager:
                 if item.is_dir():
                     try:
                         item.rmdir()  # Only removes if empty
-                        console.print(f"[green]✓ Removed empty directory: {item.name}[/green]")
+                        console.print(
+                            f"[green]✓ Removed empty directory: {item.name}[/green]"
+                        )
                     except OSError:
                         # Directory not empty, leave it
                         pass
 
             if not downloaded_files:
-                console.print("[yellow]Warning: No files were downloaded[/yellow]")
+                console.print(
+                    "[yellow]Warning: No files were downloaded[/yellow]"
+                )
                 return []
 
             console.print(
@@ -1065,7 +1285,9 @@ class ProfilingManager:
             console.print("[yellow]Warning: Download timed out[/yellow]")
             return []
         except Exception as e:
-            console.print(f"[yellow]Warning: Unexpected error during download: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Unexpected error during download: {e}[/yellow]"
+            )
             return []
 
     def _cleanup_amd_remote(self, droplet_info: Droplet, remote_dir: str):
@@ -1088,7 +1310,10 @@ class ProfilingManager:
             console.print("\n[cyan]Top GPU Kernels by Total Time:[/cyan]")
 
             # Try to parse as JSON trace format
-            if stats_file.suffix == ".json" or stats_file.name == "results.json":
+            if (
+                stats_file.suffix == ".json"
+                or stats_file.name == "results.json"
+            ):
                 with open(stats_file, "r") as f:
                     data = json.load(f)
 
@@ -1106,7 +1331,8 @@ class ProfilingManager:
                         kernels.append(
                             {
                                 "name": kernel_name,
-                                "total_time": duration_ns / 1_000_000,  # Convert to ms
+                                "total_time": duration_ns
+                                / 1_000_000,  # Convert to ms
                                 "duration_ns": duration_ns,
                             }
                         )
@@ -1134,7 +1360,8 @@ class ProfilingManager:
                         hip_calls.append(
                             {
                                 "name": api_name,
-                                "total_time": duration_ns / 1_000_000,  # Convert to ms
+                                "total_time": duration_ns
+                                / 1_000_000,  # Convert to ms
                                 "duration_ns": duration_ns,
                             }
                         )
@@ -1143,7 +1370,9 @@ class ProfilingManager:
                 hip_calls.sort(key=lambda x: x["total_time"], reverse=True)
 
                 if hip_calls:
-                    console.print("\n[cyan]Top HIP API Calls by Total Time:[/cyan]")
+                    console.print(
+                        "\n[cyan]Top HIP API Calls by Total Time:[/cyan]"
+                    )
                     for i, call in enumerate(hip_calls[:5]):
                         console.print(
                             f"  {i + 1:2d}. {call['name'][:60]:<60} {call['total_time']:8.3f} ms"
@@ -1162,7 +1391,8 @@ class ProfilingManager:
                                 {
                                     "name": row["KernelName"],
                                     # Convert to ms
-                                    "total_time": float(row["TotalDurationNs"]) / 1_000_000,
+                                    "total_time": float(row["TotalDurationNs"])
+                                    / 1_000_000,
                                     "calls": int(row.get("Calls", 0)),
                                 }
                             )
@@ -1180,7 +1410,9 @@ class ProfilingManager:
                     console.print(f"  ... and {len(kernels) - 10} more kernels")
 
         except Exception as e:
-            console.print(f"[yellow]Could not parse profile summary: {e}[/yellow]")
+            console.print(
+                f"[yellow]Could not parse profile summary: {e}[/yellow]"
+            )
 
     def _ensure_pytorch_rocm(self, droplet_info: Droplet):
         """Check that PyTorch with ROCm support is available on the host system."""
@@ -1191,8 +1423,12 @@ class ProfilingManager:
             result = droplet_info.run_container_command(check_cmd)
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch with ROCm available on host system[/green]")
-                console.print(f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]")
+                console.print(
+                    "[green]✓ PyTorch with ROCm available on host system[/green]"
+                )
+                console.print(
+                    f"[cyan]PyTorch info: {result['stdout'].strip()}[/cyan]"
+                )
                 return
 
             console.print(
@@ -1202,33 +1438,51 @@ class ProfilingManager:
             # Try installing PyTorch with ROCm support if it's missing
             # First ensure virtual environment is ready
             if not self.ensure_host_system_ready(droplet_info):
-                console.print("[yellow]Host system not ready, but continuing...[/yellow]")
+                console.print(
+                    "[yellow]Host system not ready, but continuing...[/yellow]"
+                )
 
             install_cmd = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1"
-            result = droplet_info.run_container_command(install_cmd, timeout=300)
+            result = droplet_info.run_container_command(
+                install_cmd, timeout=300
+            )
 
             if result["exit_code"] == 0:
-                console.print("[green]✓ PyTorch with ROCm installed successfully[/green]")
+                console.print(
+                    "[green]✓ PyTorch with ROCm installed successfully[/green]"
+                )
                 # Verify installation
                 verify_result = droplet_info.run_container_command(check_cmd)
                 if verify_result["exit_code"] == 0:
-                    console.print(f"[cyan]PyTorch info: {verify_result['stdout'].strip()}[/cyan]")
+                    console.print(
+                        f"[cyan]PyTorch info: {verify_result['stdout'].strip()}[/cyan]"
+                    )
                 return
             else:
-                console.print("[yellow]Warning: Failed to install PyTorch with ROCm[/yellow]")
+                console.print(
+                    "[yellow]Warning: Failed to install PyTorch with ROCm[/yellow]"
+                )
                 # Try CPU version as fallback
                 fallback_cmd = "pip install torch torchvision torchaudio"
-                fallback_result = droplet_info.run_container_command(fallback_cmd, timeout=300)
+                fallback_result = droplet_info.run_container_command(
+                    fallback_cmd, timeout=300
+                )
                 if fallback_result["exit_code"] == 0:
-                    console.print("[yellow]✓ PyTorch (CPU version) installed as fallback[/yellow]")
+                    console.print(
+                        "[yellow]✓ PyTorch (CPU version) installed as fallback[/yellow]"
+                    )
                 else:
                     console.print(
                         "[yellow]Profiling may still work with existing packages[/yellow]"
                     )
 
         except Exception as e:
-            console.print(f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]")
-            console.print("[yellow]Continuing anyway - setup may still be in progress[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not verify PyTorch: {e}[/yellow]"
+            )
+            console.print(
+                "[yellow]Continuing anyway - setup may still be in progress[/yellow]"
+            )
 
     def debug_droplet_system_status(self, droplet_info: Droplet):
         """Debug the system status on the droplet."""
@@ -1236,21 +1490,23 @@ class ProfilingManager:
             console.print("[cyan]🔍 Debugging droplet system status...[/cyan]")
 
             # Check virtual environment
-            venv_status_cmd = (
-                "ls -la /opt/venv && source /opt/venv/bin/activate && python --version"
-            )
+            venv_status_cmd = "ls -la /opt/venv && source /opt/venv/bin/activate && python --version"
             result = droplet_info.run_command(venv_status_cmd)
             console.print("[cyan]Virtual environment status:[/cyan]")
             console.print(result.get("stdout", "No output"))
 
             # Check workspace directory
-            workspace_cmd = "ls -la /workspace || echo 'Workspace directory not found'"
+            workspace_cmd = (
+                "ls -la /workspace || echo 'Workspace directory not found'"
+            )
             result = droplet_info.run_command(workspace_cmd)
             console.print("[cyan]Workspace directory:[/cyan]")
             console.print(result.get("stdout", "No workspace info"))
 
             # Check cloud-init logs
-            cloud_init_cmd = "cloud-init status && tail -50 /var/log/cloud-init-output.log"
+            cloud_init_cmd = (
+                "cloud-init status && tail -50 /var/log/cloud-init-output.log"
+            )
             result = droplet_info.run_command(cloud_init_cmd)
             console.print("[cyan]Cloud-init status and logs:[/cyan]")
             console.print(result.get("stdout", "No cloud-init logs"))
@@ -1268,7 +1524,9 @@ class ProfilingManager:
             console.print(result.get("stdout", "No ROCm info"))
 
             # Check CUDA installation
-            cuda_cmd = "ls -la /usr/local/cuda/ 2>/dev/null || echo 'CUDA not found'"
+            cuda_cmd = (
+                "ls -la /usr/local/cuda/ 2>/dev/null || echo 'CUDA not found'"
+            )
             result = droplet_info.run_command(cuda_cmd)
             console.print("[cyan]CUDA installation:[/cyan]")
             console.print(result.get("stdout", "No CUDA info"))
@@ -1281,13 +1539,19 @@ class ProfilingManager:
 
         # First check if cloud-init has already completed
         if self._is_cloud_init_already_complete(droplet_info):
-            console.print("[green]✓ Cloud-init already completed - system is ready![/green]")
+            console.print(
+                "[green]✓ Cloud-init already completed - system is ready![/green]"
+            )
             return True
 
         # Show progress with estimated timing
         estimated_time = 120  # 2 minutes estimate
-        console.print("[cyan]🚀 Setting up GPU droplet (estimated: ~2 minutes)[/cyan]")
-        console.print("[dim cyan]📦 Downloading system dependencies and GPU drivers...[/dim cyan]")
+        console.print(
+            "[cyan]🚀 Setting up GPU droplet (estimated: ~2 minutes)[/cyan]"
+        )
+        console.print(
+            "[dim cyan]📦 Downloading system dependencies and GPU drivers...[/dim cyan]"
+        )
 
         start_time = time.time()
         last_log_lines_shown = 0
@@ -1301,7 +1565,9 @@ class ProfilingManager:
             console=console,
             transient=False,
         ) as progress:
-            setup_task = progress.add_task("Initializing system...", total=estimated_time)
+            setup_task = progress.add_task(
+                "Initializing system...", total=estimated_time
+            )
 
             while time.time() - start_time < timeout:
                 elapsed = time.time() - start_time
@@ -1310,7 +1576,9 @@ class ProfilingManager:
                 progress_percentage = min(
                     (elapsed / estimated_time) * 100, 95
                 )  # Cap at 95% until actually done
-                progress.update(setup_task, completed=min(elapsed, estimated_time * 0.95))
+                progress.update(
+                    setup_task, completed=min(elapsed, estimated_time * 0.95)
+                )
 
                 # Update task description based on progress
                 if elapsed < 30:
@@ -1327,11 +1595,15 @@ class ProfilingManager:
                 progress.update(setup_task, description=description)
 
                 try:
-                    result = droplet_info.run_command("cloud-init status --long")
+                    result = droplet_info.run_command(
+                        "cloud-init status --long"
+                    )
 
                     if result.get("exit_code") != 0:
                         # Try fallback methods
-                        simple_result = droplet_info.run_command("cloud-init status")
+                        simple_result = droplet_info.run_command(
+                            "cloud-init status"
+                        )
                         if simple_result.get("exit_code") == 0:
                             status = simple_result.get("stdout", "").strip()
 
@@ -1348,12 +1620,16 @@ class ProfilingManager:
                                 return True
                             elif "status: running" in status:
                                 # Show some activity but continue with progress bar
-                                last_log_lines_shown = self._show_recent_activity(
-                                    droplet_info, last_log_lines_shown
+                                last_log_lines_shown = (
+                                    self._show_recent_activity(
+                                        droplet_info, last_log_lines_shown
+                                    )
                                 )
                         else:
                             # Check if cloud-init has actually completed using alternative methods
-                            if self._is_cloud_init_actually_complete(droplet_info):
+                            if self._is_cloud_init_actually_complete(
+                                droplet_info
+                            ):
                                 progress.update(
                                     setup_task,
                                     completed=estimated_time,
@@ -1365,11 +1641,15 @@ class ProfilingManager:
                                 return True
 
                             # Show warning and continue with limited detection
-                            if int(elapsed) % 30 == 0:  # Show warning every 30 seconds
+                            if (
+                                int(elapsed) % 30 == 0
+                            ):  # Show warning every 30 seconds
                                 console.print(
                                     f"[yellow]⚠️ cloud-init status not available yet ({int(elapsed)}s) - trying fallback methods...[/yellow]"
                                 )
-                                self._check_system_activity_with_completion(droplet_info)
+                                self._check_system_activity_with_completion(
+                                    droplet_info
+                                )
 
                         time.sleep(5)
                         continue
@@ -1380,9 +1660,13 @@ class ProfilingManager:
 
                     if "status: done" in overall_status:
                         progress.update(
-                            setup_task, completed=estimated_time, description="✓ Setup completed!"
+                            setup_task,
+                            completed=estimated_time,
+                            description="✓ Setup completed!",
                         )
-                        console.print("[green]✓ Cloud-init setup completed successfully![/green]")
+                        console.print(
+                            "[green]✓ Cloud-init setup completed successfully![/green]"
+                        )
                         self._show_cloud_init_summary(droplet_info)
                         return True
                     elif "status: error" in overall_status:
@@ -1391,7 +1675,9 @@ class ProfilingManager:
                             completed=estimated_time,
                             description="⚠️ Completed with warnings",
                         )
-                        console.print("[yellow]⚠️ Cloud-init completed with errors[/yellow]")
+                        console.print(
+                            "[yellow]⚠️ Cloud-init completed with errors[/yellow]"
+                        )
                         self._show_cloud_init_logs(droplet_info, lines=10)
                         return True
                     elif "status: running" in overall_status:
@@ -1403,7 +1689,7 @@ class ProfilingManager:
                     else:
                         time.sleep(5)
 
-                except Exception as e:
+                except Exception:
                     # Continue with progress bar even if status check fails
                     time.sleep(5)
 
@@ -1415,11 +1701,15 @@ class ProfilingManager:
         self._show_helpful_timeout_guidance(droplet_info)
         return False
 
-    def _show_recent_activity(self, droplet_info: Droplet, last_lines_shown: int) -> int:
+    def _show_recent_activity(
+        self, droplet_info: Droplet, last_lines_shown: int
+    ) -> int:
         """Show recent activity without overwhelming the progress display."""
         try:
             # Only show activity every few checks to avoid spam
-            if random.randint(1, 3) == 1:  # Show activity roughly 1/3 of the time
+            if (
+                random.randint(1, 3) == 1
+            ):  # Show activity roughly 1/3 of the time
                 result = droplet_info.run_command(
                     "tail -n 3 /var/log/cloud-init-output.log 2>/dev/null"
                 )
@@ -1429,8 +1719,14 @@ class ProfilingManager:
                         lines = output.split("\n")
                         # Show just one meaningful line
                         for line in reversed(lines):
-                            if line.strip() and not line.startswith(" ") and len(line.strip()) > 10:
-                                console.print(f"[dim blue]  📋 {line.strip()}[/dim blue]")
+                            if (
+                                line.strip()
+                                and not line.startswith(" ")
+                                and len(line.strip()) > 10
+                            ):
+                                console.print(
+                                    f"[dim blue]  📋 {line.strip()}[/dim blue]"
+                                )
                                 break
             return last_lines_shown + 1
         except Exception:
@@ -1442,32 +1738,48 @@ class ProfilingManager:
             result = droplet_info.run_command(
                 "test -f /var/lib/cloud/instance/boot-finished && echo 'completed'"
             )
-            if result.get("exit_code") == 0 and "completed" in result.get("stdout", ""):
-                console.print("[dim green]✓ Found cloud-init completion marker[/dim green]")
+            if result.get("exit_code") == 0 and "completed" in result.get(
+                "stdout", ""
+            ):
+                console.print(
+                    "[dim green]✓ Found cloud-init completion marker[/dim green]"
+                )
                 return True
 
             result = droplet_info.run_command("cloud-init status")
             if result.get("exit_code") == 0:
                 status = result.get("stdout", "").strip()
                 if "status: done" in status:
-                    console.print("[dim green]✓ Cloud-init status shows completed[/dim green]")
+                    console.print(
+                        "[dim green]✓ Cloud-init status shows completed[/dim green]"
+                    )
                     return True
                 elif "status: disabled" in status:
-                    console.print("[dim green]✓ Cloud-init is disabled - system ready[/dim green]")
+                    console.print(
+                        "[dim green]✓ Cloud-init is disabled - system ready[/dim green]"
+                    )
                     return True
 
             result = droplet_info.run_command(
                 "grep -q 'Cloud-init.*finished' /var/log/cloud-init.log 2>/dev/null && echo 'finished'"
             )
-            if result.get("exit_code") == 0 and "finished" in result.get("stdout", ""):
-                console.print("[dim green]✓ Cloud-init logs show completion[/dim green]")
+            if result.get("exit_code") == 0 and "finished" in result.get(
+                "stdout", ""
+            ):
+                console.print(
+                    "[dim green]✓ Cloud-init logs show completion[/dim green]"
+                )
                 return True
 
             result = droplet_info.run_command(
                 "test -d /opt/venv && test -f /root/.bashrc && echo 'setup_complete'"
             )
-            if result.get("exit_code") == 0 and "setup_complete" in result.get("stdout", ""):
-                console.print("[dim green]✓ System appears fully configured[/dim green]")
+            if result.get("exit_code") == 0 and "setup_complete" in result.get(
+                "stdout", ""
+            ):
+                console.print(
+                    "[dim green]✓ System appears fully configured[/dim green]"
+                )
                 return True
 
         except Exception as e:
@@ -1498,10 +1810,14 @@ class ProfilingManager:
             if result.get("exit_code") == 0:
                 output = result.get("stdout", "").strip()
                 if output and "No syslog available" not in output:
-                    console.print("[dim cyan]Recent system activity:[/dim cyan]")
+                    console.print(
+                        "[dim cyan]Recent system activity:[/dim cyan]"
+                    )
                     for line in output.split("\n")[-2:]:
                         if line.strip():
-                            console.print(f"[dim cyan]  {line.strip()}[/dim cyan]")
+                            console.print(
+                                f"[dim cyan]  {line.strip()}[/dim cyan]"
+                            )
         except Exception:
             pass
 
@@ -1515,12 +1831,16 @@ class ProfilingManager:
             if result.get("exit_code") == 0:
                 process_count = int(result.get("stdout", "0").strip())
                 if process_count > 0:
-                    console.print(f"Cloud-init not ready yet, checking system activity...")
+                    console.print(
+                        "Cloud-init not ready yet, checking system activity..."
+                    )
                     console.print(
                         f"System activity detected: {process_count} setup processes running"
                     )
                 else:
-                    console.print("No setup processes detected - system may be ready")
+                    console.print(
+                        "No setup processes detected - system may be ready"
+                    )
 
             # Check recent system logs for completion or error patterns
             result = droplet_info.run_command(
@@ -1543,15 +1863,21 @@ class ProfilingManager:
             result = droplet_info.run_command(
                 "test -f /var/lib/cloud/instance/boot-finished && echo 'boot_finished'"
             )
-            if result.get("exit_code") == 0 and "boot_finished" in result.get("stdout", ""):
-                console.print("[dim green]✓ Found cloud-init boot completion marker[/dim green]")
+            if result.get("exit_code") == 0 and "boot_finished" in result.get(
+                "stdout", ""
+            ):
+                console.print(
+                    "[dim green]✓ Found cloud-init boot completion marker[/dim green]"
+                )
                 return True
 
             # Check 2: Look for completion in logs
             result = droplet_info.run_command(
                 "grep -q 'Cloud-init.*finished' /var/log/cloud-init.log 2>/dev/null && echo 'log_finished'"
             )
-            if result.get("exit_code") == 0 and "log_finished" in result.get("stdout", ""):
+            if result.get("exit_code") == 0 and "log_finished" in result.get(
+                "stdout", ""
+            ):
                 console.print(
                     "[dim green]✓ Found completion message in cloud-init logs[/dim green]"
                 )
@@ -1561,7 +1887,9 @@ class ProfilingManager:
             result = droplet_info.run_command(
                 "test -d /opt/venv && test -f /root/.bashrc && ls /opt/venv/bin/activate >/dev/null 2>&1 && echo 'env_ready'"
             )
-            if result.get("exit_code") == 0 and "env_ready" in result.get("stdout", ""):
+            if result.get("exit_code") == 0 and "env_ready" in result.get(
+                "stdout", ""
+            ):
                 console.print(
                     "[dim green]✓ Python virtual environment appears configured[/dim green]"
                 )
@@ -1571,12 +1899,18 @@ class ProfilingManager:
             result = droplet_info.run_command(
                 "ls /var/lib/cloud/instances/*/sem/config_scripts_user >/dev/null 2>&1 && echo 'scripts_done'"
             )
-            if result.get("exit_code") == 0 and "scripts_done" in result.get("stdout", ""):
-                console.print("[dim green]✓ User-data scripts appear to have completed[/dim green]")
+            if result.get("exit_code") == 0 and "scripts_done" in result.get(
+                "stdout", ""
+            ):
+                console.print(
+                    "[dim green]✓ User-data scripts appear to have completed[/dim green]"
+                )
                 return True
 
             # Check 5: No active cloud-init processes and system looks configured
-            result = droplet_info.run_command("ps aux | grep 'cloud-init' | grep -v grep | wc -l")
+            result = droplet_info.run_command(
+                "ps aux | grep 'cloud-init' | grep -v grep | wc -l"
+            )
             if result.get("exit_code") == 0:
                 cloud_init_processes = int(result.get("stdout", "0").strip())
                 if cloud_init_processes == 0:
@@ -1584,16 +1918,18 @@ class ProfilingManager:
                     result = droplet_info.run_command(
                         "which python3 >/dev/null && which pip >/dev/null && echo 'basic_tools_ready'"
                     )
-                    if result.get("exit_code") == 0 and "basic_tools_ready" in result.get(
-                        "stdout", ""
-                    ):
+                    if result.get(
+                        "exit_code"
+                    ) == 0 and "basic_tools_ready" in result.get("stdout", ""):
                         console.print(
                             "[dim green]✓ No cloud-init processes running and basic tools available[/dim green]"
                         )
                         return True
 
         except Exception as e:
-            console.print(f"[dim yellow]Error checking completion status: {e}[/dim yellow]")
+            console.print(
+                f"[dim yellow]Error checking completion status: {e}[/dim yellow]"
+            )
 
         return False
 
@@ -1606,16 +1942,26 @@ class ProfilingManager:
         console.print(
             "[dim cyan]  • You can check manually with: ssh root@<droplet-ip> 'cloud-init status'[/dim cyan]"
         )
-        console.print("[dim cyan]  • GPU setup can take 5-10 minutes on first boot[/dim cyan]")
-        console.print("[dim cyan]  • Try connecting via SSH to see current progress[/dim cyan]")
+        console.print(
+            "[dim cyan]  • GPU setup can take 5-10 minutes on first boot[/dim cyan]"
+        )
+        console.print(
+            "[dim cyan]  • Try connecting via SSH to see current progress[/dim cyan]"
+        )
 
         # Try to give current droplet IP if available
         if hasattr(droplet_info, "ip") and droplet_info.ip:
-            console.print(f"[dim cyan]  • Your droplet IP: {droplet_info.ip}[/dim cyan]")
+            console.print(
+                f"[dim cyan]  • Your droplet IP: {droplet_info.ip}[/dim cyan]"
+            )
 
-        console.print("[green]🚀 Chisel will continue - the system should be ready soon![/green]")
+        console.print(
+            "[green]🚀 Chisel will continue - the system should be ready soon![/green]"
+        )
 
-    def _show_all_cloud_init_activity(self, droplet_info: Droplet, last_lines_shown: int) -> int:
+    def _show_all_cloud_init_activity(
+        self, droplet_info: Droplet, last_lines_shown: int
+    ) -> int:
         try:
             # Get total line count first
             count_result = droplet_info.run_command(
@@ -1624,7 +1970,9 @@ class ProfilingManager:
             if count_result.get("exit_code") != 0:
                 return last_lines_shown
 
-            total_lines = int(count_result.get("stdout", "0").strip().split()[0])
+            total_lines = int(
+                count_result.get("stdout", "0").strip().split()[0]
+            )
 
             if total_lines <= last_lines_shown:
                 return last_lines_shown
@@ -1646,7 +1994,9 @@ class ProfilingManager:
                         )
                         for line in output.split("\n"):
                             if line.strip():
-                                console.print(f"[dim yellow]  {line.strip()}[/dim yellow]")
+                                console.print(
+                                    f"[dim yellow]  {line.strip()}[/dim yellow]"
+                                )
                         console.print()  # Empty line for readability
 
             return total_lines
@@ -1668,17 +2018,23 @@ class ProfilingManager:
                 )
 
                 # Show last 30 lines of the complete log
-                result = droplet_info.run_command("tail -n 30 /var/log/cloud-init-output.log")
+                result = droplet_info.run_command(
+                    "tail -n 30 /var/log/cloud-init-output.log"
+                )
                 if result.get("exit_code") == 0:
                     output = result.get("stdout", "").strip()
                     if output:
                         for line in output.split("\n"):
                             if line.strip():
-                                console.print(f"[dim green]  {line.strip()}[/dim green]")
+                                console.print(
+                                    f"[dim green]  {line.strip()}[/dim green]"
+                                )
         except Exception:
             pass
 
-    def _show_current_cloud_init_activity(self, droplet_info: Droplet, last_position: int):
+    def _show_current_cloud_init_activity(
+        self, droplet_info: Droplet, last_position: int
+    ):
         # This method is now replaced by _show_all_cloud_init_activity but keeping for compatibility
         pass
 
@@ -1690,23 +2046,33 @@ class ProfilingManager:
                 output = result.get("stdout", "")
                 for line in output.split("\n")[:10]:
                     if line.strip() and "Analyzing" not in line:
-                        console.print(f"[dim green]  {line.strip()}[/dim green]")
+                        console.print(
+                            f"[dim green]  {line.strip()}[/dim green]"
+                        )
         except Exception:
             pass
 
     def _show_cloud_init_logs(self, droplet_info: Droplet, lines: int = 20):
         try:
-            result = droplet_info.run_command(f"tail -n {lines} /var/log/cloud-init.log")
+            result = droplet_info.run_command(
+                f"tail -n {lines} /var/log/cloud-init.log"
+            )
             if result.get("exit_code") == 0:
-                console.print(f"[yellow]Last {lines} lines of cloud-init.log:[/yellow]")
+                console.print(
+                    f"[yellow]Last {lines} lines of cloud-init.log:[/yellow]"
+                )
                 output = result.get("stdout", "")
                 for line in output.split("\n")[-10:]:
                     if line.strip():
-                        console.print(f"[dim yellow]  {line.strip()}[/dim yellow]")
+                        console.print(
+                            f"[dim yellow]  {line.strip()}[/dim yellow]"
+                        )
         except Exception:
             pass
 
-    def get_cloud_init_detailed_status(self, droplet_info: Droplet) -> Dict[str, Any]:
+    def get_cloud_init_detailed_status(
+        self, droplet_info: Droplet
+    ) -> Dict[str, Any]:
         status_info = {
             "overall_status": "unknown",
             "stages": {},
@@ -1729,7 +2095,9 @@ class ProfilingManager:
                     if "took" in line and "seconds" in line:
                         status_info["modules"].append(line.strip())
 
-            result = droplet_info.run_command("grep -i error /var/log/cloud-init.log | tail -5")
+            result = droplet_info.run_command(
+                "grep -i error /var/log/cloud-init.log | tail -5"
+            )
             if result.get("exit_code") == 0:
                 errors = result.get("stdout", "").strip()
                 if errors:
@@ -1751,18 +2119,24 @@ class ProfilingManager:
     def get_full_cloud_init_log(self, droplet_info: Droplet) -> str:
         """Get the complete cloud-init output log for debugging."""
         try:
-            result = droplet_info.run_command("cat /var/log/cloud-init-output.log")
+            result = droplet_info.run_command(
+                "cat /var/log/cloud-init-output.log"
+            )
             if result.get("exit_code") == 0:
                 return result.get("stdout", "")
         except Exception:
             pass
         return "Could not retrieve cloud-init log"
 
-    def monitor_cloud_init_realtime(self, droplet_info: Droplet, duration: int = 300):
+    def monitor_cloud_init_realtime(
+        self, droplet_info: Droplet, duration: int = 300
+    ):
         """Monitor cloud-init in real-time for a specified duration."""
         import time
 
-        console.print(f"[cyan]🔍 Monitoring cloud-init activity for {duration} seconds...[/cyan]")
+        console.print(
+            f"[cyan]🔍 Monitoring cloud-init activity for {duration} seconds...[/cyan]"
+        )
         start_time = time.time()
         last_lines_shown = 0
 
@@ -1795,7 +2169,9 @@ class ProfilingManager:
     def ensure_host_system_ready(self, droplet_info: Droplet):
         """Ensure the host system is properly set up for profiling."""
         try:
-            console.print("[yellow]🔧 Ensuring host system is ready for profiling...[/yellow]")
+            console.print(
+                "[yellow]🔧 Ensuring host system is ready for profiling...[/yellow]"
+            )
 
             # Wait for cloud-init to finish if it's still running
             self.wait_for_cloud_init(droplet_info)
@@ -1815,9 +2191,13 @@ class ProfilingManager:
             # First check if we have python3
             python_check = droplet_info.run_command("which python3")
             if python_check.get("exit_code") != 0:
-                console.print("[yellow]Installing Python3 and dependencies...[/yellow]")
+                console.print(
+                    "[yellow]Installing Python3 and dependencies...[/yellow]"
+                )
                 install_python_cmd = "apt-get update && apt-get install -y python3 python3-venv python3-pip build-essential"
-                result = droplet_info.run_command(install_python_cmd, timeout=180)
+                result = droplet_info.run_command(
+                    install_python_cmd, timeout=180
+                )
                 if result.get("exit_code") != 0:
                     console.print(
                         f"[red]Failed to install Python3: {result.get('stderr', '')}[/red]"
@@ -1843,7 +2223,9 @@ class ProfilingManager:
             result = droplet_info.run_command(create_venv_cmd, timeout=300)
 
             if result.get("exit_code") == 0:
-                console.print("[green]✓ Virtual environment created successfully[/green]")
+                console.print(
+                    "[green]✓ Virtual environment created successfully[/green]"
+                )
 
                 # Set up environment for future logins
                 bashrc_setup = """

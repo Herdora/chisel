@@ -30,11 +30,15 @@ def handle_configure(token: Optional[str] = None) -> int:
         api_token = token
     elif existing_token:
         console.print("[green]Found existing DigitalOcean API token.[/green]")
-        overwrite = Prompt.ask("Do you want to update the token?", choices=["y", "n"], default="n")
+        overwrite = Prompt.ask(
+            "Do you want to update the token?", choices=["y", "n"], default="n"
+        )
         if overwrite.lower() == "n":
             api_token = existing_token
         else:
-            api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
+            api_token = Prompt.ask(
+                "Enter your DigitalOcean API token", password=True
+            )
     else:
         console.print(
             "[yellow]No DigitalOcean API token found.[/yellow]\n"
@@ -43,7 +47,9 @@ def handle_configure(token: Optional[str] = None) -> int:
             "2. Generate a new token with read and write access\n"
             "3. Copy the token (you won't be able to see it again)\n"
         )
-        api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
+        api_token = Prompt.ask(
+            "Enter your DigitalOcean API token", password=True
+        )
 
     console.print("\n[cyan]Validating API token...[/cyan]")
 
@@ -69,18 +75,25 @@ def handle_configure(token: Optional[str] = None) -> int:
                 table.add_column("Value", style="white")
 
                 account_data = (
-                    account_info.get("account", {}) if isinstance(account_info, dict) else {}
+                    account_info.get("account", {})
+                    if isinstance(account_info, dict)
+                    else {}
                 )
                 table.add_row("Email", account_data.get("email", "N/A"))
                 table.add_row("Status", account_data.get("status", "N/A"))
-                table.add_row("Droplet Limit", str(account_data.get("droplet_limit", "N/A")))
+                table.add_row(
+                    "Droplet Limit",
+                    str(account_data.get("droplet_limit", "N/A")),
+                )
 
                 console.print(table)
 
             return 0
 
         else:
-            console.print("[red]✗ Invalid API token. Please check your token and try again.[/red]")
+            console.print(
+                "[red]✗ Invalid API token. Please check your token and try again.[/red]"
+            )
             return 1
 
     except Exception as e:
@@ -120,10 +133,14 @@ def handle_profile(
         return 1
 
     if rocprof_compute is not None:
-        console.print("[red]Error: --rocprof-compute support is not yet implemented[/red]")
+        console.print(
+            "[red]Error: --rocprof-compute support is not yet implemented[/red]"
+        )
         return 1
 
-    profilers_enabled = [p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None]
+    profilers_enabled = [
+        p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None
+    ]
     if not profilers_enabled:
         console.print(
             "[red]Error: No profiler specified.[/red]\n"
@@ -191,7 +208,13 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
     if shell:
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "chisel.main", "--install-completion", shell],
+                [
+                    sys.executable,
+                    "-m",
+                    "chisel.main",
+                    "--install-completion",
+                    shell,
+                ],
                 capture_output=True,
                 text=True,
             )
@@ -230,7 +253,9 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
                 )
                 return 0
             else:
-                console.print(f"[red]Failed to install completion: {result.stderr}[/red]")
+                console.print(
+                    f"[red]Failed to install completion: {result.stderr}[/red]"
+                )
                 return 1
 
         except Exception as e:

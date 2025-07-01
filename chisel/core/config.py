@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+
 import toml
 
 CONFIG_FILE = Path.home() / ".config" / "chisel" / "config.toml"

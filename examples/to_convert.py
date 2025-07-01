@@ -21,7 +21,9 @@ import torch.nn as nn
 class ToyGPT(nn.Module):
     """Super‑lightweight causal Transformer."""
 
-    def __init__(self, vocab_size=50_257, n_embd=256, n_head=4, n_layer=2, block_size=128):
+    def __init__(
+        self, vocab_size=50_257, n_embd=256, n_head=4, n_layer=2, block_size=128
+    ):
         super().__init__()
         self.block_size = block_size
 
@@ -50,13 +52,17 @@ class ToyGPT(nn.Module):
         x = self.tok(idx) + self.pos[:, :T]
 
         # PyTorch 2.2+ supports built‑in causal mask generation
-        causal_mask = nn.Transformer.generate_square_subsequent_mask(T, x.device)
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(
+            T, x.device
+        )
         x = self.transformer(x, mask=causal_mask)
         return self.head(x)  # (B, T, vocab)
 
 
 def main():
-    p = argparse.ArgumentParser(description="Run a dummy forward pass on the simplest GPT.")
+    p = argparse.ArgumentParser(
+        description="Run a dummy forward pass on the simplest GPT."
+    )
     p.add_argument("--batch", type=int, default=4)
     p.add_argument("--seq", type=int, default=128)
     args = p.parse_args()

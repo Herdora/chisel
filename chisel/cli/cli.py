@@ -24,10 +24,14 @@ def vendor_completer(incomplete: str):
 def gpu_type_completer(incomplete: str):
     """Custom completer for gpu-type option."""
     gpu_types = ["h100", "l40s"]
-    return [gpu_type for gpu_type in gpu_types if gpu_type.startswith(incomplete)]
+    return [
+        gpu_type for gpu_type in gpu_types if gpu_type.startswith(incomplete)
+    ]
 
 
-def create_profiler_callback(profiler_name: str) -> Callable[[Optional[str]], str]:
+def create_profiler_callback(
+    profiler_name: str,
+) -> Callable[[Optional[str]], str]:
     """Create a callback that detects when a profiler flag is used."""
 
     def callback(value: Optional[str]) -> str:
@@ -36,7 +40,9 @@ def create_profiler_callback(profiler_name: str) -> Callable[[Optional[str]], st
         if value is None:
             return ""  # Flag not used
         else:
-            return value  # Flag was used, return the value (could be empty string)
+            return (
+                value  # Flag was used, return the value (could be empty string)
+            )
 
     return callback
 
@@ -51,7 +57,9 @@ def create_app() -> typer.Typer:
 
     @app.command()
     def configure(
-        token: Optional[str] = typer.Option(None, "--token", "-t", help="DigitalOcean API token"),
+        token: Optional[str] = typer.Option(
+            None, "--token", "-t", help="DigitalOcean API token"
+        ),
     ):
         """Configure Chisel with your DigitalOcean API token."""
         exit_code = handle_configure(token=token)
