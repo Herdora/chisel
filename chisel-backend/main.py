@@ -12,7 +12,7 @@ app = FastAPI(title="Chisel Backend API")
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv("../.env")
+load_dotenv()
 
 # Your actual DigitalOcean token
 DO_TOKEN = os.getenv("DO_API_TOKEN", "your_digitalocean_token_here")
