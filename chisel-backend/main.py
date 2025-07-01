@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
-app = FastAPI(title="Chisel Backend API", version="1.0.1")
+app = FastAPI(title="Chisel Backend API", version="1.0.2")
 
 # Load environment variables
 from dotenv import load_dotenv
