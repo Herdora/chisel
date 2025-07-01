@@ -4,15 +4,16 @@ from typing import Optional
 
 from database import get_db, init_db
 from fastapi import Depends, FastAPI, HTTPException
-from models import UsageHistory, User
+from models import UsageHistory, User, ActiveDroplet
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
 app = FastAPI(title="Chisel Backend API")
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv("../.env")
 
 # Your actual DigitalOcean token
 DO_TOKEN = os.getenv("DO_API_TOKEN", "your_digitalocean_token_here")
@@ -177,6 +178,43 @@ async def add_user(request: dict, db: Session = Depends(get_db)):
         "chisel_token": chisel_token, 
         "credits_remaining": float(credits),
         "message": f"User {chisel_token} created with ${credits:.2f} credits"
+    }
+
+@app.post("/droplets/register")
+async def register_droplet(request: dict, db: Session = Depends(get_db)):
+    """Register a droplet for usage tracking"""
+    chisel_token = request.get("chisel_token")
+    droplet_id = request.get("droplet_id")
+    gpu_type = request.get("gpu_type")
+    
+    if not all([chisel_token, droplet_id, gpu_type]):
+        raise HTTPException(status_code=400, detail="chisel_token, droplet_id, and gpu_type required")
+    
+    # Get hourly rate
+    hourly_rate = GPU_RATES.get(gpu_type, GPU_RATES["nvidia-h100"])
+    
+    # Check if droplet already registered
+    existing = db.query(ActiveDroplet).filter(ActiveDroplet.do_droplet_id == droplet_id).first()
+    if existing:
+        # Update last activity
+        existing.last_activity = func.now()
+        db.commit()
+        return {"success": True, "message": "Droplet activity updated"}
+    
+    # Register new droplet
+    droplet = ActiveDroplet(
+        do_droplet_id=droplet_id,
+        chisel_token=chisel_token,
+        gpu_type=gpu_type,
+        hourly_rate=hourly_rate
+    )
+    db.add(droplet)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Droplet {droplet_id} registered for {chisel_token}",
+        "hourly_rate": float(hourly_rate)
     }
 
 
