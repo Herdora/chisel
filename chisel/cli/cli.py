@@ -9,6 +9,7 @@ from chisel.cli.commands import (
     handle_profile,
     handle_version,
     handle_install_completion,
+    handle_login,
 )
 
 # Sentinel value to distinguish between "not provided" and "provided as empty"
@@ -63,6 +64,14 @@ def create_app() -> typer.Typer:
     ):
         """Configure Chisel with your DigitalOcean API token."""
         exit_code = handle_configure(token=token)
+        raise typer.Exit(exit_code)
+
+    @app.command()
+    def login(
+        token: str = typer.Argument(..., help="Chisel token for managed access"),
+    ):
+        """Login with a Chisel token for managed access."""
+        exit_code = handle_login(token=token)
         raise typer.Exit(exit_code)
 
     @app.command()

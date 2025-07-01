@@ -15,6 +15,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from chisel.core.chisel_client import ChiselClient
 from chisel.core.droplet_service import Droplet, DropletService
 
 from .types.gpu_profiles import GPUType
@@ -101,13 +102,20 @@ class ProfilingResults:
 
 
 class ProfilingManager:
-    def __init__(self, digital_ocean_token: Optional[str] = None):
+    def __init__(
+        self,
+        digital_ocean_token: Optional[str] = None,
+        chisel_client: Optional[ChiselClient] = None,
+    ):
         if not digital_ocean_token:
             raise RuntimeError(
                 "No API token configured. Run 'chisel configure' first."
             )
 
-        self.droplet_service = DropletService(digital_ocean_token)
+        self.droplet_service = DropletService(
+            digital_ocean_token, chisel_client
+        )
+        self.chisel_client = chisel_client
 
     def profile(
         self,

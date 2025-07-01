@@ -9,6 +9,7 @@ import pydo
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from .chisel_client import ChiselClient
 from .droplet import Droplet
 from .types.gpu_profiles import GPU_PROFILES, GPU_TYPE_TO_STRING, GPUType
 from .types.pydo_create_api import (
@@ -24,8 +25,12 @@ STARTUP_SCRIPTS_DIR = Path(__file__).parent / "startup_scripts"
 
 
 class DropletService:
-    def __init__(self, token: str):
+    def __init__(
+        self, token: str, chisel_client: Optional[ChiselClient] = None
+    ):
         self.pydo_client = pydo.Client(token=token)
+        self.chisel_client = chisel_client
+        self._managed_mode = chisel_client is not None
 
     def _get_local_ssh_key(self) -> Optional[str]:
         ssh_pub_paths = [
@@ -73,6 +78,22 @@ class DropletService:
         droplet_size: str,
         droplet_image: str,
     ) -> Droplet:
+        if self._managed_mode and self.chisel_client:
+            gpu_profile = GPU_PROFILES[gpu_type]
+            estimated_cost = gpu_profile.hourly_cost
+
+            if not self.chisel_client.check_credits(estimated_cost):
+                status = self.chisel_client.get_user_status()
+                credits = status.get("credits_remaining", 0)
+                raise ValueError(
+                    f"Insufficient credits for {gpu_type.value} (${estimated_cost:.2f}/hour). "
+                    f"You have ${credits:.2f} remaining."
+                )
+
+            console.print(
+                f"[green]✓ Credit check passed for {gpu_type.value}[/green]"
+            )
+
         self._validate_ssh_key_exists()
 
         script_path = STARTUP_SCRIPTS_DIR / f"{GPU_TYPE_TO_STRING[gpu_type]}.sh"
