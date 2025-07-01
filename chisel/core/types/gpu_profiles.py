@@ -78,7 +78,9 @@ def get_gpu_type_from_command(command: str) -> GPUType:
     elif "l40s" in command:
         return GPUType.NVIDIA_L40S
     else:
-        raise ValueError(f"Could not determine GPU type from command: {command}")
+        raise ValueError(
+            f"Could not determine GPU type from command: {command}"
+        )
 
 
 # TODO: figure out best way to name these.

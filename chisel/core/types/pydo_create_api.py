@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 """
@@ -139,7 +139,8 @@ class PydoDropletObject:
         if data.get("next_backup_window"):
             backup_window_data = data["next_backup_window"]
             backup_window = BackupWindow(
-                start=backup_window_data.get("start"), end=backup_window_data.get("end")
+                start=backup_window_data.get("start"),
+                end=backup_window_data.get("end"),
             )
 
         disk_info = []
@@ -374,7 +375,10 @@ class MultipleDropletCreateResponse:
                 pass
 
         return cls(
-            droplets=[PydoDropletObject.from_dict(droplet) for droplet in data["droplets"]],
+            droplets=[
+                PydoDropletObject.from_dict(droplet)
+                for droplet in data["droplets"]
+            ],
             links=Links.from_dict(data.get("links", {})),
             rate_limit=rate_limit,
         )

@@ -1,7 +1,9 @@
 # examples/hip_vector_add_test.py
 import ctypes, os, numpy as np
 
-lib = ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__), "libvector_add_hip.so"))
+lib = ctypes.cdll.LoadLibrary(
+    os.path.join(os.path.dirname(__file__), "libvector_add_hip.so")
+)
 
 lib.launch_vector_add_hip.argtypes = [
     np.ctypeslib.ndpointer(np.float32, flags="C_CONTIGUOUS"),

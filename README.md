@@ -7,19 +7,16 @@
 
 > 🚀 **Recent Releases**
 >
->
 > - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
 > - **AMD rocprofv3 Support**: Full integration with AMD's latest profiling tool
 
 > 🔮 **Upcoming Features**
->
 >
 > - **Web Dashboard**: Browser-based visualization of profiling results.
 > - **Multi-GPU Support**: Profile the same kernel across multiple GPU types simultaneously.
 > - **Profiling Backend**: Use Chisel’s built-in backend to run profiling workloads—no cloud account or API token required.
 > - **More GPU Architectures**: Support for most requested GPU type.
 > - **Auto cleaning**: Smart cleaning and release of your DigitalOcean resources (destroying the droplet after you don't use it).
-
 
 > 💡 **Feature Requests**
 >
@@ -42,7 +39,11 @@ Get up and running in 30 seconds:
 # 1. Install chisel
 pip install chisel-cli
 
-# 2. Configure with your DigitalOcean API token
+# 2. Choose your authentication method:
+# Option A: Use Chisel's managed authentication (includes $10 free credits)
+chisel login
+
+# Option B: Use your own DigitalOcean API token
 chisel configure
 
 # 3. Compile your code into an executable
@@ -61,18 +62,33 @@ chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "pytho
 # TODO: make names in examples/ directory more descriptive.
 ```
 
-**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine. 
+**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine.
 
-> Ensure to destroy your DigitalOcean droplet via their dashboard after your done.
-> **Need a DigitalOcean API token?** Get one [here](https://amd.digitalocean.com/account/api/tokens) (requires read/write access).
+> **Getting Started:**
+>
+> - **Free Credits**: Email **contact@herdora.com** to get your account with $10 in free credits (no DigitalOcean account needed)
+> - **Bring Your Own Account**: Get a DigitalOcean API token [here](https://amd.digitalocean.com/account/api/tokens) (requires read/write access)
+>
+> If using your own DigitalOcean account, ensure to destroy droplets via their dashboard when done.
 
 ## Commands
 
-Chisel has just **3 commands**:
+Chisel has **4 commands**:
+
+### `chisel login`
+
+Authenticate with Chisel's managed backend (includes $10 free credits).
+
+- Email contact@herdora.com to activate an account.
+
+```bash
+# Login with your Chisel token
+chisel login
+```
 
 ### `chisel configure`
 
-One-time setup of your DigitalOcean API credentials.
+One-time setup of your DigitalOcean API credentials (for users with their own accounts).
 
 ```bash
 # Interactive configuration

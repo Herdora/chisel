@@ -1,15 +1,16 @@
 """Command handlers for Chisel - contains the business logic for each CLI command."""
 
-from typing import Optional, List
 from pathlib import Path
+from typing import List, Optional
 
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
+from chisel.core.chisel_client import ChiselClient
+from chisel.core.config import get_token, save_chisel_token, save_token, get_chisel_token, get_auth_mode
 from chisel.core.droplet_service import DropletService
 from chisel.core.profiling_manager import ProfilingManager
-from chisel.core.config import get_token, save_token
 from chisel.core.types.gpu_profiles import get_gpu_type_from_command
 
 console = Console()
@@ -30,11 +31,15 @@ def handle_configure(token: Optional[str] = None) -> int:
         api_token = token
     elif existing_token:
         console.print("[green]Found existing DigitalOcean API token.[/green]")
-        overwrite = Prompt.ask("Do you want to update the token?", choices=["y", "n"], default="n")
+        overwrite = Prompt.ask(
+            "Do you want to update the token?", choices=["y", "n"], default="n"
+        )
         if overwrite.lower() == "n":
             api_token = existing_token
         else:
-            api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
+            api_token = Prompt.ask(
+                "Enter your DigitalOcean API token", password=True
+            )
     else:
         console.print(
             "[yellow]No DigitalOcean API token found.[/yellow]\n"
@@ -43,7 +48,9 @@ def handle_configure(token: Optional[str] = None) -> int:
             "2. Generate a new token with read and write access\n"
             "3. Copy the token (you won't be able to see it again)\n"
         )
-        api_token = Prompt.ask("Enter your DigitalOcean API token", password=True)
+        api_token = Prompt.ask(
+            "Enter your DigitalOcean API token", password=True
+        )
 
     console.print("\n[cyan]Validating API token...[/cyan]")
 
@@ -69,18 +76,25 @@ def handle_configure(token: Optional[str] = None) -> int:
                 table.add_column("Value", style="white")
 
                 account_data = (
-                    account_info.get("account", {}) if isinstance(account_info, dict) else {}
+                    account_info.get("account", {})
+                    if isinstance(account_info, dict)
+                    else {}
                 )
                 table.add_row("Email", account_data.get("email", "N/A"))
                 table.add_row("Status", account_data.get("status", "N/A"))
-                table.add_row("Droplet Limit", str(account_data.get("droplet_limit", "N/A")))
+                table.add_row(
+                    "Droplet Limit",
+                    str(account_data.get("droplet_limit", "N/A")),
+                )
 
                 console.print(table)
 
             return 0
 
         else:
-            console.print("[red]✗ Invalid API token. Please check your token and try again.[/red]")
+            console.print(
+                "[red]✗ Invalid API token. Please check your token and try again.[/red]"
+            )
             return 1
 
     except Exception as e:
@@ -120,10 +134,14 @@ def handle_profile(
         return 1
 
     if rocprof_compute is not None:
-        console.print("[red]Error: --rocprof-compute support is not yet implemented[/red]")
+        console.print(
+            "[red]Error: --rocprof-compute support is not yet implemented[/red]"
+        )
         return 1
 
-    profilers_enabled = [p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None]
+    profilers_enabled = [
+        p for p in [rocprofv3, rocprof_compute, nsys, ncompute] if p is not None
+    ]
     if not profilers_enabled:
         console.print(
             "[red]Error: No profiler specified.[/red]\n"
@@ -132,13 +150,36 @@ def handle_profile(
         return 1
     console.print(f"Profilers enabled: {profilers_enabled}")
 
-    api_token = get_token()
-    if not api_token:
+    # Determine auth mode and get appropriate tokens
+    auth_mode = get_auth_mode()
+    
+    if auth_mode == "none":
         console.print(
-            "[red]Error: No API token configured.[/red]\n"
-            "[yellow]Run 'chisel configure' first to set up your DigitalOcean API token.[/yellow]"
+            "[red]Error: No authentication configured.[/red]\n"
+            "[yellow]Run 'chisel configure' for direct DigitalOcean access, or 'chisel login <token>' for managed access.[/yellow]"
         )
         return 1
+    
+    chisel_client = None
+    api_token = None
+    
+    if auth_mode == "managed":
+        chisel_token = get_chisel_token()
+        chisel_client = ChiselClient(chisel_token)
+        
+        # Get DO token from backend
+        gpu_type_for_token = "mi300x" if rocprofv3 in profilers_enabled else "h100"
+        do_response = chisel_client.get_do_token(gpu_type_for_token)
+        
+        if do_response.get("error"):
+            console.print(f"[red]Error: {do_response['error']}[/red]")
+            return 1
+            
+        api_token = do_response.get("do_token")
+        console.print("[green]✓ Using managed Chisel access[/green]")
+    else:
+        api_token = get_token()
+        console.print("[green]✓ Using direct DigitalOcean access[/green]")
 
     if gpu_type is None:
         # TODO: infer gpu type from command; later, we change this to use the --gpu-type flag
@@ -148,7 +189,7 @@ def handle_profile(
     output_dir = output_dir or "./chisel-results"
 
     try:
-        manager = ProfilingManager(api_token)
+        manager = ProfilingManager(api_token, chisel_client)
         result = manager.profile(
             command_to_profile=command_to_profile,
             gpu_type=get_gpu_type_from_command(gpu_type),
@@ -191,7 +232,13 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
     if shell:
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "chisel.main", "--install-completion", shell],
+                [
+                    sys.executable,
+                    "-m",
+                    "chisel.main",
+                    "--install-completion",
+                    shell,
+                ],
                 capture_output=True,
                 text=True,
             )
@@ -230,12 +277,59 @@ def handle_install_completion(shell: Optional[str] = None) -> int:
                 )
                 return 0
             else:
-                console.print(f"[red]Failed to install completion: {result.stderr}[/red]")
+                console.print(
+                    f"[red]Failed to install completion: {result.stderr}[/red]"
+                )
                 return 1
 
         except Exception as e:
             console.print(f"[red]Error installing completion: {e}[/red]")
             return 1
+
+
+def handle_login(token: str) -> int:
+    """Handle the login command logic.
+
+    Args:
+        token: Chisel token to save
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    console.print("[cyan]Validating Chisel token...[/cyan]")
+
+    try:
+        client = ChiselClient(token)
+        validation = client.validate_token()
+
+        if validation.get("valid"):
+            save_chisel_token(token)
+
+            credits = validation.get("credits_remaining", 0)
+            warning = validation.get("warning")
+
+            console.print(
+                "[green]✓ Token validated successfully![/green]\n"
+                f"[green]Credits remaining: ${credits:.2f}[/green]\n"
+                "[green]✓ Chisel is now configured for managed access![/green]\n"
+            )
+
+            if warning:
+                console.print(f"\n[yellow]{warning}[/yellow]")
+
+            return 0
+        else:
+            console.print(
+                "[red]✗ Invalid Chisel token. Please check your token and try again.[/red]"
+            )
+            return 1
+
+    except Exception as e:
+        console.print(
+            f"[red]Error validating token: {e}[/red]\n"
+            "[yellow]Please ensure you have a valid Chisel token and internet connection.[/yellow]"
+        )
+        return 1
 
 
 def handle_version() -> int:

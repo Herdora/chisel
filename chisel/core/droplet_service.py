@@ -1,17 +1,22 @@
+import os
 import socket
 import time
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, cast
 
-import pydo
 import paramiko
+import pydo
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from .chisel_client import ChiselClient
 from .droplet import Droplet
 from .types.gpu_profiles import GPU_PROFILES, GPU_TYPE_TO_STRING, GPUType
-from .types.pydo_create_api import DropletCreateRequest, DropletCreateResponse, PydoDropletObject
+from .types.pydo_create_api import (
+    DropletCreateRequest,
+    DropletCreateResponse,
+    PydoDropletObject,
+)
 
 console = Console()
 
@@ -20,8 +25,12 @@ STARTUP_SCRIPTS_DIR = Path(__file__).parent / "startup_scripts"
 
 
 class DropletService:
-    def __init__(self, token: str):
+    def __init__(
+        self, token: str, chisel_client: Optional[ChiselClient] = None
+    ):
         self.pydo_client = pydo.Client(token=token)
+        self.chisel_client = chisel_client
+        self._managed_mode = chisel_client is not None
 
     def _get_local_ssh_key(self) -> Optional[str]:
         ssh_pub_paths = [
@@ -69,6 +78,22 @@ class DropletService:
         droplet_size: str,
         droplet_image: str,
     ) -> Droplet:
+        if self._managed_mode and self.chisel_client:
+            gpu_profile = GPU_PROFILES[gpu_type]
+            estimated_cost = gpu_profile.hourly_cost
+
+            if not self.chisel_client.check_credits(estimated_cost):
+                status = self.chisel_client.get_user_status()
+                credits = status.get("credits_remaining", 0)
+                raise ValueError(
+                    f"Insufficient credits for {gpu_type.value} (${estimated_cost:.2f}/hour). "
+                    f"You have ${credits:.2f} remaining."
+                )
+
+            console.print(
+                f"[green]✓ Credit check passed for {gpu_type.value}[/green]"
+            )
+
         self._validate_ssh_key_exists()
 
         script_path = STARTUP_SCRIPTS_DIR / f"{GPU_TYPE_TO_STRING[gpu_type]}.sh"
@@ -85,10 +110,16 @@ class DropletService:
             tags=[gpu_type.value],
         )
 
-        response = self.pydo_client.droplets.create(body=droplet_request.to_dict())
+        response = self.pydo_client.droplets.create(
+            body=droplet_request.to_dict()
+        )
         if not response.get("droplet"):
             raise ValueError("Failed to create droplet")
-        return Droplet(DropletCreateResponse.from_dict(cast(Dict[str, Any], response)).droplet)
+        return Droplet(
+            DropletCreateResponse.from_dict(
+                cast(Dict[str, Any], response)
+            ).droplet
+        )
 
     def get_droplet_by_id(self, droplet_id: int) -> Optional[Droplet]:
         try:
@@ -112,11 +143,18 @@ class DropletService:
             return None
 
     def get_or_create_droplet_by_type(self, gpu_type: GPUType) -> Droplet:
-        console.print(f"[cyan]Ensuring {gpu_type.value} droplet is ready...[/cyan]")
+        console.print(
+            f"[cyan]Ensuring {gpu_type.value} droplet is ready...[/cyan]"
+        )
         existing = self.get_droplet_by_type(gpu_type.value)
 
         if existing:
-            console.print(f"[green]Found existing droplet: {existing.name}[/green]")
+            console.print(
+                f"[green]Found existing droplet: {existing.name}[/green]"
+            )
+            # Register/update activity for managed users
+            if self._managed_mode and self.chisel_client and existing.id:
+                self.chisel_client.register_droplet(str(existing.id), gpu_type.value)
             return existing
 
         gpu_profile_for_gpu_type = GPU_PROFILES[gpu_type]
@@ -138,6 +176,12 @@ class DropletService:
             if not self.wait_for_ssh(droplet.ip)
             else f"[green]{gpu_type} droplet ready![/green]"
         )
+
+        # Register newly created droplet for managed users
+        if self._managed_mode and self.chisel_client and droplet.id:
+            result = self.chisel_client.register_droplet(str(droplet.id), gpu_type.value)
+            if result.get("success"):
+                console.print(f"[green]✓ Droplet registered for usage tracking[/green]")
 
         return droplet
 
@@ -202,7 +246,8 @@ class DropletService:
             console=console,
         ) as progress:
             progress.add_task(
-                "Waiting for SSH to be ready. (< 30 seconds remaining)...", total=None
+                "Waiting for SSH to be ready. (< 30 seconds remaining)...",
+                total=None,
             )
 
             while time.time() - start_time < timeout:
@@ -214,7 +259,9 @@ class DropletService:
 
                     if result == 0:
                         ssh = paramiko.SSHClient()
-                        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                        ssh.set_missing_host_key_policy(
+                            paramiko.AutoAddPolicy()
+                        )
                         try:
                             ssh.connect(ip, username="root", timeout=5)
                             ssh.close()

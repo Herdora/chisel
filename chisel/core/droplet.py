@@ -17,7 +17,9 @@ class Droplet:
     Initialized from DropletObject dataclass.
     """
 
-    def __init__(self, droplet_data: PydoDropletObject, ssh_username: str = "root"):
+    def __init__(
+        self, droplet_data: PydoDropletObject, ssh_username: str = "root"
+    ):
         self.droplet = droplet_data
         self.id = self.droplet.id
         self.name = self.droplet.name
@@ -36,7 +38,9 @@ class Droplet:
 
         source_path = Path(local_path).resolve()
         if not source_path.exists():
-            console.print(f"[red]Error: Source path '{local_path}' does not exist[/red]")
+            console.print(
+                f"[red]Error: Source path '{local_path}' does not exist[/red]"
+            )
             return False
         else:
             source = str(source_path)
@@ -50,17 +54,23 @@ class Droplet:
             source,
             f"{self.ssh_username}@{self.ip}:{remote_path}",
         ]
-        console.print(f"[cyan]Syncing {source} to {self.ip}:{remote_path}[/cyan]")
+        console.print(
+            f"[cyan]Syncing {source} to {self.ip}:{remote_path}[/cyan]"
+        )
 
         try:
             _ = subprocess.run(rsync_cmd, check=True)
             console.print("[green]✓ Sync completed successfully[/green]")
             return True
         except subprocess.CalledProcessError as e:
-            console.print(f"[red]Error: Sync failed with code {e.returncode}[/red]")
+            console.print(
+                f"[red]Error: Sync failed with code {e.returncode}[/red]"
+            )
             return False
         except FileNotFoundError as e:
-            console.print(f"[red]Error: rsync not found. Please install rsync. {e}[/red]")
+            console.print(
+                f"[red]Error: rsync not found. Please install rsync. {e}[/red]"
+            )
             return False
 
     def _extract_public_ip(self) -> Optional[str]:
@@ -90,7 +100,9 @@ class Droplet:
             result["stderr"] += f"\n[SSH ERROR] {e}"
         return result
 
-    def run_container_command(self, command: str, timeout: int = 30) -> Dict[str, Any]:
+    def run_container_command(
+        self, command: str, timeout: int = 30
+    ) -> Dict[str, Any]:
         venv_command = f"source /opt/venv/bin/activate && cd /workspace && {command}"  # TODO: change name to run_command
         return self.run_command(venv_command, timeout=timeout)
 
