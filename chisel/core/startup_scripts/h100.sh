@@ -107,6 +107,15 @@ urllib3==2.5.0
 Werkzeug==3.0.6
 wheel==0.45.1
 zipp==3.23.0
+
+# install transformers, flash-attn, bitsandbytes, accelerate, sentencepiece, tiktoken, einops
+transformers==4.53.0
+flash-attn==2.8.0.post2
+bitsandbytes==0.46.0
+accelerate==1.8.1
+sentencepiece==0.2.0
+tiktoken==0.9.0
+einops==0.8.1
 EOF
 
 ###############################################################################

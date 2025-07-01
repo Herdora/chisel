@@ -23,6 +23,17 @@ source /opt/venv/bin/activate
 pip install --upgrade pip setuptools wheel
 
 ###############################################################################
+# install rocm-specific profilers / other tools
+###############################################################################
+mkdir -p /workspace/rocm-wheels && cd /workspace/rocm-wheels
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/torch-2.6.0%2Brocm6.4.1.git1ded221d-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/torchvision-0.21.0%2Brocm6.4.1.git4040d51f-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/torchaudio-2.6.0%2Brocm6.4.1.gitd8831425-cp312-cp312-linux_x86_64.whl
+wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/pytorch_triton_rocm-3.2.0%2Brocm6.4.1.git6da9e660-cp312-cp312-linux_x86_64.whl
+pip install --no-cache-dir torch-*.whl torchvision-*.whl torchaudio-*.whl pytorch_triton_rocm-*.whl
+cd /workspace && rm -rf rocm-wheels
+
+###############################################################################
 # upload requirements.txt to workspace
 ###############################################################################
 cat <<'EOF' >/workspace/requirements.txt
@@ -98,23 +109,21 @@ urllib3==2.5.0
 Werkzeug==3.0.6
 wheel==0.45.1
 zipp==3.23.0
+
+transformers==4.53.0
+flash-attn==2.8.0.post2
+bitsandbytes==0.46.0
+accelerate==1.8.1
+sentencepiece==0.2.0
+tiktoken==0.9.0
+einops==0.8.1
+
 EOF
 
 ###############################################################################
 # install requirements
 ###############################################################################
 pip install -r /workspace/requirements.txt
-
-###############################################################################
-# install rocm-specific profilers / other tools
-###############################################################################
-mkdir -p /workspace/rocm-wheels && cd /workspace/rocm-wheels
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/torch-2.6.0%2Brocm6.4.1.git1ded221d-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/torchvision-0.21.0%2Brocm6.4.1.git4040d51f-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/torchaudio-2.6.0%2Brocm6.4.1.gitd8831425-cp312-cp312-linux_x86_64.whl
-wget https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/pytorch_triton_rocm-3.2.0%2Brocm6.4.1.git6da9e660-cp312-cp312-linux_x86_64.whl
-pip install --no-cache-dir torch-*.whl torchvision-*.whl torchaudio-*.whl pytorch_triton_rocm-*.whl
-cd /workspace && rm -rf rocm-wheels
 
 ###############################################################################
 # environment convenience
