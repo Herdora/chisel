@@ -62,14 +62,14 @@ chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "pytho
 # TODO: make names in examples/ directory more descriptive.
 ```
 
-**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine.
+**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine. IF USING YOUR OWN DIGITALOCEAN ACCOUNT, ENSURE TO DESTROY DROPLETS VIA THEIR DASHBOARD WHEN DONE.
 
 > **Getting Started:**
 >
 > - **Free Credits**: Email **contact@herdora.com** to get your account with $10 in free credits (no DigitalOcean account needed)
 > - **Bring Your Own Account**: Get a DigitalOcean API token [here](https://amd.digitalocean.com/account/api/tokens) (requires read/write access)
 >
-> If using your own DigitalOcean account, ensure to destroy droplets via their dashboard when done.
+> IF USING YOUR OWN DIGITALOCEAN ACCOUNT, ENSURE TO DESTROY DROPLETS VIA THEIR DASHBOARD WHEN DONE.
 
 ## Commands
 
