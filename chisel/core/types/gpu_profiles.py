@@ -34,6 +34,7 @@ class GPUProfile:
     image: str
     region: GPURegion
     gpu_type: GPUType
+    hourly_cost: float
 
 
 AMD_MI300X = GPUProfile(
@@ -41,18 +42,21 @@ AMD_MI300X = GPUProfile(
     image="gpu-amd-base",
     region=GPURegion.ATL1,
     gpu_type=GPUType.AMD_MI300X,
+    hourly_cost=1.99,
 )
 NVIDIA_H100 = GPUProfile(
     size="gpu-h100x1-80gb",
     image="gpu-h100x1-base",
     region=GPURegion.NY2,
     gpu_type=GPUType.NVIDIA_H100,
+    hourly_cost=4.89,
 )
 NVIDIA_L40S = GPUProfile(
     size="gpu-l40sx1-48gb",
     image="gpu-h100x1-base",
     region=GPURegion.TOR1,
     gpu_type=GPUType.NVIDIA_L40S,
+    hourly_cost=2.50,
 )
 
 GPU_PROFILES: Dict[GPUType, GPUProfile] = {
