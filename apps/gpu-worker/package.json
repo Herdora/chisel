@@ -1,0 +1,19 @@
+{
+    "name": "@chisel/gpu-worker",
+    "version": "0.1.0",
+    "description": "Chisel GPU Worker Agent",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsup src/index.ts --format cjs --dts",
+        "dev": "tsup src/index.ts --format cjs --watch & node dist/index.js",
+        "lint": "eslint src --ext .ts"
+    },
+    "dependencies": {
+        "execa": "^8.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "tsup": "^8.0.0",
+        "typescript": "^5.0.0"
+    }
+}
