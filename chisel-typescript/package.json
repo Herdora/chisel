@@ -1,0 +1,30 @@
+{
+  "name": "chisel-typescript",
+  "version": "0.1.0",
+  "description": "GPU kernel development CLI tool",
+  "main": "dist/index.js",
+  "bin": {
+    "chisel": "./bin/chisel.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["gpu", "cli", "digitalocean"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "dots-wrapper": "^3.12.1",
+    "inquirer": "^9.3.7"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^24.0.13",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
