@@ -53,8 +53,28 @@ async function interactiveConfigure() {
     // Ignore errors, we'll create a new config
   }
   
-  // Show helpful info for first-time setup
-  if (!existingConfig) {
+  // Check if API key already exists
+  if (existingConfig?.digitalOcean?.apiKey) {
+    const maskedKey = maskApiKey(existingConfig.digitalOcean.apiKey);
+    console.log(chalk.green(`✓ API key already configured: ${maskedKey}`));
+    
+    const { shouldUpdate } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'shouldUpdate',
+        message: 'Would you like to update your API key?',
+        default: false
+      }
+    ]);
+    
+    if (!shouldUpdate) {
+      console.log(chalk.blue('\nKeeping existing configuration.'));
+      return;
+    }
+    
+    console.log(chalk.gray('\nUpdating your API key...\n'));
+  } else {
+    // Show helpful info for first-time setup
     console.log(chalk.blue('ℹ First time setup detected'));
     console.log(chalk.gray('You can get your API key from: https://cloud.digitalocean.com/account/api/tokens\n'));
   }
@@ -66,7 +86,6 @@ async function interactiveConfigure() {
       name: 'doApiKey',
       message: 'Digital Ocean API key (dop_v1_...):',
       mask: '*',
-      default: existingConfig?.digitalOcean?.apiKey,
       validate: (input: string) => {
         if (!input || input.trim() === '') {
           return 'API key is required';
