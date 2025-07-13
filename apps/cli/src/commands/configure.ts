@@ -45,15 +45,12 @@ async function interactiveConfigure() {
   console.log(chalk.gray('This will configure your Digital Ocean API key for chisel.'));
   console.log(chalk.gray('Your API key will be validated and stored securely.\n'));
   
-  // Load existing config if any
   let existingConfig: ChiselConfig | null = null;
   try {
     existingConfig = await configService.load();
   } catch (error) {
-    // Ignore errors, we'll create a new config
   }
   
-  // Check if API key already exists
   if (existingConfig?.digitalOcean?.apiKey) {
     const maskedKey = maskApiKey(existingConfig.digitalOcean.apiKey);
     console.log(chalk.green(`✓ API key already configured: ${maskedKey}`));
@@ -74,12 +71,10 @@ async function interactiveConfigure() {
     
     console.log(chalk.gray('\nUpdating your API key...\n'));
   } else {
-    // Show helpful info for first-time setup
     console.log(chalk.blue('ℹ First time setup detected'));
-    console.log(chalk.gray('You can get your API key from: https://cloud.digitalocean.com/account/api/tokens\n'));
+    console.log(chalk.gray('You can get your API key from: https://amd.digitalocean.com/account/api/tokens\n'));
   }
   
-  // Prompt for Digital Ocean API key
   const answers = await inquirer.prompt([
     {
       type: 'password',
@@ -103,7 +98,6 @@ async function interactiveConfigure() {
   
   const apiKey = answers.doApiKey.trim();
   
-  // Validate API key with Digital Ocean
   const spinner = ora('Validating API key with Digital Ocean...').start();
   
   const doService = digitalOceanService.create(apiKey);
@@ -117,7 +111,6 @@ async function interactiveConfigure() {
     process.exit(1);
   }
   
-  // Show account information
   spinner.succeed('API key validated successfully!');
   if (validationResult.account) {
     console.log(chalk.gray(`Account: ${validationResult.account.email}`));
@@ -129,7 +122,6 @@ async function interactiveConfigure() {
     }
   }
   
-  // Create new config
   const config: ChiselConfig = {
     version: '1.0',
     digitalOcean: {
@@ -137,7 +129,6 @@ async function interactiveConfigure() {
     }
   };
   
-  // Save config
   try {
     await configService.save(config);
     console.log(chalk.green('\n✓ Configuration saved successfully!'));
@@ -156,7 +147,6 @@ function maskApiKey(apiKey: string): string {
 }
 
 function isValidDigitalOceanApiKey(apiKey: string): boolean {
-  // Digital Ocean API keys start with 'dop_v1_' followed by 64 hexadecimal characters
   const doApiKeyPattern = /^dop_v1_[a-f0-9]{64}$/i;
   return doApiKeyPattern.test(apiKey);
 }
