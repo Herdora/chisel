@@ -284,25 +284,31 @@ async function bootstrapOrchestrator() {
   console.log(`\u2713 Orchestrator online at http://${ip}:3000`);
 }
 async function bootstrapOrchestratorLocal() {
-  console.log(import_chalk2.default.blue("\u{1F680} Bootstrapping Chisel orchestrator locally..."));
+  console.log(import_chalk2.default.blue("\u{1F680} Bootstrapping Chisel orchestrator locally (with web UI)..."));
   console.log(import_chalk2.default.gray("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"));
-  console.log(import_chalk2.default.yellow("\u{1F4E6} Installing dependencies..."));
+  console.log(import_chalk2.default.yellow("\u{1F4E6} Installing dependencies for orchestrator and UI..."));
   await (0, import_execa.execa)("npm", ["install"], { cwd: "./apps/orchestrator" });
+  await (0, import_execa.execa)("npm", ["install"], { cwd: "./apps/orchestrator/ui" });
   console.log(import_chalk2.default.green("\u2705 Dependencies installed successfully"));
-  console.log(import_chalk2.default.yellow("\u{1F528} Building orchestrator..."));
+  console.log(import_chalk2.default.yellow("\u{1F528} Building orchestrator and UI..."));
+  await (0, import_execa.execa)("npm", ["run", "build"], { cwd: "./apps/orchestrator/ui" });
   await (0, import_execa.execa)("npm", ["run", "build"], { cwd: "./apps/orchestrator" });
   console.log(import_chalk2.default.green("\u2705 Build completed successfully"));
-  console.log(import_chalk2.default.yellow("\u{1F680} Starting orchestrator..."));
+  console.log(import_chalk2.default.yellow("\u{1F680} Starting orchestrator backend and web UI (dev mode)..."));
   console.log(import_chalk2.default.gray("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"));
   const orchestratorUrl = "http://localhost:3001";
-  console.log(import_chalk2.default.cyan.bold("\u{1F3AF} Orchestrator is starting up..."));
-  console.log(import_chalk2.default.cyan(`\u{1F4E1} Server will be available at: ${import_chalk2.default.underline(orchestratorUrl)}`));
-  console.log(import_chalk2.default.gray("\u{1F4A1} Press Ctrl+C to stop the server"));
+  const uiUrl = "http://localhost:5173";
+  console.log(import_chalk2.default.cyan.bold("\u{1F3AF} Orchestrator backend: ") + import_chalk2.default.underline(orchestratorUrl));
+  console.log(import_chalk2.default.cyan.bold("\u{1F3AF} Web UI: ") + import_chalk2.default.underline(uiUrl));
+  console.log(import_chalk2.default.gray("\u{1F4A1} Press Ctrl+C to stop both servers"));
   console.log(import_chalk2.default.gray("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"));
-  await (0, import_execa.execa)("node", ["dist/index.js"], {
+  await (0, import_execa.execa)("npx", [
+    "concurrently",
+    '"npm run dev"',
+    '"cd ui && npm run dev"'
+  ], {
     cwd: "./apps/orchestrator",
     stdio: "inherit"
-    // Show output in real-time
   });
 }
 

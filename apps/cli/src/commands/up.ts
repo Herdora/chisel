@@ -58,31 +58,39 @@ export async function bootstrapOrchestrator() {
 }
 
 export async function bootstrapOrchestratorLocal() {
-  console.log(chalk.blue('🚀 Bootstrapping Chisel orchestrator locally...'));
+  console.log(chalk.blue('🚀 Bootstrapping Chisel orchestrator locally (with web UI)...'));
   console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
 
-  // Step 1: Install dependencies
-  console.log(chalk.yellow('📦 Installing dependencies...'));
+  // Step 1: Install dependencies for orchestrator and UI
+  console.log(chalk.yellow('📦 Installing dependencies for orchestrator and UI...'));
   await execa('npm', ['install'], { cwd: './apps/orchestrator' });
+  await execa('npm', ['install'], { cwd: './apps/orchestrator/ui' });
   console.log(chalk.green('✅ Dependencies installed successfully'));
 
-  // Step 2: Build the orchestrator
-  console.log(chalk.yellow('🔨 Building orchestrator...'));
+  // Step 2: Build orchestrator and UI
+  console.log(chalk.yellow('🔨 Building orchestrator and UI...'));
+  await execa('npm', ['run', 'build'], { cwd: './apps/orchestrator/ui' });
   await execa('npm', ['run', 'build'], { cwd: './apps/orchestrator' });
   console.log(chalk.green('✅ Build completed successfully'));
 
-  // Step 3: Start the orchestrator
-  console.log(chalk.yellow('🚀 Starting orchestrator...'));
+  // Step 3: Start orchestrator backend and UI dev server in parallel
+  console.log(chalk.yellow('🚀 Starting orchestrator backend and web UI (dev mode)...'));
   console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
 
   const orchestratorUrl = 'http://localhost:3001';
-  console.log(chalk.cyan.bold('🎯 Orchestrator is starting up...'));
-  console.log(chalk.cyan(`📡 Server will be available at: ${chalk.underline(orchestratorUrl)}`));
-  console.log(chalk.gray('💡 Press Ctrl+C to stop the server'));
+  const uiUrl = 'http://localhost:5173';
+  console.log(chalk.cyan.bold('🎯 Orchestrator backend: ') + chalk.underline(orchestratorUrl));
+  console.log(chalk.cyan.bold('🎯 Web UI: ') + chalk.underline(uiUrl));
+  console.log(chalk.gray('💡 Press Ctrl+C to stop both servers'));
   console.log(chalk.gray('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
 
-  await execa('node', ['dist/index.js'], {
+  // Use concurrently to run both dev servers
+  await execa('npx', [
+    'concurrently',
+    '"npm run dev"',
+    '"cd ui && npm run dev"'
+  ], {
     cwd: './apps/orchestrator',
-    stdio: 'inherit' // Show output in real-time
+    stdio: 'inherit'
   });
 } 

@@ -5,16 +5,23 @@
     "main": "dist/index.js",
     "scripts": {
         "build": "tsup src/index.ts --format cjs --dts",
+        "build:web": "npm run build && npm run build:ui",
+        "build:ui": "cd ui && npm run build",
         "dev": "tsup src/index.ts --format cjs --watch & node dist/index.js",
+        "dev:web": "concurrently \"npm run dev\" \"cd ui && npm run dev\"",
         "lint": "eslint src --ext .ts"
     },
     "dependencies": {
         "fastify": "^4.0.0",
-        "chalk": "^5.0.0"
+        "chalk": "^5.0.0",
+        "@fastify/cors": "^8.0.0",
+        "@fastify/static": "^6.0.0",
+        "@fastify/websocket": "^8.0.0"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
         "tsup": "^8.0.0",
-        "typescript": "^5.0.0"
+        "typescript": "^5.0.0",
+        "concurrently": "^8.0.0"
     }
 }
