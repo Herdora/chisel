@@ -1,8 +1,22 @@
 import { Command } from 'commander';
+import { configureCommand } from './commands/configure';
 // import { runNcu } from '@chisel/profiler-hooks'; // TODO: Implement
 import { bootstrapOrchestrator, bootstrapOrchestratorLocal } from './commands/up';
 
 const program = new Command();
+
+program
+  .name('chisel')
+  .description('Chisel CLI for GPU profiling')
+  .version('0.1.0');
+
+program
+  .command('configure')
+  .description('Configure chisel settings (Digital Ocean API key)')
+  .option('--show', 'Display current configuration with masked sensitive values')
+  .action(async (options) => {
+    await configureCommand(options);
+  });
 
 program
   .command('ncu')

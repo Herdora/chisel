@@ -7,16 +7,21 @@
         "chisel": "./dist/index.js"
     },
     "scripts": {
-        "build": "tsup src/index.ts --format cjs --dts",
+        "build": "tsup src/index.ts src/services/*.ts src/commands/*.ts --format cjs --dts",
         "dev": "tsup src/index.ts --format cjs --watch",
         "lint": "eslint src --ext .ts"
     },
     "dependencies": {
         "commander": "^11.0.0",
         "execa": "^8.0.0",
-        "chalk": "^5.0.0"
+        "chalk": "^5.3.0",
+        "chisel": "^0.0.0",
+        "dots-wrapper": "latest",
+        "inquirer": "^9.2.0",
+        "ora": "^8.2.0"
     },
     "devDependencies": {
+        "@types/inquirer": "^9.0.8",
         "@types/node": "^20.0.0",
         "tsup": "^8.0.0",
         "typescript": "^5.0.0"
