@@ -24,15 +24,21 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // src/index.ts
 var import_fastify = __toESM(require("fastify"));
+var import_chalk = __toESM(require("chalk"));
+console.log(import_chalk.default.blue("\u{1F680} Starting Chisel orchestrator..."));
 var server = (0, import_fastify.default)();
 server.get("/", async () => {
   return { hello: "chisel orchestrator" };
 });
 var start = async () => {
   try {
-    await server.listen({ port: 3e3 });
-    console.log("Orchestrator running on http://localhost:3000");
+    console.log(import_chalk.default.yellow("\u{1F527} Attempting to start server..."));
+    await server.listen({ port: 3001 });
+    console.log(import_chalk.default.green("\u2705 Orchestrator running on http://localhost:3001"));
+    console.log(import_chalk.default.cyan("\u{1F4E1} Ready to accept job requests"));
+    console.log(import_chalk.default.gray("\u{1F4A1} Press Ctrl+C to stop the server"));
   } catch (err) {
+    console.error(import_chalk.default.red("\u274C Error starting server:"), err);
     server.log.error(err);
     process.exit(1);
   }

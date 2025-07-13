@@ -9,7 +9,8 @@
         "lint": "eslint src --ext .ts"
     },
     "dependencies": {
-        "fastify": "^4.0.0"
+        "fastify": "^4.0.0",
+        "chalk": "^5.0.0"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
