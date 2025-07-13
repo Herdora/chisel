@@ -1,8 +1,4 @@
-// Shared types and utils
-export interface JobSpec {
-  profiler: string;
-  script: string;
-  // TODO: Add more fields
-}
+export * from './enums';
 
-export const hello = () => 'Hello from core'; 
+export { JobSubmitRequest, JobSubmitResponse } from './api/cli-orchestrator';
+export { JobDispatchRequest, JobDispatchResponse } from './api/orchestrator-worker'; 
