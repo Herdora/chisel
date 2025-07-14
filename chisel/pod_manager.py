@@ -447,4 +447,123 @@ if __name__ == "__main__":
         except Exception as e:
             raise PodManagerError(f"Could not read SSH key: {e}")
     
+
+    def compile_hip_file(self, hip_file_path: str, flags: str = "-O2") -> str:
+        """
+        Compile HIP file and return path to executable.
+        
+        Args:
+            hip_file_path: Path to HIP file on remote pod
+            flags: Compilation flags (default: -O2)
+            
+        Returns:
+            Path to compiled executable on remote pod
+            
+        Raises:
+            PodManagerError: If compilation fails
+        """
+        if not self.pod:
+            raise PodManagerError("No pod available")
+        
+        hip_path = Path(hip_file_path)
+        executable_name = hip_path.stem  # Remove .hip extension
+        executable_path = f"/tmp/{executable_name}"
+        
+        # Compile command with proper ROCm paths
+        compile_cmd = f"""
+        export PATH=$PATH:/opt/rocm/bin
+        export HIP_PATH=/opt/rocm
+        hipcc {flags} -o {executable_path} {hip_file_path}
+        """
+        
+        print(f"Compiling: hipcc {flags} -o {executable_path} {hip_file_path}")
+        result = self.exec(compile_cmd)
+        
+        if result.returncode != 0:
+            error_msg = f"Compilation failed (exit code: {result.returncode})"
+            if result.stderr:
+                error_msg += f"\nError: {result.stderr}"
+            raise PodManagerError(error_msg)
+        
+        # Verify executable was created
+        check_cmd = f"test -f {executable_path}"
+        check_result = self.exec(check_cmd)
+        if check_result.returncode != 0:
+            raise PodManagerError(f"Executable not found at {executable_path}")
+        
+        print(f"✓ Compilation successful: {executable_path}")
+        return executable_path
+
+    def exec_hip_with_profiling(self, executable_path: str, include_hip_trace: bool = True, output_prefix: str = "rocprof_trace") -> subprocess.CompletedProcess:
+        """
+        Execute HIP binary with rocprof profiling.
+        
+        Args:
+            executable_path: Path to executable on remote pod
+            include_hip_trace: Whether to include HIP runtime traces (adds --hip-trace)
+            output_prefix: Prefix for output files (default: "rocprof_trace")
+            
+        Returns:
+            CompletedProcess with result
+        """
+        if not self.pod:
+            raise PodManagerError("No pod available")
+        
+        # Setup output directory
+        setup_cmd = "mkdir -p /workspace/chisel_out"
+        self.exec(setup_cmd)
+        
+        # Build rocprof command
+        trace_flags = "--hsa-trace"
+        if include_hip_trace:
+            trace_flags += " --hip-trace"
+        
+        cmd = f"cd /tmp && rocprof {trace_flags} -o /workspace/chisel_out/{output_prefix}.csv {executable_path}"
+        
+        print(f"Executing: rocprof {trace_flags} {executable_path}")
+        return self.exec(cmd, capture_output=False)
+
+
+
+    def exec_hip_with_counter_profiling(self, executable_path: str, counters: Optional[str] = None) -> subprocess.CompletedProcess:
+        """
+        Execute HIP binary with performance counter collection.
+        
+        Args:
+            executable_path: Path to executable on remote pod
+            counters: Comma-separated list of counters (e.g., "SQ_WAVES,GRBM_COUNT")
+            
+        Returns:
+            CompletedProcess with result
+        """
+        if not self.pod:
+            raise PodManagerError("No pod available")
+        
+        # Setup output directory
+        setup_cmd = "mkdir -p /workspace/chisel_out"
+        self.exec(setup_cmd)
+        
+        if counters:
+            # Create input file with specified counters
+            counter_list = [c.strip() for c in counters.split(',')]
+            input_content = f"pmc : {' '.join(counter_list)}"
+            
+            # Upload input file to pod
+            input_file = "/tmp/rocprof_counters.txt"
+            upload_cmd = f"cat > {input_file} << 'EOF'\n{input_content}\nEOF"
+            result = self.exec(upload_cmd)
+            if result.returncode != 0:
+                raise PodManagerError("Failed to create rocprof input file")
+            
+            # Execute with counter collection
+            cmd = f"cd /tmp && rocprof -i {input_file} -o /workspace/chisel_out/rocprof_counters.csv {executable_path}"
+            print(f"Executing: rocprof -i {input_file} {executable_path}")
+            print(f"Collecting counters: {counters}")
+        else:
+            # Default to basic profiling if no counters specified
+            print("No counters specified, using basic profiling")
+            return self.exec_hip_with_profiling(executable_path, include_hip_trace=True, output_prefix="rocprof_trace")
+        
+        return self.exec(cmd, capture_output=False)
+
  
