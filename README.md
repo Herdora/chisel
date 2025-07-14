@@ -16,13 +16,13 @@ pip install -e .
 export RUNPOD_API_KEY="your_key_here"
 
 # Profile a PyTorch script
-python -m chisel profile amd -f your_script.py
+chisel profile amd -f your_script.py
 
 # Profile HIP kernels with basic tracing
-python -m chisel hip-trace your_kernel.hip
+chisel hip-trace your_kernel.hip
 
 # Profile HIP kernels with performance counters
-python -m chisel hip-counters your_kernel.hip --counters "SQ_WAVES,GRBM_COUNT"
+chisel hip-counters your_kernel.hip --counters "SQ_WAVES,GRBM_COUNT"
 ```
 
 ## What You Get
@@ -61,21 +61,21 @@ After profiling, traces are downloaded to `./chisel_out/`:
 
 ```bash
 # PyTorch profiling with connection persistence
-python -m chisel profile amd -f script.py --no-cleanup
+chisel profile amd -f script.py --no-cleanup
 
 # HIP profiling modes
-python -m chisel hip-trace kernel.hip                    # Basic HIP + HSA traces
-python -m chisel hip-kernel kernel.hip                   # Kernel-focused analysis
-python -m chisel hip-system kernel.hip                   # Complete system profiling
-python -m chisel hip-memory kernel.hip                   # Memory operations focus
-python -m chisel hip-counters kernel.hip --counters SQ_WAVES,GRBM_COUNT
+chisel hip-trace kernel.hip                    # Basic HIP + HSA traces
+chisel hip-kernel kernel.hip                   # Kernel-focused analysis
+chisel hip-system kernel.hip                   # Complete system profiling
+chisel hip-memory kernel.hip                   # Memory operations focus
+chisel hip-counters kernel.hip --counters SQ_WAVES,GRBM_COUNT
 
 # Custom compilation flags
-python -m chisel hip-trace kernel.hip --hipcc-flags "-O3 -DDEBUG"
+chisel hip-trace kernel.hip --hipcc-flags "-O3 -DDEBUG"
 
 # Check version and available commands
-python -m chisel --version
-python -m chisel --help
+chisel --version
+chisel --help
 ```
 
 ## Environment Setup
