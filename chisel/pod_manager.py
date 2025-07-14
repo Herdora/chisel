@@ -9,6 +9,7 @@ import subprocess
 import atexit
 from typing import Optional, Tuple
 from pathlib import Path
+from datetime import datetime
 
 import runpod
 from dotenv import load_dotenv
@@ -374,11 +375,13 @@ if __name__ == "__main__":
         """
         Fetch profiling artifacts from remote pod to local directory.
         
+        Creates a unique timestamped subdirectory for each run to prevent overwriting.
+        
         Args:
             local_dir: Local directory to store artifacts (default: "chisel_out")
             
         Returns:
-            Path to local artifacts directory
+            Path to local artifacts directory for this run
             
         Raises:
             PodManagerError: If fetch fails or no artifacts found
@@ -386,8 +389,13 @@ if __name__ == "__main__":
         if not self.pod or not self.pod.can_ssh():
             raise PodManagerError("No pod available or SSH not accessible")
         
-        local_path = Path(local_dir)
-        local_path.mkdir(exist_ok=True)
+        # Create timestamped subdirectory for this run
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_path = Path(local_dir)
+        run_path = base_path / timestamp
+        
+        base_path.mkdir(exist_ok=True)
+        run_path.mkdir(exist_ok=True)
         
         # Check if remote artifacts exist
         check_cmd = "test -d /workspace/chisel_out && ls -la /workspace/chisel_out"
@@ -404,14 +412,14 @@ if __name__ == "__main__":
             "scp", "-r", "-P", str(ssh_details["port"]), "-i", self.ssh_key_path,
             "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
             f"root@{ssh_details['host']}:/workspace/chisel_out/*",
-            str(local_path)
+            str(run_path)
         ]
         
         result = subprocess.run(scp_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise PodManagerError(f"Failed to fetch artifacts: {result.stderr}")
         
-        return local_path
+        return run_path
     
     def _detect_ssh_keys(self, ssh_key_path: Optional[str] = None) -> Tuple[str, str]:
         """Detect SSH key pair."""

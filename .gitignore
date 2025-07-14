@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .claude
+chisel_out
 
 # C extensions
 

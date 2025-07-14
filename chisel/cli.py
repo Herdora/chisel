@@ -45,7 +45,7 @@ def profile(target: str, script_file: str, no_cleanup: bool):
         
         # Connect to pod
         click.echo("🔍 Finding available pod...")
-        pod = manager.ensure_pod()
+        manager.ensure_pod()
         
         # Setup profiling environment on first run
         manager.setup_profiling_env(target)
