@@ -5,6 +5,7 @@ __pycache__/
 *$py.class
 .claude
 chisel_out
+chisel_results
 
 # C extensions
 

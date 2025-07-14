@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Profiling",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
     "runpod>=1.0.0",
     "requests>=2.25.0",
