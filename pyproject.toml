@@ -1,31 +1,63 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chisel-cli"
-version = "0.1.27"
-description = "A CLI tool for developing and profiling GPU kernels on DigitalOcean droplets"
+name = "chisel"
+version = "0.1.0"
+description = "Profile AMD HIP kernels and PyTorch code on RunPod instances"
 readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Chisel Team", email = "hello@chisel.dev"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Profiling",
+]
 requires-python = ">=3.8"
 dependencies = [
-    "typer>=0.16.0",
-    "rich>=14.0.0",
-    "paramiko>=3.5.0",
-    "requests>=2.32.0",
-    "toml>=0.10.0",
-    "pydo>=0.11.0"
+    "runpod>=1.0.0",
+    "requests>=2.25.0",
+    "python-dotenv>=0.19.0",
+    "typing-extensions>=4.0.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=1.0.0",
 ]
 
 [project.scripts]
-chisel = "chisel.cli.main:main"
+chisel = "chisel.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/chisel-dev/chisel"
+Repository = "https://github.com/chisel-dev/chisel"
+Documentation = "https://chisel.dev/docs"
 
 [tool.setuptools.packages.find]
+where = ["."]
 include = ["chisel*"]
-exclude = ["out*", "tests*"]
 
-[tool.setuptools]
-include-package-data = true
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311']
 
-[tool.setuptools.package-data]
-"chisel.core.startup_scripts" = ["*.sh"]
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true 

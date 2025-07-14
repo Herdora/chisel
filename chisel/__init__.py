@@ -1,48 +1,20 @@
-"""Chisel - Seamless GPU kernel profiling on cloud infrastructure.
+"""
+Chisel - Profile AMD HIP kernels and PyTorch code on RunPod instances.
 
-This package provides both a CLI interface and a programmatic API for
-profiling GPU kernels on cloud infrastructure.
-
-CLI usage:
-    chisel profile nvidia kernel.cu
-    chisel profile amd kernel.hip
-
-Programmatic usage:
-    from chisel.core import ProfilingManager
-
-    manager = ProfilingManager()
-    result = manager.profile("nvidia", "kernel.cu")
+A library to enable seamless remote profiling of AMD GPU workloads with a local feel.
 """
 
-__version__ = "0.1.5"
+__version__ = "0.1.0"
 
-# Expose core API for programmatic use
-from chisel.core import (
-    DropletService,
-    Droplet,
-    GPU_PROFILES,
-    GPUType,
-    GPUProfile,
-    GPURegion,
-    ProfilingManager,
-)
-
-# Expose CLI functionality
-from chisel.cli import main, run_cli, create_app
+# Import core classes
+from .pod import Pod, SshDetails, get_pods
+from .pod_manager import PodManager, PodManagerError
 
 __all__ = [
-    # Version
-    "__version__",
-    # Core API
-    "DropletService",
-    "Droplet",
-    "GPU_PROFILES",
-    "GPUType",
-    "GPUProfile",
-    "GPURegion",
-    "ProfilingManager",
-    # CLI
-    "main",
-    "run_cli",
-    "create_app",
-]
+    "Pod", 
+    "SshDetails", 
+    "get_pods",
+    "PodManager",
+    "PodManagerError",
+    "__version__"
+] 
