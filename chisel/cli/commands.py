@@ -62,12 +62,7 @@ def handle_configure(token: Optional[str] = None) -> int:
             save_token(api_token)
 
             console.print(
-                "[green]✓ Token validated successfully![/green]\n"
-                "\n[green]Configuration saved![/green]\n"
                 "\n[green]✓ Chisel is now configured and ready to use![/green]\n"
-                "\n[cyan]Usage:[/cyan]\n"
-                "  chisel profile --nsys ./kernel.cu        # Profile on NVIDIA\n"
-                "  chisel profile --rocprofv3 ./kernel.hip  # Profile on AMD"
             )
 
             if account_info:
