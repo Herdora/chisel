@@ -11,10 +11,10 @@ from .pod import Pod, SshDetails, get_pods
 from .pod_manager import PodManager, PodManagerError
 
 __all__ = [
-    "Pod", 
-    "SshDetails", 
+    "Pod",
+    "SshDetails",
     "get_pods",
     "PodManager",
     "PodManagerError",
-    "__version__"
-] 
+    "__version__",
+]

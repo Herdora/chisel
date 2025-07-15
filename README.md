@@ -8,29 +8,45 @@ Chisel runs your PyTorch scripts and HIP kernels on remote AMD GPUs and automati
 
 ## Quick Start
 
+Get from zero to visual profiling in 3 steps:
+
 ```bash
-# Install
+# 1. Install Chisel
 pip install -e .
 
-# Set RunPod API key
+# 2. Set up your RunPod API key (get yours at runpod.io)
 export RUNPOD_API_KEY="your_key_here"
 
-# Profile a PyTorch script
+# 3. Profile & visualize a PyTorch script
 chisel profile amd -f your_script.py
+chisel visualize chisel_out/*/torch_trace.json
+```
 
+Your browser will automatically open with interactive Perfetto UI showing:
+- **GPU kernel timeline** - See when each operation runs
+- **Memory operations** - Track data movement between CPU/GPU  
+- **PyTorch call stack** - Understand which parts of your code are slow
+- **Performance bottlenecks** - Identify optimization opportunities
+
+### More Profiling Options
+
+```bash
 # Profile HIP kernels with basic tracing
 chisel hip-trace your_kernel.hip
 
 # Profile HIP kernels with performance counters
 chisel hip-counters your_kernel.hip --counters "SQ_WAVES,GRBM_COUNT"
+
+# Visualize any JSON trace file
+chisel visualize chisel_out/*/rocprof_trace.json
 ```
 
 ## What You Get
 
-After profiling, traces are downloaded to `./chisel_out/`:
+After profiling, traces are downloaded to `./chisel_out/` and ready for **instant visualization**:
 
 **PyTorch Profiling:**
-- **torch_trace.json** - Chrome DevTools trace (view at `chrome://tracing`)
+- **torch_trace.json** - Interactive timeline (open with `chisel visualize`)
 - **TensorBoard traces** - PyTorch profiler data
 
 **HIP Kernel Profiling:**
@@ -40,8 +56,10 @@ After profiling, traces are downloaded to `./chisel_out/`:
 - **rocprof_memory_trace.csv** - Memory operation traces
 - **rocprof_counters.csv** - Performance counter data
 - **rocprof_trace.db** - ROCm profiler database
-- **rocprof_trace.json** - JSON format traces
+- **rocprof_trace.json** - Interactive timeline (open with `chisel visualize`)
 - **Stats and analysis files** - Detailed performance breakdowns
+
+✨ **All JSON traces open automatically in Perfetto UI** - no manual uploads needed!
 
 ## Requirements
 
@@ -73,6 +91,10 @@ chisel hip-counters kernel.hip --counters SQ_WAVES,GRBM_COUNT
 # Custom compilation flags
 chisel hip-trace kernel.hip --hipcc-flags "-O3 -DDEBUG"
 
+# Visualization
+chisel visualize chisel_out/20241201_143022/torch_trace.json    # Specific trace
+chisel visualize chisel_out/latest/rocprof_trace.json          # Latest rocprof data
+
 # Check version and available commands
 chisel --version
 chisel --help
@@ -92,7 +114,8 @@ No manual environment setup required.
 ✅ **HIP Kernels** - Complete support with `hip-trace`, `hip-kernel`, `hip-system`, `hip-memory`, `hip-counters`  
 ✅ **PyTorch Scripts** - Full instrumentation with `torch.profiler` + `rocprof`  
 ✅ **Performance Counters** - Custom counter collection (SQ_WAVES, GRBM_COUNT, etc.)  
-✅ **Multiple Output Formats** - CSV, JSON, database, and analysis files
+✅ **Multiple Output Formats** - CSV, JSON, database, and analysis files  
+✅ **Interactive Visualization** - Automatic Perfetto UI integration with `chisel visualize`
 
 ## Future
 

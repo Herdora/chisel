@@ -21,44 +21,45 @@ load_dotenv()
 
 class PodManagerError(Exception):
     """Base exception for PodManager operations."""
+
     pass
 
 
 class PodManager:
     """
     Manages RunPod instances for profiling workloads.
-    
+
     Provides methods to:
     - Find or create pods with specific configurations
     - Sync code to remote instances
     - Execute commands via SSH
     - Clean up resources
     """
-    
+
     def __init__(self, auto_cleanup: bool = True, ssh_key_path: Optional[str] = None):
         """Initialize PodManager."""
         self.pod: Optional[Pod] = None
-        
+
         # Detect SSH key configuration
         self.ssh_key_path, self.ssh_public_key = self._detect_ssh_keys(ssh_key_path)
-        
+
         # Ensure RunPod API key is available
         if not runpod.api_key:
             raise PodManagerError(
                 "RUNPOD_API_KEY not found. Set it as environment variable or in .env file"
             )
-        
+
         # Register cleanup handler
         if auto_cleanup:
             atexit.register(self.teardown)
-    
+
     def ensure_pod(self) -> Pod:
         """
         Find an existing running pod.
-        
+
         Returns:
             Pod instance that's ready for use
-            
+
         Raises:
             PodManagerError: If no suitable pod found
         """
@@ -67,135 +68,149 @@ class PodManager:
             print(f"✓ Found existing pod: {existing_pod.name} ({existing_pod.id})")
             self.pod = existing_pod
             return existing_pod
-        
-        raise PodManagerError("No suitable running pod found. Please start a pod manually.")
-    
+
+        raise PodManagerError(
+            "No suitable running pod found. Please start a pod manually."
+        )
+
     def sync_code(self, local_path: str, remote_path: str = "/workspace") -> None:
         """
         Sync local code to the remote pod.
-        
+
         Args:
             local_path: Local file or directory path
             remote_path: Remote destination path
-            
+
         Raises:
             PodManagerError: If sync fails
         """
         if not self.pod or not self.pod.can_ssh():
             raise PodManagerError("No pod available or SSH not accessible")
-        
+
         local_path_obj = Path(local_path)
         if not local_path_obj.exists():
             raise PodManagerError(f"Local path does not exist: {local_path}")
-        
+
         # Use rsync for efficient file transfer
         ssh_details = self.pod.get_ssh_details()
         if not ssh_details:
             raise PodManagerError("Could not get SSH details from pod")
-        
+
         ssh_details = self.pod.get_ssh_details()
         if not ssh_details:
             raise PodManagerError("Could not get SSH details from pod")
-        
+
         scp_cmd = [
             "scp",
-            "-i", self.ssh_key_path,
-            "-P", str(ssh_details['port']),  # Note: scp uses -P (capital)
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
+            "-i",
+            self.ssh_key_path,
+            "-P",
+            str(ssh_details["port"]),  # Note: scp uses -P (capital)
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
             str(local_path_obj),
-            f"{ssh_details['user']}@{ssh_details['host']}:{remote_path}/"
+            f"{ssh_details['user']}@{ssh_details['host']}:{remote_path}/",
         ]
-        
+
         print(f"📤 Syncing {local_path} to {remote_path}")
         try:
             subprocess.run(scp_cmd, capture_output=True, text=True, check=True)
             print("✓ Sync completed successfully")
         except subprocess.CalledProcessError as e:
             raise PodManagerError(f"Sync failed: {e.stderr}")
-    
-    def exec(self, command: str, capture_output: bool = True) -> subprocess.CompletedProcess:
+
+    def exec(
+        self, command: str, capture_output: bool = True
+    ) -> subprocess.CompletedProcess:
         """
         Execute a command on the remote pod via SSH.
-        
+
         Args:
             command: Command to execute
             capture_output: Whether to capture stdout/stderr
-            
+
         Returns:
             CompletedProcess with result
-            
+
         Raises:
             PodManagerError: If execution fails
         """
         if not self.pod or not self.pod.can_ssh():
             raise PodManagerError("No pod available or SSH not accessible")
-        
+
         ssh_details = self.pod.get_ssh_details()
         if not ssh_details:
             raise PodManagerError("Could not get SSH details from pod")
-        
+
         # Use direct TCP connection format: ssh -p PORT root@IP
         ssh_details = self.pod.get_ssh_details()
         if not ssh_details:
             raise PodManagerError("Could not get SSH details from pod")
-        
+
         ssh_cmd = [
-            "ssh", 
-            "-i", self.ssh_key_path,
-            "-p", str(ssh_details['port']),
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
+            "ssh",
+            "-i",
+            self.ssh_key_path,
+            "-p",
+            str(ssh_details["port"]),
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
             f"{ssh_details['user']}@{ssh_details['host']}",
-            command
+            command,
         ]
-        
+
         try:
             result = subprocess.run(ssh_cmd, capture_output=capture_output, text=True)
             return result
         except Exception as e:
             raise PodManagerError(f"Command execution failed: {e}")
-    
-    def exec_with_profiling(self, script_path: str, target: str = "amd", capture_output: bool = True) -> subprocess.CompletedProcess:
+
+    def exec_with_profiling(
+        self, script_path: str, target: str = "amd", capture_output: bool = True
+    ) -> subprocess.CompletedProcess:
         """
         Execute a Python script with profiling enabled.
-        
+
         Wraps the script execution with:
         - torch.profiler for PyTorch operations
         - rocprof for AMD GPU kernels (when target=amd)
-        
+
         Stores all traces in /workspace/chisel_out
-        
+
         Args:
             script_path: Path to Python script on remote pod
             target: Target platform ('amd' or 'cuda')
             capture_output: Whether to capture stdout/stderr
-            
+
         Returns:
             CompletedProcess with result
-            
+
         Raises:
             PodManagerError: If execution fails
         """
         if not self.pod or not self.pod.can_ssh():
             raise PodManagerError("No pod available or SSH not accessible")
-        
+
         # Create the profiling wrapper script
         wrapper_script = self._create_profiling_wrapper(script_path, target)
-        
+
         # Upload the wrapper to the pod
         wrapper_path = "/tmp/chisel_profiling_wrapper.py"
         wrapper_upload_cmd = f"cat > {wrapper_path} << 'EOF'\n{wrapper_script}\nEOF"
-        
+
         # Create wrapper script on pod
         result = self.exec(wrapper_upload_cmd)
         if result.returncode != 0:
             raise PodManagerError("Failed to create profiling wrapper script")
-        
+
         # Setup output directory
         setup_cmd = "mkdir -p /workspace/chisel_out"
         self.exec(setup_cmd)
-        
+
         # Execute with profiling
         if target.lower() == "amd":
             # Use rocprof for AMD GPU profiling
@@ -203,13 +218,13 @@ class PodManager:
         else:
             # For CUDA, just run the wrapper (torch.profiler will handle GPU profiling)
             cmd = f"cd /tmp && python {wrapper_path}"
-        
+
         return self.exec(cmd, capture_output=capture_output)
-    
+
     def _create_profiling_wrapper(self, script_path: str, target: str) -> str:
         """Create a profiling wrapper script that instruments the user's script."""
         script_name = Path(script_path).name
-        
+
         wrapper = f'''#!/usr/bin/env python3
 """
 Chisel Profiling Wrapper
@@ -308,23 +323,23 @@ if __name__ == "__main__":
     main()
 '''
         return wrapper
-    
+
     def setup_profiling_env(self, target: str = "amd") -> None:
         """Setup profiling environment on first run."""
         if not self.pod:
             raise PodManagerError("No pod available")
-        
+
         sentinel_file = f"~/.chisel_{target}_ready"
-        
+
         # Check if already setup
         check_cmd = f"test -f {sentinel_file}"
         result = self.exec(check_cmd)
         if result.returncode == 0:
             print("✓ Profiling environment already configured")
             return
-        
+
         print(f"🔧 Setting up {target.upper()} profiling environment...")
-        
+
         if target.lower() == "amd":
             setup_script = f"""
             set -e
@@ -343,13 +358,13 @@ if __name__ == "__main__":
             touch {sentinel_file}
             echo "CUDA profiling environment ready!"
             """
-        
+
         try:
             result = self.exec(f"bash -c '{setup_script}'")
             if result.returncode == 0:
                 print(f"✓ {target.upper()} profiling environment configured")
             else:
-                print(f"⚠️ Setup completed with warnings")
+                print("⚠️ Setup completed with warnings")
         except Exception as e:
             print(f"⚠️ Setup failed: {e}")
             print("Profiling may still work with existing tools")
@@ -359,7 +374,7 @@ if __name__ == "__main__":
         if self.pod:
             print(f"🔌 Disconnecting from pod {self.pod.id}")
             self.pod = None
-    
+
     def _find_existing_pod(self) -> Optional[Pod]:
         """Find an existing running pod."""
         try:
@@ -370,57 +385,65 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"⚠️ Warning: Could not check existing pods: {e}")
         return None
-    
+
     def fetch_artifacts(self, local_dir: str = "chisel_out") -> Path:
         """
         Fetch profiling artifacts from remote pod to local directory.
-        
+
         Creates a unique timestamped subdirectory for each run to prevent overwriting.
-        
+
         Args:
             local_dir: Local directory to store artifacts (default: "chisel_out")
-            
+
         Returns:
             Path to local artifacts directory for this run
-            
+
         Raises:
             PodManagerError: If fetch fails or no artifacts found
         """
         if not self.pod or not self.pod.can_ssh():
             raise PodManagerError("No pod available or SSH not accessible")
-        
+
         # Create timestamped subdirectory for this run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_path = Path(local_dir)
         run_path = base_path / timestamp
-        
+
         base_path.mkdir(exist_ok=True)
         run_path.mkdir(exist_ok=True)
-        
+
         # Check if remote artifacts exist
         check_cmd = "test -d /workspace/chisel_out && ls -la /workspace/chisel_out"
         result = self.exec(check_cmd)
         if result.returncode != 0:
             raise PodManagerError("No profiling artifacts found on remote pod")
-        
+
         # Use SCP to download entire chisel_out directory
         ssh_details = self.pod.get_ssh_details()
         if not ssh_details:
             raise PodManagerError("No SSH details available for pod")
-            
+
         scp_cmd = [
-            "scp", "-r", "-P", str(ssh_details["port"]), "-i", self.ssh_key_path,
-            "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+            "scp",
+            "-r",
+            "-P",
+            str(ssh_details["port"]),
+            "-i",
+            self.ssh_key_path,
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
             f"root@{ssh_details['host']}:/workspace/chisel_out/*",
-            str(run_path)
+            str(run_path),
         ]
-        
+
         result = subprocess.run(scp_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise PodManagerError(f"Failed to fetch artifacts: {result.stderr}")
-        
+
         return run_path
-    
+
     def _detect_ssh_keys(self, ssh_key_path: Optional[str] = None) -> Tuple[str, str]:
         """Detect SSH key pair."""
         if ssh_key_path:
@@ -436,125 +459,129 @@ if __name__ == "__main__":
                     break
             else:
                 raise PodManagerError("No SSH key pair found in ~/.ssh/")
-        
+
         if not private_key.exists() or not public_key.exists():
             raise PodManagerError(f"SSH key pair not found: {private_key}")
-        
+
         try:
             public_key_content = public_key.read_text().strip()
             print(f"✓ Using SSH key: {private_key}")
             return str(private_key), public_key_content
         except Exception as e:
             raise PodManagerError(f"Could not read SSH key: {e}")
-    
 
     def compile_hip_file(self, hip_file_path: str, flags: str = "-O2") -> str:
         """
         Compile HIP file and return path to executable.
-        
+
         Args:
             hip_file_path: Path to HIP file on remote pod
             flags: Compilation flags (default: -O2)
-            
+
         Returns:
             Path to compiled executable on remote pod
-            
+
         Raises:
             PodManagerError: If compilation fails
         """
         if not self.pod:
             raise PodManagerError("No pod available")
-        
+
         hip_path = Path(hip_file_path)
         executable_name = hip_path.stem  # Remove .hip extension
         executable_path = f"/tmp/{executable_name}"
-        
+
         # Compile command with proper ROCm paths
         compile_cmd = f"""
         export PATH=$PATH:/opt/rocm/bin
         export HIP_PATH=/opt/rocm
         hipcc {flags} -o {executable_path} {hip_file_path}
         """
-        
+
         print(f"Compiling: hipcc {flags} -o {executable_path} {hip_file_path}")
         result = self.exec(compile_cmd)
-        
+
         if result.returncode != 0:
             error_msg = f"Compilation failed (exit code: {result.returncode})"
             if result.stderr:
                 error_msg += f"\nError: {result.stderr}"
             raise PodManagerError(error_msg)
-        
+
         # Verify executable was created
         check_cmd = f"test -f {executable_path}"
         check_result = self.exec(check_cmd)
         if check_result.returncode != 0:
             raise PodManagerError(f"Executable not found at {executable_path}")
-        
+
         print(f"✓ Compilation successful: {executable_path}")
         return executable_path
 
-    def exec_hip_with_profiling(self, executable_path: str, include_hip_trace: bool = True, output_prefix: str = "rocprof_trace") -> subprocess.CompletedProcess:
+    def exec_hip_with_profiling(
+        self,
+        executable_path: str,
+        include_hip_trace: bool = True,
+        output_prefix: str = "rocprof_trace",
+    ) -> subprocess.CompletedProcess:
         """
         Execute HIP binary with rocprof profiling.
-        
+
         Args:
             executable_path: Path to executable on remote pod
             include_hip_trace: Whether to include HIP runtime traces (adds --hip-trace)
             output_prefix: Prefix for output files (default: "rocprof_trace")
-            
+
         Returns:
             CompletedProcess with result
         """
         if not self.pod:
             raise PodManagerError("No pod available")
-        
+
         # Setup output directory
         setup_cmd = "mkdir -p /workspace/chisel_out"
         self.exec(setup_cmd)
-        
+
         # Build rocprof command
         trace_flags = "--hsa-trace"
         if include_hip_trace:
             trace_flags += " --hip-trace"
-        
+
         cmd = f"cd /tmp && rocprof {trace_flags} -o /workspace/chisel_out/{output_prefix}.csv {executable_path}"
-        
+
         print(f"Executing: rocprof {trace_flags} {executable_path}")
         return self.exec(cmd, capture_output=False)
 
-
-
-    def exec_hip_with_counter_profiling(self, executable_path: str, counters: Optional[str] = None) -> subprocess.CompletedProcess:
+    def exec_hip_with_counter_profiling(
+        self, executable_path: str, counters: Optional[str] = None
+    ) -> subprocess.CompletedProcess:
         """
         Execute HIP binary with performance counter collection.
-        
+
         Args:
             executable_path: Path to executable on remote pod
             counters: Comma-separated list of counters (e.g., "SQ_WAVES,GRBM_COUNT")
-            
+
         Returns:
             CompletedProcess with result
         """
         if not self.pod:
             raise PodManagerError("No pod available")
-        
+
         # Setup output directory
         setup_cmd = "mkdir -p /workspace/chisel_out"
         self.exec(setup_cmd)
-        
+
         if counters:
             # Create input file with specified counters
-            counter_list = [c.strip() for c in counters.split(',')]
+            counter_list = [c.strip() for c in counters.split(",")]
             input_content = f"pmc : {' '.join(counter_list)}"
-            
+
             # Upload input file to pod
             input_file = "/tmp/rocprof_counters.txt"
             upload_cmd = f"cat > {input_file} << 'EOF'\n{input_content}\nEOF"
             result = self.exec(upload_cmd)
             if result.returncode != 0:
                 raise PodManagerError("Failed to create rocprof input file")
-            
+
             # Execute with counter collection
             cmd = f"cd /tmp && rocprof -i {input_file} -o /workspace/chisel_out/rocprof_counters.csv {executable_path}"
             print(f"Executing: rocprof -i {input_file} {executable_path}")
@@ -562,8 +589,8 @@ if __name__ == "__main__":
         else:
             # Default to basic profiling if no counters specified
             print("No counters specified, using basic profiling")
-            return self.exec_hip_with_profiling(executable_path, include_hip_trace=True, output_prefix="rocprof_trace")
-        
-        return self.exec(cmd, capture_output=False)
+            return self.exec_hip_with_profiling(
+                executable_path, include_hip_trace=True, output_prefix="rocprof_trace"
+            )
 
- 
+        return self.exec(cmd, capture_output=False)

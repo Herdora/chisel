@@ -52,9 +52,7 @@ class ToyGPT(nn.Module):
         x = self.tok(idx) + self.pos[:, :T]
 
         # PyTorch 2.2+ supports built‑in causal mask generation
-        causal_mask = nn.Transformer.generate_square_subsequent_mask(
-            T, x.device
-        )
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(T, x.device)
         x = self.transformer(x, mask=causal_mask)
         return self.head(x)  # (B, T, vocab)
 
