@@ -9,7 +9,7 @@ description = "Chisel CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Herdora", email = "team@herdora.com"}
+    {name = "Herdora", email = "contact@herdora.com"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -31,8 +31,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
-    "black",
-    "flake8",
+    "ruff>=0.1.0",
 ]
 
 [project.urls]
@@ -46,10 +45,17 @@ chisel = "chisel:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.black]
+[tool.ruff]
 line-length = 100
-target-version = ['py38']
+target-version = "py38"
 
-[tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "W503"]
+[tool.ruff.lint]
+# Enable pycodestyle (`E`) and Pyflakes (`F`) codes by default.
+select = ["E", "F"]
+ignore = ["E203"]
+
+[tool.ruff.format]
+# Use double quotes for strings.
+quote-style = "double"
+# Indent with spaces, rather than tabs.
+indent-style = "space"

@@ -25,7 +25,7 @@ def simple_operations(iterations: int):
 
         print(f"  Iteration {i + 1}/{iterations}: Result = {result.item():.4f}")
 
-    print(f"✅ Operations completed!")
+    print("✅ Operations completed!")
     return result.cpu().numpy() if hasattr(result, "cpu") else result
 
 

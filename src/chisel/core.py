@@ -145,7 +145,7 @@ class ChiselApp:
                     message = result.get("message", "Job submitted")
                     visit_url = result.get("visit_url", f"/jobs/{job_id}")
 
-                    upload_spinner.stop(f"Work uploaded successfully! Job submitted")
+                    upload_spinner.stop("Work uploaded successfully! Job submitted")
 
                     print(f"🔗 Job ID: {job_id}")
                     print(f"🌐 Visit: {visit_url}")
