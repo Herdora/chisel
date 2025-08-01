@@ -8,7 +8,7 @@ Chisel CLI automatically offloads your Python functions to powerful cloud GPUs w
 
 **1. Install Chisel:**
 ```bash
-pip install git+https://github.com/Herdora/chisel.git@dev
+pip install chisel-cli
 ```
 
 **2. Add Chisel to your code:**
