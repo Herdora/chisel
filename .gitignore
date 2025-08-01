@@ -215,3 +215,5 @@ traces/
 
 # UV lock file
 uv.lock
+
+demo/

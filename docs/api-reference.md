@@ -105,6 +105,8 @@ Credentials stored in `~/.chisel/credentials.json` with restricted permissions (
 
 ```bash
 chisel <command> [arguments...]
+chisel --logout
+chisel --version
 ```
 
 **How it works:**
@@ -123,6 +125,14 @@ chisel python train.py --epochs 10
 # Any Python command
 chisel python -m pytest tests/
 chisel jupyter notebook
+
+# Logout (clear credentials)
+chisel --logout
+
+# Show version
+chisel --version
+chisel -v
+chisel version
 ```
 
 ## Environment Variables

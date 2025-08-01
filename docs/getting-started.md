@@ -54,6 +54,24 @@ chisel python my_script.py
 - Real-time stdout/stderr output
 - Cost information when job completes
 
+## Logout
+
+To clear your stored credentials:
+
+```bash
+chisel --logout
+```
+
+This removes your authentication token from `~/.chisel/credentials.json` and requires re-authentication on next use.
+
+## Version Information
+
+Check your Chisel CLI version:
+
+```bash
+chisel --version    # or chisel -v or chisel version
+```
+
 ## Key Concepts
 
 ### ChiselApp Configuration

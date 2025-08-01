@@ -122,6 +122,15 @@ ruff format src/ examples/
 pytest
 ```
 
+**Version and Logout:**
+```bash
+# Check version
+chisel --version
+
+# Logout
+chisel --logout
+```
+
 ## 📤 Publishing to PyPI
 
 **Prerequisites:**
@@ -157,10 +166,7 @@ rm -rf dist/ build/ src/*.egg-info/
 
 # Build source distribution and wheel
 python -m build
-```
 
-**Upload to Production PyPI:**
-```bash
 # Upload to production PyPI
 python -m twine upload dist/*
 

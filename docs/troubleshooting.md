@@ -58,27 +58,31 @@ python -c "from chisel.auth import authenticate; authenticate()"
 ### Authentication Fails
 
 **Solutions:**
-```python
-# Clear credentials and retry
-from chisel.auth import clear_credentials
-clear_credentials()
+```bash
+# Clear credentials and retry (CLI method)
+chisel --logout
+# Then run any chisel command to re-authenticate
+
+# Or using Python
+python -c "from chisel.auth import clear_credentials; clear_credentials()"
 
 # Check backend connectivity
 curl -v http://localhost:8000/health
 
 # Verify backend URL
-import os
-print(os.environ.get('CHISEL_BACKEND_URL', 'http://localhost:8000'))
+python -c "import os; print(os.environ.get('CHISEL_BACKEND_URL', 'http://localhost:8000'))"
 ```
 
 ### API Key Errors
 
 **Solutions:**
-```python
-# Re-authenticate
-from chisel.auth import clear_credentials, authenticate
-clear_credentials()
-authenticate()
+```bash
+# Re-authenticate (CLI method)
+chisel --logout
+# Then run any chisel command to re-authenticate
+
+# Or using Python
+python -c "from chisel.auth import clear_credentials, authenticate; clear_credentials(); authenticate()"
 
 # Check credentials file
 ls -la ~/.chisel/credentials.json
