@@ -1,12 +1,14 @@
 __version__ = "0.1.0"
 
 from .core import ChiselApp
+from .constants import GPUType
 
 App = ChiselApp
 
 __all__ = [
     "ChiselApp",
     "App",
+    "GPUType",
     "__version__",
 ]
 

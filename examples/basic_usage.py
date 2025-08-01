@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from chisel import ChiselApp
+from chisel import ChiselApp, GPUType
 
-app = ChiselApp("basic-example", gpu="A100:2")
+app = ChiselApp("basic-example", gpu=GPUType.A100_80GB_2)
 
 
 @app.capture_trace(trace_name="matrix_multiply", record_shapes=True)

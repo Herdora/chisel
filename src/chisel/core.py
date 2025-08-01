@@ -12,6 +12,7 @@ from .constants import (
     CHISEL_BACKEND_URL_ENV_KEY,
     MINIMUM_PACKAGES,
     TRACE_DIR,
+    GPUType,
 )
 from .spinner import SimpleSpinner
 from .auth import _auth_service
@@ -43,11 +44,13 @@ class ChiselApp:
     def __init__(self, name: str, upload_dir: str = ".", **kwargs: Any) -> None:
         self.app_name = name
 
+        gpu_param = kwargs.get("gpu", None)
+        self.gpu = self._normalize_gpu_param(gpu_param)
+
         if os.environ.get("CHISEL_ACTIVATED") != "1":
             self.job_id = None
             self.on_backend = False
             self.activated = False
-            self.gpu = kwargs.get("gpu", None)
             return
 
         if os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) == "1":
@@ -60,7 +63,6 @@ class ChiselApp:
         self.job_id = None
         self.on_backend = False
         self.activated = True
-        self.gpu = kwargs.get("gpu", None)
 
         backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
         self.api_key = _auth_service.authenticate(backend_url)
@@ -178,6 +180,14 @@ class ChiselApp:
         )
 
         exit(res["exit_code"])
+
+    def _normalize_gpu_param(self, gpu_param):
+        """Convert GPUType enum to string value, or pass through string/None."""
+        if gpu_param is None:
+            return None
+        if isinstance(gpu_param, GPUType):
+            return gpu_param.value
+        return gpu_param
 
     def capture_trace(
         self,
