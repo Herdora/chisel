@@ -76,8 +76,10 @@ class ChiselApp:
             raise AssertionError(f"Script {script_abs_path} is not inside upload_dir {upload_dir}")
 
         script_name = str(script_relative)
+        script_args = sys.argv[1:]
 
-        print(f"📦 Submitting job: {script_name}")
+        args_display = f" {' '.join(script_args)}" if script_args else ""
+        print(f"📦 Submitting job: {script_name}{args_display}")
 
         def submit_job(
             name: str,
@@ -87,6 +89,7 @@ class ChiselApp:
             local_source: Optional[str] = None,
             backend_url: Optional[str] = None,
             gpu: Optional[str] = None,
+            script_args: Optional[List[str]] = None,
         ) -> Dict[str, Any]:
             backend_url = (
                 backend_url or os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
@@ -121,6 +124,7 @@ class ChiselApp:
                     "app_name": name,
                     "pip_packages": ",".join(pip_packages) if pip_packages else "",
                     "gpu": gpu,
+                    "script_args": " ".join(script_args) if script_args else "",
                 }
 
                 endpoint = f"{backend_url.rstrip('/')}/api/v1/submit-cachy-job-new"
@@ -170,6 +174,7 @@ class ChiselApp:
             upload_dir=upload_dir,
             pip_packages=MINIMUM_PACKAGES,
             gpu=self.gpu,
+            script_args=script_args,
         )
 
         exit(res["exit_code"])
