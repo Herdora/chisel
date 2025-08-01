@@ -197,7 +197,7 @@ class ChiselApp:
         **profiler_kwargs: Any,
     ) -> Callable:
         def decorator(fn: Callable) -> Callable:
-            if not self.activated or not self.on_backend:
+            if not self.activated:
                 return fn
 
             def wrapped(*args: Any, **kwargs: Any) -> Any:
