@@ -1,7 +1,3 @@
-"""
-Chisel CLI - Accelerate your Python functions with cloud GPUs.
-"""
-
 __version__ = "0.1.0"
 
 from .core import ChiselApp
@@ -16,7 +12,6 @@ __all__ = [
 
 
 def main():
-    """CLI entry point."""
     import sys
 
     print("Chisel CLI is installed and working!")
