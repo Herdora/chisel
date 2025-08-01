@@ -41,8 +41,15 @@ def tar_filter(tarinfo):
 
 
 class ChiselApp:
-    def __init__(self, name: str, upload_dir: str = ".", **kwargs: Any) -> None:
+    def __init__(
+        self,
+        name: str,
+        upload_dir: str = ".",
+        requirements_file: str = "requirements.txt",
+        **kwargs: Any,
+    ) -> None:
         self.app_name = name
+        self.requirements_file = requirements_file
 
         gpu_param = kwargs.get("gpu", None)
         self.gpu = self._normalize_gpu_param(gpu_param)
@@ -92,6 +99,7 @@ class ChiselApp:
             backend_url: Optional[str] = None,
             gpu: Optional[str] = None,
             script_args: Optional[List[str]] = None,
+            requirements_file: str = "requirements.txt",
         ) -> Dict[str, Any]:
             backend_url = (
                 backend_url or os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
@@ -127,11 +135,12 @@ class ChiselApp:
                     "pip_packages": ",".join(pip_packages) if pip_packages else "",
                     "gpu": gpu,
                     "script_args": " ".join(script_args) if script_args else "",
+                    "requirements_file": requirements_file,
                 }
 
                 endpoint = f"{backend_url.rstrip('/')}/api/v1/submit-cachy-job-new"
 
-                upload_spinner = SimpleSpinner("Uploading work to backend")
+                upload_spinner = SimpleSpinner("Uploading work to backend and running.")
                 upload_spinner.start()
 
                 try:
@@ -177,6 +186,7 @@ class ChiselApp:
             pip_packages=MINIMUM_PACKAGES,
             gpu=self.gpu,
             script_args=script_args,
+            requirements_file=self.requirements_file,
         )
 
         exit(res["exit_code"])

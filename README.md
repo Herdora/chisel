@@ -15,7 +15,11 @@ pip install git+https://github.com/Herdora/chisel.git@dev
 ```python
 from chisel import ChiselApp, GPUType
 
+# Auto-detects requirements.txt for dependencies
 app = ChiselApp("my-app", gpu=GPUType.A100_80GB_1)
+
+# Or specify custom requirements file
+# app = ChiselApp("my-app", gpu=GPUType.A100_80GB_1, requirements_file="custom-reqs.txt")
 
 @app.capture_trace(trace_name="matrix_ops", record_shapes=True)
 def matrix_multiply(size=1000):
@@ -33,7 +37,14 @@ if __name__ == "__main__":
     print(f"Result shape: {result.shape}")
 ```
 
-**3. Run on cloud GPU:**
+**3. Create requirements.txt (optional):**
+```txt
+torch>=1.13.0
+numpy>=1.21.0
+# Add your project dependencies here
+```
+
+**4. Run on cloud GPU:**
 ```bash
 # Local execution (normal Python)
 python my_script.py

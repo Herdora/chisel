@@ -1,0 +1,5 @@
+# Custom requirements file example
+torch>=1.13.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+pandas>=1.4.0

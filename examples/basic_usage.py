@@ -2,7 +2,11 @@
 
 from chisel import ChiselApp, GPUType
 
+# Example with default requirements.txt file
 app = ChiselApp("basic-example", gpu=GPUType.A100_80GB_2)
+
+# Alternative: specify a custom requirements file
+# app = ChiselApp("basic-example", gpu=GPUType.A100_80GB_2, requirements_file="requirements.txt")
 
 
 @app.capture_trace(trace_name="matrix_multiply", record_shapes=True)
