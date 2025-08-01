@@ -136,7 +136,7 @@ class ChiselApp:
 
                 try:
                     response = requests.post(
-                        endpoint, data=data, files=files, headers=headers, timeout=60
+                        endpoint, data=data, files=files, headers=headers, timeout=12 * 60 * 60
                     )
                     response.raise_for_status()
 
