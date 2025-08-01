@@ -1,124 +1,93 @@
-<div align="center">
-  <img width="450" height="300" src="https://i.imgur.com/H32IKRZ.jpeg" alt="Chisel CLI logo" /> 
-	<h1>chisel</h1>
-</div>
+# Chisel CLI
 
-**TL;DR:** Seamless GPU kernel profiling on cloud infrastructure. Write GPU code, run one command, get profiling results. Zero GPU hardware required.
+Chisel CLI - Accelerate your Python functions with cloud GPUs.
 
-> 🚀 **Recent Releases**
->
-> - **Python Support**: Direct profiling of Python GPU applications (PyTorch, TensorFlow, etc.)
-> - **AMD rocprofv3 Support**: Full integration with AMD's latest profiling tool
+## Installation
 
-> 🔮 **Upcoming Features**
->
-> - **Web Dashboard**: Browser-based visualization of profiling results.
-> - **Multi-GPU Support**: Profile the same kernel across multiple GPU types simultaneously.
-> - **Profiling Backend**: Use Chisel’s built-in backend to run profiling workloads—no cloud account or API token required.
-> - **More GPU Architectures**: Support for most requested GPU type.
-> - **Auto cleaning**: Smart cleaning and release of your DigitalOcean resources (destroying the droplet after you don't use it).
+### From GitHub (dev branch)
 
-> 💡 **Feature Requests**
->
-> Got a feature idea you'd love to see in Chisel? We'd love to hear from you!
->
-> - Open a feature request on [GitHub Issues](https://github.com/Herdora/chisel/issues)
-> - Or email us directly at **contact [at] herdora [dot] com**
->
-> Please include a short description of the feature, how you'd use it, and any context that might help us prioritize.
+```bash
+pip install git+https://github.com/Herdora/chisel.git@dev
+```
 
-## About
+### From PyPI (when published)
 
-Testing and profiling GPU kernels across different hardware is time-consuming and hardware-dependent, as it often involves complex setup, driver compatibility issues, dependency mismatches, and access to specialized GPUs. Chisel removes that friction by letting you run and profile GPU code in the cloud with a single command - no GPU required. It’s the fastest way to validate kernel performance on real NVIDIA and AMD GPUs.
+```bash
+pip install chisel-cli
+```
 
 ## Quick Start
 
-Get up and running in 30 seconds:
+```python
+from chisel import ChiselApp
 
-```bash
-# 1. Install chisel
-pip install chisel-cli
+# Create a Chisel app - authentication happens automatically
+app = ChiselApp("my-app")
 
-# 2. Choose your authentication method:
-# Option A: Use Chisel's managed authentication (includes $10 free credits)
-chisel login
+# Use tracing decorator for GPU profiling
+@app.capture_trace(trace_name="my_function", record_shapes=True)
+def my_function(x):
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tensor = torch.tensor(x, device=device)
+    return (tensor * 2).cpu().numpy()
 
-# Option B: Use your own DigitalOcean API token
-chisel configure
-
-# 3. Compile your code into an executable
-hipcc --amdgpu-target=gfx940 -o examples/simple-mm examples/simple-mm.hip
- # for inlined kernels to python on amd.
-nvcc -arch=sm_90 -o examples/my_kernel examples/my_kernel.cu
-nvcc -arch=sm_90 -Xcompiler -fPIC -shared -o examples/libvector_add.so examples/vector_add.cu # for inlined kernels to python on nvidia.
-
-
-# 4. Profile your GPU kernels and applications
-chisel profile --rocprofv3="--sys-trace" -f examples/simple-mm "./simple-mm" # since this just copies the file, it isn't placed in a dir on the server.
-chisel profile --rocprofv3="--sys-trace" -f examples/hip_vector_add_test.py -f examples/libvector_add_hip.so "python hip_vector_add_test.py"
-chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples/kernel.out "./kernel.out"
-chisel profile --nsys="--trace=cuda --cuda-memory-usage=true" -f examples "python examples/simple_gpu_test.py" # syncs the entire examples directory and runs simple_gpu_test.py
-# TODO: add the case for when user has "-f examples/"
-# TODO: make names in examples/ directory more descriptive.
+# Call your function - it will run on cloud GPUs with profiling
+result = my_function([1, 2, 3, 4])
 ```
 
-**That's it!** 🚀 No GPU hardware needed—develop and profile GPU kernels from any machine. IF USING YOUR OWN DIGITALOCEAN ACCOUNT, ENSURE TO DESTROY DROPLETS VIA THEIR DASHBOARD WHEN DONE.
+## Examples
 
-> **Getting Started:**
->
-> - **Free Credits**: Email **contact@herdora.com** to get your account with $10 in free credits (no DigitalOcean account needed)
-> - **Bring Your Own Account**: Get a DigitalOcean API token [here](https://amd.digitalocean.com/account/api/tokens) (requires read/write access)
->
-> IF USING YOUR OWN DIGITALOCEAN ACCOUNT, ENSURE TO DESTROY DROPLETS VIA THEIR DASHBOARD WHEN DONE.
+Check out the [`examples/`](examples/) directory for comprehensive usage examples:
 
-## Commands
+- **[Basic Usage](examples/basic_usage.py)** - Fundamental Chisel CLI usage
 
-Chisel has **4 commands**:
-
-### `chisel login`
-
-Authenticate with Chisel's managed backend (includes $10 free credits).
-
-- Email contact@herdora.com to activate an account.
-
+Run examples:
 ```bash
-# Login with your Chisel token
-chisel login
+python examples/basic_usage.py
 ```
 
-### `chisel configure`
+## Authentication
 
-One-time setup of your DigitalOcean API credentials (for users with their own accounts).
+Chisel CLI handles authentication automatically on first use:
 
-```bash
-# Interactive configuration
-chisel configure
+1. Creates a `ChiselApp` → opens browser for auth
+2. Stores credentials securely in `~/.chisel`
+3. Subsequent uses authenticate instantly
 
-# Non-interactive with token
-chisel configure --token YOUR_TOKEN
+Manual control:
+```python
+from chisel import authenticate, clear_credentials, is_authenticated
+
+# Check auth status
+if not is_authenticated():
+    authenticate()  # Opens browser if needed
+    
+# Clear stored credentials
+clear_credentials()
 ```
 
-## GPU Support
-
-| GPU         | Size                | Region | Profiling                       |
-| ----------- | ------------------- | ------ | ------------------------------- |
-| NVIDIA H100 | `gpu-h100x1-80gb`   | NYC2   | nsight-compute + nsight-systems |
-| NVIDIA L40S | `gpu-l40sx1-48gb`   | TOR1   | nsight-compute + nsight-systems |
-| AMD MI300X  | `gpu-mi300x1-192gb` | ATL1   | rocprofv3                       |
-
-## Development Setup
+## Development
 
 ```bash
-# With uv (recommended)
-uv sync
-uv run chisel <command>
-
-# With pip
+git clone https://github.com/Herdora/chisel.git
+cd chisel
 pip install -e .
+
+# Run examples
+python examples/basic_usage.py
 ```
 
-## Making updates to PyPI
+## Project Structure
 
-```bash
-rm -rf dist/ build/ *.egg-info && python -m build && twine upload dist/*
+```
+chisel/
+├── src/chisel/               # Main package
+│   ├── __init__.py          # Public API
+│   ├── core.py              # ChiselApp and core functionality  
+│   └── constants.py         # Configuration constants
+├── examples/                # Usage examples
+│   └── basic_usage.py       # Basic functionality
+├── pyproject.toml          # Package configuration
+└── README.md               # This file
 ```

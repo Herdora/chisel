@@ -1,31 +1,55 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "chisel-cli"
-version = "0.1.27"
-description = "A CLI tool for developing and profiling GPU kernels on DigitalOcean droplets"
+version = "0.1.0"
+description = "Chisel CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Herdora", email = "team@herdora.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 requires-python = ">=3.8"
 dependencies = [
-    "typer>=0.16.0",
-    "rich>=14.0.0",
-    "paramiko>=3.5.0",
-    "requests>=2.32.0",
-    "toml>=0.10.0",
-    "pydo>=0.11.0"
+    "requests>=2.25.0",
+    "click>=8.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "black",
+    "flake8",
+]
+
+[project.urls]
+Homepage = "https://github.com/Herdora/chisel"
+Repository = "https://github.com/Herdora/chisel.git"
+Issues = "https://github.com/Herdora/chisel/issues"
+
 [project.scripts]
-chisel = "chisel.cli.main:main"
+chisel = "chisel:main"
 
 [tool.setuptools.packages.find]
-include = ["chisel*"]
-exclude = ["out*", "tests*"]
+where = ["src"]
 
-[tool.setuptools]
-include-package-data = true
+[tool.black]
+line-length = 100
+target-version = ['py38']
 
-[tool.setuptools.package-data]
-"chisel.core.startup_scripts" = ["*.sh"]
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]

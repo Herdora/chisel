@@ -1,12 +1,10 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*/**/__pycache__/
 *.py[cod]
 *$py.class
-.claude
 
 # C extensions
-
+*.so
 
 # Distribution / packaging
 .Python
@@ -53,10 +51,6 @@ coverage.xml
 .pytest_cache/
 cover/
 
-chisel-results/
-
-tests/__pycache__/
-
 # Translations
 *.mo
 *.pot
@@ -91,16 +85,20 @@ ipython_config.py
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+.python-version
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
 #   However, in case of collaboration, if having platform-specific dependencies or dependencies
 #   having no cross-platform support, pipenv may install dependencies that don't work, or not
 #   install all needed dependencies.
-#Pipfile.lock
+Pipfile.lock
 
 # poetry
+#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
+#   This is especially recommended for binary packages to ensure reproducibility, and is more
+#   commonly ignored for libraries.
+#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 #poetry.lock
 
 # pdm
@@ -156,54 +154,22 @@ cython_debug/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be added to the global gitignore or merged into this project gitignore.
+#  be added to the global gitignore or merged into this project gitignore.  For a PyCharm
+#  project, it is recommended to add this to the repository.
 .idea/
 
 # VSCode
 .vscode/
-
-# Vim
-*.swp
-*.swo
-*~
-
-# Emacs
-*~
-\#*\#
-/.emacs.desktop
-/.emacs.desktop.lock
-*.elc
-auto-save-list
-tramp
-.\#*
+*.code-workspace
 
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon?
-._*
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
 
 # Windows
 Thumbs.db
-Thumbs.db:encryptable
 ehthumbs.db
-ehthumbs_vista.db
-*.tmp
-*.temp
-*.cache
 Desktop.ini
 $RECYCLE.BIN/
 *.cab
@@ -220,25 +186,32 @@ $RECYCLE.BIN/
 .Trash-*
 .nfs*
 
-# Project specific
-out/
-.config/
-cursor/
-.cursor/
-logs/
-*.log
-
-# Backup files
-*.bak
-*.backup
-*.orig
-
 # Temporary files
 *.tmp
 *.temp
-.tmp/
-temp/
+*.swp
+*.swo
+*~
 
-# Chisel
-chisel-results/
-.chisel-venv/
+# Logs
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with secrets
+.env.local
+.env.production
+config/secrets.yaml
+secrets.json
+
+# Chisel specific
+.chisel
+traces/
+*.tar.gz
+
+# UV lock file
+uv.lock
