@@ -5,7 +5,7 @@ Chisel CLI accelerates your Python functions by automatically running them on cl
 ## Installation
 
 ```bash
-pip install git+https://github.com/Herdora/chisel.git@dev
+pip install chisel-cli
 ```
 
 ## Quick Start
