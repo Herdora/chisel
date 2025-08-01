@@ -444,9 +444,8 @@ class ChiselApp:
 
         trace_name = trace_name or fn.__name__
 
-        # Setup trace directory - assuming volume is mounted at /volume
-        volume_path = Path("/volume")
-        job_trace_dir = volume_path / self.app_name / self.job_id / TRACE_DIR
+        # Setup trace directory
+        job_trace_dir = self.app_name / self.job_id / TRACE_DIR
         job_trace_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"🔍 [capture_trace] Tracing {fn.__name__} -> {job_trace_dir}/{trace_name}.json")
