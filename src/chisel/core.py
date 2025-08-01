@@ -244,7 +244,7 @@ class ChiselApp:
             activities=activities,
             record_shapes=record_shapes,
             profile_memory=profile_memory,
-            with_stack=False,
+            with_stack=True,
         ) as prof:
             print(f"⚡ [capture_trace] Profiling {fn.__name__} (job_id: {self.job_id})")
             result = fn(*args, **kwargs)
