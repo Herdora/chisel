@@ -344,41 +344,27 @@ class ChiselApp:
                 print(f"[submit_job] Submitting to: {endpoint}")
 
                 response = requests.post(
-                    endpoint, data=data, files=files, headers=headers, stream=True, timeout=60
+                    endpoint, data=data, files=files, headers=headers, timeout=60
                 )
                 response.raise_for_status()
 
-                # Process streaming response
-                logs = []
-                job_id = None
-                exit_code = None
+                # Parse simple JSON response
+                result = response.json()
+                job_id = result.get("job_id")
+                message = result.get("message", "Job submitted")
+                visit_url = result.get("visit_url", f"/jobs/{job_id}")
 
-                for line in response.iter_lines(decode_unicode=True):
-                    if not line or not line.startswith("data:"):
-                        continue
-
-                    try:
-                        payload = json.loads(line[5:].strip())
-                        msg_type = payload.get("type")
-
-                        if msg_type == "log":
-                            msg = payload.get("msg", "")
-                            logs.append(msg)
-                            print(msg)
-                        elif msg_type in ("success", "error"):
-                            exit_code = payload.get("exit_code")
-                            job_id = payload.get("job_id")
-                            status = "✅ completed" if msg_type == "success" else "❌ failed"
-                            print(f"\n{status} (exit_code={exit_code}, job_id={job_id})")
-
-                    except json.JSONDecodeError:
-                        continue
+                print(f"✅ {message}")
+                print(f"🔗 Job ID: {job_id}")
+                print(f"🌐 Visit: {visit_url}")
+                print("📊 Job is running in the background on cloud GPUs")
 
                 return {
                     "job_id": job_id,
-                    "exit_code": exit_code,
-                    "logs": logs,
-                    "status": "completed" if exit_code == 0 else "failed",
+                    "exit_code": 0,  # Always 0 since submission was successful
+                    "logs": [f"{message} (Job ID: {job_id})"],
+                    "status": "submitted",
+                    "visit_url": visit_url,
                 }
             except Exception as e:
                 print(f"🔍 [submit_job] Error creating tar archive: {e}")
