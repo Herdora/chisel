@@ -122,6 +122,63 @@ ruff format src/ examples/
 pytest
 ```
 
+## 📤 Publishing to PyPI
+
+**Prerequisites:**
+1. Create accounts on [PyPI](https://pypi.org/account/register/) and [Test PyPI](https://test.pypi.org/account/register/)
+2. Generate API tokens for both accounts
+3. Install build and upload tools:
+```bash
+pip install build twine
+```
+
+**Configure API tokens:**
+```bash
+# Add to ~/.pypirc
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+username = __token__
+password = pypi-your-api-token-here
+
+[testpypi]
+repository = https://test.pypi.org/legacy/
+username = __token__
+password = pypi-your-test-api-token-here
+```
+
+**Build the package:**
+```bash
+# Clean previous builds
+rm -rf dist/ build/ src/*.egg-info/
+
+# Build source distribution and wheel
+python -m build
+```
+
+**Upload to Production PyPI:**
+```bash
+# Upload to production PyPI
+python -m twine upload dist/*
+
+# Verify installation
+pip install chisel-cli
+```
+
+**Version Management:**
+1. Update version in `pyproject.toml`
+2. Commit and tag the release:
+```bash
+git add pyproject.toml
+git commit -m "Bump version to X.Y.Z"
+git tag vX.Y.Z
+git push origin main --tags
+```
+3. Build and upload as described above
+
 ## 📦 Project Structure
 
 ```

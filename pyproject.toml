@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chisel-cli"
-version = "0.1.0"
+version = "0.1.28"
 description = "Chisel CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
 license = {text = "MIT"}
