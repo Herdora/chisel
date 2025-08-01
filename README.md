@@ -18,13 +18,13 @@ pip install chisel-cli
 
 ## Quick Start
 
+Create a Python script with Chisel:
+
 ```python
 from chisel import ChiselApp
 
-# Create a Chisel app - authentication happens automatically
 app = ChiselApp("my-app")
 
-# Use tracing decorator for GPU profiling
 @app.capture_trace(trace_name="my_function", record_shapes=True)
 def my_function(x):
     import torch
@@ -32,8 +32,25 @@ def my_function(x):
     tensor = torch.tensor(x, device=device)
     return (tensor * 2).cpu().numpy()
 
-# Call your function - it will run on cloud GPUs with profiling
 result = my_function([1, 2, 3, 4])
+```
+
+Run with Chisel to enable cloud GPU execution:
+
+```bash
+chisel python my_script.py
+```
+
+## Usage
+
+- **Normal execution**: `python my_script.py` - No overhead, decorators are pass-through
+- **Chisel execution**: `chisel python my_script.py` - Full cloud GPU functionality with authentication and job submission
+
+The `chisel` command works with any Python command:
+```bash
+chisel python -m pip list
+chisel pytest tests/
+chisel jupyter notebook
 ```
 
 ## Examples
@@ -44,28 +61,16 @@ Check out the [`examples/`](examples/) directory for comprehensive usage example
 
 Run examples:
 ```bash
-python examples/basic_usage.py
+chisel python examples/basic_usage.py
 ```
 
 ## Authentication
 
-Chisel CLI handles authentication automatically on first use:
+Chisel handles authentication automatically when using the `chisel` command:
 
-1. Creates a `ChiselApp` → opens browser for auth
-2. Stores credentials securely in `~/.chisel`
-3. Subsequent uses authenticate instantly
-
-Manual control:
-```python
-from chisel import authenticate, clear_credentials, is_authenticated
-
-# Check auth status
-if not is_authenticated():
-    authenticate()  # Opens browser if needed
-    
-# Clear stored credentials
-clear_credentials()
-```
+1. First run opens browser for authentication
+2. Credentials stored securely in `~/.chisel`
+3. Subsequent runs authenticate instantly
 
 ## Development
 
@@ -75,7 +80,7 @@ cd chisel
 pip install -e .
 
 # Run examples
-python examples/basic_usage.py
+chisel python examples/basic_usage.py
 ```
 
 ## Project Structure
@@ -83,8 +88,10 @@ python examples/basic_usage.py
 ```
 chisel/
 ├── src/chisel/               # Main package
-│   ├── __init__.py          # Public API
+│   ├── __init__.py          # Public API and CLI entry point
 │   ├── core.py              # ChiselApp and core functionality  
+│   ├── auth.py              # Authentication service
+│   ├── spinner.py           # Loading spinner utility
 │   └── constants.py         # Configuration constants
 ├── examples/                # Usage examples
 │   └── basic_usage.py       # Basic functionality

@@ -43,14 +43,23 @@ class ChiselApp:
     def __init__(self, name: str, upload_dir: str = ".", **kwargs: Any) -> None:
         self.app_name = name
 
+        if os.environ.get("CHISEL_ACTIVATED") != "1":
+            self.job_id = None
+            self.on_backend = False
+            self.activated = False
+            self.gpu = kwargs.get("gpu", None)
+            return
+
         if os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) == "1":
             assert os.environ.get(CHISEL_JOB_ID_ENV_KEY), f"{CHISEL_JOB_ID_ENV_KEY} is not set"
             self.job_id = os.environ.get(CHISEL_JOB_ID_ENV_KEY)
             self.on_backend = True
+            self.activated = True
             return
 
         self.job_id = None
         self.on_backend = False
+        self.activated = True
         self.gpu = kwargs.get("gpu", None)
 
         backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
@@ -173,7 +182,7 @@ class ChiselApp:
         **profiler_kwargs: Any,
     ) -> Callable:
         def decorator(fn: Callable) -> Callable:
-            if not self.on_backend:
+            if not self.activated or not self.on_backend:
                 return fn
 
             def wrapped(*args: Any, **kwargs: Any) -> Any:
