@@ -9,7 +9,7 @@ to profile your functions on cloud GPUs.
 from chisel import ChiselApp
 
 # Create a Chisel app - authentication happens automatically
-app = ChiselApp("basic-example")
+app = ChiselApp("basic-example", gpu="A100:2")
 
 
 @app.capture_trace(trace_name="matrix_multiply", record_shapes=True)

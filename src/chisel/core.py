@@ -265,6 +265,7 @@ class ChiselApp:
 
         self.job_id = None
         self.on_backend = False
+        self.gpu = kwargs.get("gpu", None)
 
         # Handle authentication automatically
         backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
@@ -298,6 +299,7 @@ class ChiselApp:
             pip_packages: Optional[List[str]] = None,
             local_source: Optional[str] = None,
             backend_url: Optional[str] = None,
+            gpu: Optional[str] = None,
         ) -> Dict[str, Any]:
             import tarfile
             import tempfile
@@ -338,6 +340,7 @@ class ChiselApp:
                     "script_path": script_path,
                     "app_name": name,
                     "pip_packages": ",".join(pip_packages) if pip_packages else "",
+                    "gpu": gpu,
                 }
 
                 endpoint = f"{backend_url.rstrip('/')}/api/v1/submit-cachy-job-new"
@@ -379,6 +382,7 @@ class ChiselApp:
             script_path=script_name,
             upload_dir=upload_dir,
             pip_packages=MINIMUM_PACKAGES,
+            gpu=self.gpu,
         )
 
         print(f"🔍 [ChiselApp] Job submitted: {res}")
