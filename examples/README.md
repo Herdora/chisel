@@ -40,7 +40,7 @@ python examples/basic_usage.py
 
 ## Authentication
 
-On first run, Chisel CLI will automatically open your browser for authentication. Your credentials are securely stored in `~/.chisel` for future use.
+On first run, Chisel CLI will automatically open your browser for authentication. Your credentials are securely stored in `~/.chisel/credentials.json` for future use.
 
 ## Notes
 

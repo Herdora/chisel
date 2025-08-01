@@ -10,24 +10,58 @@ from .constants import CHISEL_BACKEND_URL
 
 class AuthService:
     def __init__(self):
-        self.config_path = Path.home() / ".chisel"
+        self.config_dir = Path.home() / ".chisel"
+        self.config_path = self.config_dir / "credentials.json"
         self.config = self._load_config()
 
     def _load_config(self) -> Dict[str, Any]:
+        # Check for new directory structure first
         if self.config_path.exists():
             try:
                 with open(self.config_path, "r") as f:
                     return json.load(f)
             except (json.JSONDecodeError, IOError):
                 return {}
+
+        # Check for legacy single-file format and migrate
+        if self.config_dir.exists() and self.config_dir.is_file():
+            try:
+                with open(self.config_dir, "r") as f:
+                    config = json.load(f)
+                print(f"🔄 Migrating config from legacy format {self.config_dir}")
+
+                # Save in new format (this will handle the directory creation)
+                temp_config = self.config
+                self.config = config
+                self._save_config()
+
+                print(f"✅ Migration complete! Config now stored in {self.config_path}")
+
+                return config
+            except (json.JSONDecodeError, IOError):
+                print(f"⚠️ Failed to migrate legacy config from {self.config_dir}")
+                return {}
+
         return {}
 
     def _save_config(self) -> None:
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        # Handle potential conflicts with existing .chisel file
+        if self.config_dir.exists() and self.config_dir.is_file():
+            # Backup existing .chisel file and convert to directory structure
+            backup_path = self.config_dir.with_suffix(".chisel.backup")
+            print(f"⚠️ Found existing .chisel file, backing up to {backup_path}")
+            self.config_dir.rename(backup_path)
+
+        # Create .chisel directory
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+
+        # Ensure .chisel directory has proper permissions
+        os.chmod(self.config_dir, 0o700)
 
         with open(self.config_path, "w") as f:
             json.dump(self.config, f, indent=2)
 
+        # Set restrictive permissions on credentials file
         os.chmod(self.config_path, 0o600)
 
     def get_api_key(self) -> Optional[str]:
@@ -47,6 +81,11 @@ class AuthService:
             self.config_path.unlink()
             self.config = {}
             print(f"🗑️  Cleared credentials from {self.config_path}")
+
+        # Also handle legacy single-file format
+        if self.config_dir.exists() and self.config_dir.is_file():
+            self.config_dir.unlink()
+            print(f"🗑️  Removed legacy config file {self.config_dir}")
 
     def is_authenticated(self) -> bool:
         return bool(self.get_api_key())

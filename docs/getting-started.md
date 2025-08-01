@@ -46,7 +46,7 @@ chisel python my_script.py
 **3. First-time authentication:**
 - Browser opens automatically
 - Sign in or create Herdora account
-- Credentials stored securely in `~/.chisel/`
+- Credentials stored securely in `~/.chisel/credentials.json`
 
 **4. Real-time streaming:**
 - Live upload progress with spinner

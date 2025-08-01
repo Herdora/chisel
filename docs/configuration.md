@@ -237,7 +237,7 @@ def test_with_chisel():
 
 ### Credential Storage
 
-Credentials stored in `~/.chisel/credentials.json` with restricted permissions.
+Credentials stored in `~/.chisel/credentials.json` with restricted permissions (directory: 0o700, file: 0o600).
 
 ### Manual Authentication
 
