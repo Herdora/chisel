@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from chisel import capture_trace
 
 
@@ -7,17 +5,14 @@ from chisel import capture_trace
 def matrix_multiply(size: int = 1000):
     import torch
 
-    print(f"🔥 Running matrix multiplication ({size}x{size})...")
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"🎯 Using device: {device}")
 
     a = torch.randn(size, size, device=device)
     b = torch.randn(size, size, device=device)
-
     result = torch.mm(a, b)
 
-    print(f"✅ Matrix multiplication completed! Result shape: {result.shape}")
+    print(f"✅ Matrix multiplication completed! Shape: {result.shape}")
     return result.cpu().numpy()
 
 
@@ -25,11 +20,8 @@ def matrix_multiply(size: int = 1000):
 def simple_computation(n: int = 1000000):
     import torch
 
-    print(f"🔥 Running simple computation with {n} elements...")
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
     x = torch.randn(n, device=device)
-
     result = x.pow(2).sum()
 
     print(f"✅ Computation completed! Result: {result.item()}")
@@ -37,12 +29,9 @@ def simple_computation(n: int = 1000000):
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Chisel CLI Basic Example")
+    print("🚀 Starting Chisel example")
 
     matrix_result = matrix_multiply(500)
-    print(f"Matrix multiply result shape: {matrix_result.shape}")
-
     computation_result = simple_computation(100000)
-    print(f"Simple computation result: {computation_result}")
 
     print("✅ Example completed!")

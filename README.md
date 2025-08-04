@@ -1,27 +1,19 @@
 # Chisel CLI
 
-**Accelerate your Python functions with cloud GPUs.**
+Accelerate your Python functions with cloud GPUs using a simple decorator.
 
-Chisel CLI automatically offloads your Python functions to powerful cloud GPUs with zero code changes. Simply add a decorator and run with the `chisel` command.
+## Quick Start
 
-## ⚡ Quick Start
-
-**1. Install Chisel:**
+**1. Install Chisel CLI:**
 ```bash
-pip install chisel-cli
+pip install git+https://github.com/Herdora/chisel.git@dev
 ```
 
-**2. Add Chisel to your code:**
+**2. Create your script:**
 ```python
-from chisel import ChiselApp, GPUType
+from chisel import capture_trace
 
-# Auto-detects requirements.txt for dependencies
-app = ChiselApp("my-app", gpu=GPUType.A100_80GB_1)
-
-# Or specify custom requirements file
-# app = ChiselApp("my-app", gpu=GPUType.A100_80GB_1, requirements_file="custom-reqs.txt")
-
-@app.capture_trace(trace_name="matrix_ops", record_shapes=True)
+@capture_trace(trace_name="matrix_ops")
 def matrix_multiply(size=1000):
     import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -37,194 +29,140 @@ if __name__ == "__main__":
     print(f"Result shape: {result.shape}")
 ```
 
-**3. Create requirements.txt (optional):**
-```txt
-torch>=1.13.0
-numpy>=1.21.0
-# Add your project dependencies here
-```
-
-**4. Run on cloud GPU:**
+**3. Run on cloud GPU:**
 ```bash
-# Local execution (normal Python)
+# Local execution
 python my_script.py
 
-# Cloud GPU execution (powered by Chisel)
+# Cloud GPU execution
 chisel python my_script.py
 ```
 
-That's it! Your function now runs on a cloud A100 GPU. 🚀
+**4. Interactive setup:**
+- Chisel CLI prompts for app name, upload directory, requirements file, and GPU configuration
+- First-time authentication opens browser automatically
+- Real-time job status and output streaming
 
-## 🎯 Key Features
+## Features
 
-- **Zero overhead locally** - Decorators are pass-through when not using `chisel`
-- **Automatic GPU detection** - Code works on both CPU and GPU seamlessly  
-- **Multiple GPU types** - From single A100 to 8x A100 configurations
-- **Argument passing** - Command-line arguments work transparently
-- **Secure authentication** - Browser-based auth with secure credential storage
-- **Real-time streaming** - Live output and status updates during job execution
-- **Job tracking** - Web interface to monitor your cloud GPU jobs
+- **Simple decorator**: Just add `@capture_trace()` to your functions
+- **Local & cloud**: Same code runs locally or on cloud GPUs
+- **Interactive CLI**: Guided setup for job configuration
+- **Real-time streaming**: Live output and job status
+- **GPU profiling**: Automatic performance traces and memory analysis
+- **Multi-GPU support**: Scale from 1 to 8x A100-80GB GPUs
 
-## 📖 Documentation
+## Usage
 
-| Document                                         | Description                   |
-| ------------------------------------------------ | ----------------------------- |
-| **[📚 Complete Documentation](docs/)**            | Full documentation hub        |
-| **[🚀 Getting Started](docs/getting-started.md)** | Installation and first steps  |
-| **[📋 API Reference](docs/api-reference.md)**     | Complete API documentation    |
-| **[💡 Examples](docs/examples.md)**               | Working examples and patterns |
-| **[⚙️ Configuration](docs/configuration.md)**     | GPU types and optimization    |
-| **[🔧 Troubleshooting](docs/troubleshooting.md)** | Common issues and solutions   |
+### Basic Example
 
-## 🔥 Examples
+```python
+from chisel import capture_trace
+
+@capture_trace(trace_name="my_function")
+def my_gpu_function():
+    import torch
+    # Your GPU code here
+    return torch.randn(1000, 1000).cuda()
+
+# Runs locally with: python script.py
+# Runs on GPU with: chisel python script.py
+```
+
+### Multiple Functions
+
+```python
+@capture_trace(trace_name="preprocess")
+def preprocess(data): 
+    # Data preprocessing
+    pass
+
+@capture_trace(trace_name="train")  
+def train(data): 
+    # Model training
+    pass
+
+@capture_trace(trace_name="evaluate")
+def evaluate(data): 
+    # Model evaluation
+    pass
+```
 
 ### Command Line Arguments
+
 ```bash
-chisel python examples/args_example.py --iterations 10
+chisel python train.py --epochs 100 --batch-size 32
 ```
 
-### Deep Learning Training
-```python
-from chisel import ChiselApp, GPUType
+## GPU Options
 
-app = ChiselApp("training", gpu=GPUType.A100_80GB_4)
+When prompted by the CLI, choose from:
 
-@app.capture_trace(trace_name="model_training", profile_memory=True)
-def train_model(epochs=100):
-    # Your PyTorch training code here
-    # Automatically runs on 4x A100-80GB GPUs
-    pass
-```
+| Option | GPU Configuration | Memory | Use Case               |
+| ------ | ----------------- | ------ | ---------------------- |
+| 1      | 1x A100-80GB      | 80GB   | Development, inference |
+| 2      | 2x A100-80GB      | 160GB  | Medium training        |
+| 4      | 4x A100-80GB      | 320GB  | Large models           |
+| 8      | 8x A100-80GB      | 640GB  | Massive models         |
 
-### Data Processing
-```python
-@app.capture_trace(trace_name="data_processing", record_shapes=True)
-def process_large_dataset(data_size_gb=10):
-    # Process large datasets on GPU
-    pass
-```
+## Documentation
 
-**[👀 See more examples](docs/examples.md)**
+- **[Getting Started](docs/getting-started.md)** - Installation and first steps
+- **[API Reference](docs/api-reference.md)** - Complete function reference
+- **[Examples](docs/examples.md)** - Working code examples
+- **[Configuration](docs/configuration.md)** - Setup and optimization
+- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 
-## 🖥️ GPU Types
+## Examples
 
-| GPU Configuration     | Use Case               | Memory |
-| --------------------- | ---------------------- | ------ |
-| `GPUType.A100_80GB_1` | Development, inference | 80GB   |
-| `GPUType.A100_80GB_2` | Medium training        | 160GB  |
-| `GPUType.A100_80GB_4` | Large models           | 320GB  |
-| `GPUType.A100_80GB_8` | Massive models         | 640GB  |
+See the [examples](examples/) directory for working code:
 
-## 🛠️ Development
+- [Basic usage](examples/simple_example.py) - Matrix operations
+- [Command line args](examples/args_example.py) - Script with arguments
+- [Deep learning](docs/examples.md#deep-learning) - PyTorch training
+- [Multi-GPU](docs/examples.md#multi-gpu) - Parallel processing
 
-**Local development setup:**
+## Authentication
+
+Chisel CLI handles authentication automatically:
+
 ```bash
-git clone https://github.com/Herdora/chisel.git
-cd chisel
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
-```
+# First time: Browser opens for authentication
+chisel python my_script.py
 
-**Run tests and formatting:**
-```bash
-ruff check src/ examples/
-ruff format src/ examples/
-pytest
-```
-
-**Version and Logout:**
-```bash
-# Check version
-chisel --version
-
-# Logout
+# Logout to clear credentials
 chisel --logout
 ```
 
-## 📤 Publishing to PyPI
+Credentials are stored securely in `~/.chisel/credentials.json`.
 
-**Prerequisites:**
-1. Create accounts on [PyPI](https://pypi.org/account/register/) and [Test PyPI](https://test.pypi.org/account/register/)
-2. Generate API tokens for both accounts
-3. Install build and upload tools:
+## Development
+
 ```bash
-pip install build twine
+# Clone repository
+git clone https://github.com/Herdora/chisel.git
+cd chisel
+
+# Install in development mode
+pip install -e .
+
+# Run tests
+pytest
+
+# Check code style
+ruff check src/ examples/
 ```
 
-**Configure API tokens:**
-```bash
-# Add to ~/.pypirc
-[distutils]
-index-servers =
-    pypi
-    testpypi
+## Contributing
 
-[pypi]
-username = __token__
-password = pypi-your-api-token-here
+We welcome contributions! Please see [Development Guide](docs/development.md) for details.
 
-[testpypi]
-repository = https://test.pypi.org/legacy/
-username = __token__
-password = pypi-your-test-api-token-here
-```
-
-**Build the package:**
-```bash
-# Clean previous builds
-rm -rf dist/ build/ src/*.egg-info/
-
-# Build source distribution and wheel
-python -m build
-
-# Upload to production PyPI
-python -m twine upload dist/*
-
-# Verify installation
-pip install chisel-cli
-```
-
-**Version Management:**
-1. Update version in `pyproject.toml`
-2. Commit and tag the release:
-```bash
-git add pyproject.toml
-git commit -m "Bump version to X.Y.Z"
-git tag vX.Y.Z
-git push origin main --tags
-```
-3. Build and upload as described above
-
-## 📦 Project Structure
-
-```
-chisel/
-├── src/chisel/              # Main package
-│   ├── __init__.py         # Public API and CLI entry point  
-│   ├── core.py             # ChiselApp and core functionality
-│   ├── auth.py             # Authentication service
-│   ├── constants.py        # GPU types and configuration
-│   └── spinner.py          # UI utilities
-├── examples/               # Working examples
-├── docs/                   # Comprehensive documentation
-└── pyproject.toml         # Package configuration
-```
-
-## 🚀 Why Chisel?
-
-- **Effortless scaling** - Run the same code locally or on powerful cloud GPUs
-- **Cost effective** - Pay only for GPU time used, automatic job cleanup
-- **Developer friendly** - Minimal code changes, works with existing workflows
-- **Production ready** - Secure authentication, job monitoring, error handling
-
-## 📞 Support
+## Support
 
 - **📧 Email**: [contact@herdora.com](mailto:contact@herdora.com)
-- **📖 Documentation**: [docs/](docs/)
 - **🐛 Issues**: [GitHub Issues](https://github.com/Herdora/chisel/issues)
 - **💬 Discussions**: [GitHub Discussions](https://github.com/Herdora/chisel/discussions)
 
----
+## License
 
-**Ready to accelerate your Python code?** Start with the [Getting Started Guide](docs/getting-started.md)!
+MIT License - see [LICENSE](LICENSE) for details.

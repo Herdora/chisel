@@ -6,21 +6,19 @@ Working examples for different Chisel CLI use cases.
 
 | Example                                      | Description           | Command                                                 |
 | -------------------------------------------- | --------------------- | ------------------------------------------------------- |
-| [Basic Usage](#basic-usage)                  | Matrix operations     | `chisel python examples/basic_usage.py`                 |
+| [Basic Usage](#basic-usage)                  | Matrix operations     | `chisel python examples/simple_example.py`              |
 | [Command Line Args](#command-line-arguments) | Script with arguments | `chisel python examples/args_example.py --iterations 5` |
 | [Deep Learning](#deep-learning)              | PyTorch training      | See below                                               |
 | [Multi-GPU](#multi-gpu)                      | Parallel processing   | See below                                               |
 
 ## Basic Usage
 
-**File:** [`examples/basic_usage.py`](../examples/basic_usage.py)
+**File:** [`examples/simple_example.py`](../examples/simple_example.py)
 
 ```python
-from chisel import ChiselApp, GPUType
+from chisel import capture_trace
 
-app = ChiselApp("basic-example", gpu=GPUType.A100_80GB_2)
-
-@app.capture_trace(trace_name="matrix_multiply", record_shapes=True)
+@capture_trace(trace_name="matrix_multiply", record_shapes=True)
 def matrix_multiply(size: int = 1000):
     import torch
     
@@ -34,7 +32,7 @@ def matrix_multiply(size: int = 1000):
     print(f"✅ Matrix multiplication completed! Shape: {result.shape}")
     return result.cpu().numpy()
 
-@app.capture_trace(trace_name="simple_computation")
+@capture_trace(trace_name="simple_computation")
 def simple_computation(n: int = 1000000):
     import torch
     
@@ -56,7 +54,7 @@ if __name__ == "__main__":
 
 **Run:**
 ```bash
-chisel python examples/basic_usage.py
+chisel python examples/simple_example.py
 ```
 
 ## Command Line Arguments
@@ -65,11 +63,9 @@ chisel python examples/basic_usage.py
 
 ```python
 import argparse
-from chisel import ChiselApp, GPUType
+from chisel import capture_trace
 
-app = ChiselApp("args-example", gpu=GPUType.A100_80GB_1)
-
-@app.capture_trace(trace_name="simple_ops", record_shapes=True)
+@capture_trace(trace_name="simple_ops", record_shapes=True)
 def simple_operations(iterations: int):
     import torch
     
@@ -120,9 +116,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from chisel import ChiselApp, GPUType
-
-app = ChiselApp("deep-learning", gpu=GPUType.A100_80GB_2)
+from chisel import capture_trace
 
 class SimpleNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -137,7 +131,7 @@ class SimpleNN(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-@app.capture_trace(trace_name="data_generation")
+@capture_trace(trace_name="data_generation")
 def generate_data(n_samples=10000, n_features=100):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -147,7 +141,7 @@ def generate_data(n_samples=10000, n_features=100):
     
     return X.cpu(), y.cpu()
 
-@app.capture_trace(trace_name="training", profile_memory=True)
+@capture_trace(trace_name="training", profile_memory=True)
 def train_model(X, y, epochs=50):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"🎯 Training on: {device}")
@@ -203,11 +197,9 @@ Parallel processing with multiple GPUs.
 import torch
 import torch.nn as nn
 from torch.nn.parallel import DataParallel
-from chisel import ChiselApp, GPUType
+from chisel import capture_trace
 
-app = ChiselApp("multi-gpu", gpu=GPUType.A100_80GB_4)
-
-@app.capture_trace(trace_name="multi_gpu_setup")
+@capture_trace(trace_name="multi_gpu_setup")
 def setup_multi_gpu():
     if not torch.cuda.is_available():
         return False, 0
@@ -236,7 +228,7 @@ class LargeModel(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-@app.capture_trace(trace_name="parallel_training", profile_memory=True)
+@capture_trace(trace_name="parallel_training", profile_memory=True)
 def train_parallel(batch_size=1024, n_batches=50):
     has_cuda, n_gpus = setup_multi_gpu()
     if not has_cuda:
@@ -288,7 +280,7 @@ chisel python multi_gpu_example.py
 
 **Error handling:**
 ```python
-@app.capture_trace(trace_name="robust")
+@capture_trace(trace_name="robust")
 def robust_function(data):
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -318,13 +310,13 @@ for i in range(0, len(data), batch_size):
 
 **Multiple functions:**
 ```python
-@app.capture_trace(trace_name="preprocess")
+@capture_trace(trace_name="preprocess")
 def preprocess(data): pass
 
-@app.capture_trace(trace_name="train")
+@capture_trace(trace_name="train")
 def train(data): pass
 
-@app.capture_trace(trace_name="evaluate")
+@capture_trace(trace_name="evaluate")
 def evaluate(data): pass
 ```
 

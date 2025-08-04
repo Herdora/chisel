@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 
-from chisel import ChiselApp, GPUType
-
-# Example with custom requirements file path
-app = ChiselApp(
-    "specific-call-example", gpu=GPUType.A100_80GB_1, requirements_file="requirements.txt"
-)
+from chisel import capture_trace
 
 
 # Example external functions to demonstrate inline tracing
@@ -75,21 +70,21 @@ def compute_statistics(data_size: int = 5000):
 
 def main():
     print("🚀 Starting Inline Tracing Example")
-    print("📋 This demonstrates inline wrapping of external functions with app.capture_trace")
+    print("📋 This demonstrates inline wrapping of external functions with capture_trace")
 
-    # Inline tracing - wrap function calls directly (like main2.py style)
+    # Inline tracing - wrap function calls directly
     print("\n🔧 Inline traced matrix operations:")
-    result1 = app.capture_trace(trace_name="matrix_ops", record_shapes=True, profile_memory=True)(
+    result1 = capture_trace(trace_name="matrix_ops", record_shapes=True, profile_memory=True)(
         matrix_operations
     )(150)
 
     print("\n🔧 Inline traced data processing:")
-    result2 = app.capture_trace(
-        trace_name="data_processing", record_shapes=True, profile_memory=True
-    )(data_processing)(2000)
+    result2 = capture_trace(trace_name="data_processing", record_shapes=True, profile_memory=True)(
+        data_processing
+    )(2000)
 
     print("\n🔧 Inline traced statistics:")
-    stats = app.capture_trace(trace_name="statistics", record_shapes=False, profile_memory=True)(
+    stats = capture_trace(trace_name="statistics", record_shapes=True, profile_memory=True)(
         compute_statistics
     )(5000)
 

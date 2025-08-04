@@ -4,44 +4,49 @@ Configuring Chisel CLI for optimal performance.
 
 ## GPU Types
 
-| GPU Type              | GPUs         | Memory | Use Case               |
-| --------------------- | ------------ | ------ | ---------------------- |
-| `GPUType.A100_80GB_1` | 1x A100-80GB | 80GB   | Development, inference |
-| `GPUType.A100_80GB_2` | 2x A100-80GB | 160GB  | Medium training        |
-| `GPUType.A100_80GB_4` | 4x A100-80GB | 320GB  | Large models           |
-| `GPUType.A100_80GB_8` | 8x A100-80GB | 640GB  | Massive models         |
+When using the `chisel` command, you'll be prompted to select a GPU configuration:
+
+| Option | GPU Configuration | Memory | Use Case               |
+| ------ | ----------------- | ------ | ---------------------- |
+| 1      | 1x A100-80GB      | 80GB   | Development, inference |
+| 2      | 2x A100-80GB      | 160GB  | Medium training        |
+| 4      | 4x A100-80GB      | 320GB  | Large models           |
+| 8      | 8x A100-80GB      | 640GB  | Massive models         |
 
 ### Selection Guidelines
 
 **Single GPU:** Small models, inference, development
-```python
-app = ChiselApp("inference-app", gpu=GPUType.A100_80GB_1)
+```bash
+chisel python my_script.py
+# Select option 1 when prompted
 ```
 
 **Dual GPU:** Medium models, balanced performance/cost
-```python
-app = ChiselApp("training-app", gpu=GPUType.A100_80GB_2)
+```bash
+chisel python my_script.py
+# Select option 2 when prompted
 ```
 
 **Quad GPU:** Large models, high-throughput training
-```python
-app = ChiselApp("large-training", gpu=GPUType.A100_80GB_4)
+```bash
+chisel python my_script.py
+# Select option 4 when prompted
 ```
 
 **Octa GPU:** Massive models, maximum throughput
-```python
-app = ChiselApp("massive-training", gpu=GPUType.A100_80GB_8)
+```bash
+chisel python my_script.py
+# Select option 8 when prompted
 ```
 
 ## Environment Variables
 
-| Variable             | Purpose                     | Set By           |
-| -------------------- | --------------------------- | ---------------- |
-| `CHISEL_ACTIVATED`   | Activates GPU functionality | `chisel` command |
-| `CHISEL_BACKEND_URL` | Backend URL                 | User (optional)  |
-| `CHISEL_API_KEY`     | Authentication token        | Auth system      |
-| `CHISEL_BACKEND_RUN` | Running on backend          | Backend system   |
-| `CHISEL_JOB_ID`      | Current job ID              | Backend system   |
+| Variable             | Purpose              | Set By          |
+| -------------------- | -------------------- | --------------- |
+| `CHISEL_BACKEND_RUN` | Running on backend   | Backend system  |
+| `CHISEL_JOB_ID`      | Current job ID       | Backend system  |
+| `CHISEL_BACKEND_URL` | Override backend URL | User (optional) |
+| `CHISEL_API_KEY`     | Authentication token | Auth system     |
 
 ### Custom Backend
 
@@ -50,40 +55,47 @@ export CHISEL_BACKEND_URL="https://api.herdora.com"
 chisel python my_script.py
 ```
 
-## Application Configuration
+## Interactive Configuration
 
-### ChiselApp Options
+When you run `chisel python script.py`, the CLI will prompt you for:
 
-```python
-app = ChiselApp(
-    name="my-app",              # Required: App identifier
-    upload_dir="./src",         # Optional: Upload directory (default: ".")
-    gpu=GPUType.A100_80GB_2     # Optional: GPU configuration
-)
+### App Name
+```bash
+📝 App name (for job tracking): my-training-job
 ```
+- Used for job tracking and identification
+- Should be descriptive of your workload
 
 ### Upload Directory
+```bash
+📁 Upload directory (default: current directory): ./src
+```
+- Directory containing your code and data
+- Should include your script and dependencies
+- Keep under 100MB for optimal upload speed
 
-```python
-# Upload current directory (default)
-app = ChiselApp("app", upload_dir=".")
+### Requirements File
+```bash
+📋 Requirements file (default: requirements.txt): requirements.txt
+```
+- File listing Python dependencies
+- Should include PyTorch and other required packages
 
-# Upload specific directory
-app = ChiselApp("app", upload_dir="./src")
+### GPU Configuration
+```bash
+🎮 GPU Options:
+  1. A100-80GB:1 - Single GPU - Development, inference
+  2. A100-80GB:2 - 2x GPUs - Medium training
+  4. A100-80GB:4 - 4x GPUs - Large models
+  8. A100-80GB:8 - 8x GPUs - Massive models
 
-# Upload parent directory
-app = ChiselApp("app", upload_dir="../")
+🎮 Select GPU configuration (1-8, default: 1): 2
 ```
 
-**Best practices:**
-- Keep under 100MB
-- Use `.gitignore` to exclude unnecessary files
-- Include only required code and data
-
-### Trace Configuration
+## Trace Configuration
 
 ```python
-@app.capture_trace(
+@capture_trace(
     trace_name="my_operation",
     record_shapes=True,
     profile_memory=True
@@ -108,7 +120,7 @@ def my_function():
 import torch
 import gc
 
-@app.capture_trace(trace_name="memory_optimized")
+@capture_trace(trace_name="memory_optimized")
 def memory_efficient_processing(data):
     torch.cuda.empty_cache()  # Clear cache
     
@@ -134,7 +146,7 @@ def memory_efficient_processing(data):
 ```python
 from torch.nn.parallel import DataParallel
 
-@app.capture_trace(trace_name="multi_gpu")
+@capture_trace(trace_name="multi_gpu")
 def setup_multi_gpu_model(model):
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs")
@@ -148,7 +160,7 @@ def setup_multi_gpu_model(model):
 ```python
 from torch.cuda.amp import autocast, GradScaler
 
-@app.capture_trace(trace_name="mixed_precision")
+@capture_trace(trace_name="mixed_precision")
 def train_with_mixed_precision(model, data_loader):
     scaler = GradScaler()
     
@@ -193,17 +205,17 @@ def find_optimal_batch_size(model, sample_input, gpu_memory_gb=80):
 ### Local Development
 
 ```python
-import os
-
-# Disable Chisel for local development
-if os.getenv('DEVELOPMENT'):
-    pass  # ChiselApp will be in pass-through mode
-
-app = ChiselApp("dev-app")
-
-@app.capture_trace()  # No-op locally
+# Your script works both locally and on cloud
+@capture_trace(trace_name="my_function")
 def my_function():
+    # This runs locally with 'python script.py'
+    # This runs on GPU with 'chisel python script.py'
     pass
+
+# Test locally
+if __name__ == "__main__":
+    result = my_function()
+    print(f"Result: {result}")
 ```
 
 ### Debug Mode
@@ -285,7 +297,7 @@ PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
 from dotenv import load_dotenv
 load_dotenv()
 
-app = ChiselApp("configured-app")
+# Your script will use the configured backend
 ```
 
 ## Best Practices
@@ -295,5 +307,7 @@ app = ChiselApp("configured-app")
 3. **Manage memory** - Monitor usage, process in chunks
 4. **Optimize batches** - Find optimal batch sizes
 5. **Separate environments** - Different configs for dev/prod
+6. **Test locally** - Ensure your script works with `python script.py`
+7. **Use descriptive names** - App names help with job tracking
 
 **Next:** [Troubleshooting](troubleshooting.md) | [Development](development.md)

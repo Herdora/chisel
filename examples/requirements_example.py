@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from chisel import ChiselApp, GPUType
+from chisel import capture_trace
 
 # # Example 1: Using default requirements.txt (automatically detected)
 # app_default = ChiselApp("requirements-default", gpu=GPUType.A100_80GB_1)
@@ -11,12 +11,12 @@ from chisel import ChiselApp, GPUType
 # )
 
 # Example 3: Using requirements in subdirectory
-app_subdir = ChiselApp(
-    "requirements-subdir", gpu=GPUType.A100_80GB_1, requirements_file="requirements/dev.txt"
-)
+# app_subdir = ChiselApp(
+#     "requirements-subdir", gpu=GPUType.A100_80GB_2, requirements_file="requirements/dev.txt"
+# )
 
 
-@app_subdir.capture_trace(trace_name="requirements_demo", record_shapes=True)
+@capture_trace(trace_name="requirements_demo", record_shapes=True)
 def requirements_demo():
     """Demonstrate that packages from requirements.txt are available."""
     import torch

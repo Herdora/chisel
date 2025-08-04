@@ -1,37 +1,15 @@
 # API Reference
 
-Complete reference for Chisel CLI classes and functions.
+Complete reference for Chisel CLI functions and classes.
 
-## ChiselApp
+## capture_trace
 
-Main class for GPU-accelerated applications.
-
-```python
-from chisel import ChiselApp, GPUType
-
-app = ChiselApp(name, upload_dir=".", gpu=None)
-```
-
-**Parameters:**
-- `name` (str): Application name for job tracking
-- `upload_dir` (str): Directory to upload (default: current directory)
-- `gpu` (GPUType): GPU configuration
-
-**Examples:**
-```python
-# Recommended: Using GPUType enum
-app = ChiselApp("my-app", gpu=GPUType.A100_80GB_2)
-
-# Legacy: Using string
-app = ChiselApp("my-app", gpu="A100-80GB:2")
-```
-
-### @capture_trace()
-
-Decorator for GPU execution and tracing.
+Main decorator for GPU execution and tracing.
 
 ```python
-@app.capture_trace(
+from chisel import capture_trace
+
+@capture_trace(
     trace_name=None,
     record_shapes=False,
     profile_memory=False
@@ -41,17 +19,21 @@ def my_function():
 ```
 
 **Parameters:**
-- `trace_name` (str): Operation identifier
+- `trace_name` (str): Operation identifier for trace files
 - `record_shapes` (bool): Record tensor shapes for debugging
 - `profile_memory` (bool): Profile memory usage
 
 **Example:**
 ```python
-@app.capture_trace(trace_name="matrix_ops", record_shapes=True)
+@capture_trace(trace_name="matrix_ops", record_shapes=True)
 def matrix_multiply(a, b):
     import torch
     return torch.mm(a, b)
 ```
+
+**Behavior:**
+- **Local execution** (`python script.py`): Decorator is pass-through, function runs normally
+- **Cloud execution** (`chisel python script.py`): Function runs on GPU with profiling
 
 ## GPU Types
 
@@ -66,9 +48,6 @@ GPUType.A100_80GB_8  # 8x A100-80GB GPUs
 
 **Usage:**
 ```python
-# Direct usage
-app = ChiselApp("my-app", gpu=GPUType.A100_80GB_4)
-
 # Get string value
 gpu_string = GPUType.A100_80GB_2.value  # "A100-80GB:2"
 
@@ -110,9 +89,10 @@ chisel --version
 ```
 
 **How it works:**
-1. Sets `CHISEL_ACTIVATED=1` environment variable
-2. Executes command with GPU functionality enabled
-3. Streams real-time output and status updates during execution
+1. **Interactive setup**: Prompts for app name, upload directory, requirements file, and GPU configuration
+2. **Authentication**: Handles authentication automatically
+3. **Job submission**: Uploads code and submits job to cloud GPU
+4. **Real-time output**: Streams job status and output
 
 **Examples:**
 ```bash
@@ -123,7 +103,7 @@ chisel python my_script.py
 chisel python train.py --epochs 10
 
 # Any Python command
-chisel python -m pytest tests/
+chisel python -m pytest
 chisel jupyter notebook
 
 # Logout (clear credentials)
@@ -137,13 +117,12 @@ chisel version
 
 ## Environment Variables
 
-| Variable             | Purpose                     | Set By           |
-| -------------------- | --------------------------- | ---------------- |
-| `CHISEL_ACTIVATED`   | Activates GPU functionality | `chisel` command |
-| `CHISEL_BACKEND_URL` | Override backend URL        | User (optional)  |
-| `CHISEL_API_KEY`     | Authentication token        | Auth system      |
-| `CHISEL_BACKEND_RUN` | Running on backend          | Backend system   |
-| `CHISEL_JOB_ID`      | Current job ID              | Backend system   |
+| Variable             | Purpose              | Set By          |
+| -------------------- | -------------------- | --------------- |
+| `CHISEL_BACKEND_RUN` | Running on backend   | Backend system  |
+| `CHISEL_JOB_ID`      | Current job ID       | Backend system  |
+| `CHISEL_BACKEND_URL` | Override backend URL | User (optional) |
+| `CHISEL_API_KEY`     | Authentication token | Auth system     |
 
 **Custom backend:**
 ```bash
@@ -168,67 +147,74 @@ AssertionError("Script /path/to/script.py is not inside upload_dir /path/to/uplo
 ### Best Practices
 
 ```python
-try:
-    app = ChiselApp("my-app", gpu=GPUType.A100_80GB_1)
-    
-    @app.capture_trace(trace_name="safe_ops")
-    def safe_function(data):
+@capture_trace(trace_name="safe_ops")
+def safe_function(data):
+    try:
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         tensor = torch.tensor(data, device=device)
         return tensor.cpu().numpy()
-        
-except RuntimeError as e:
-    print(f"❌ Chisel failed: {e}")
-    # Fallback to local execution
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise
 ```
 
 ## Advanced Usage
 
-### Multiple Apps
+### Multiple Functions
 
 ```python
-# Different GPU configs for different tasks
-prep_app = ChiselApp("preprocess", gpu=GPUType.A100_80GB_1)
-train_app = ChiselApp("training", gpu=GPUType.A100_80GB_4)
+@capture_trace(trace_name="preprocess")
+def preprocess(data): 
+    # Data preprocessing
+    pass
 
-@prep_app.capture_trace(trace_name="clean")
-def preprocess(data): pass
+@capture_trace(trace_name="train")  
+def train(data): 
+    # Model training
+    pass
 
-@train_app.capture_trace(trace_name="train")  
-def train(data): pass
+@capture_trace(trace_name="evaluate")
+def evaluate(data): 
+    # Model evaluation
+    pass
 ```
 
-### Conditional Activation
+### Conditional Execution
 
 ```python
 import os
 
-if os.environ.get("CHISEL_ACTIVATED") == "1":
-    print("🚀 Chisel is activated!")
+# Check if running on Chisel backend
+if os.environ.get("CHISEL_BACKEND_RUN") == "1":
+    print("🚀 Running on cloud GPU!")
+else:
+    print("💻 Running locally")
 ```
 
-### Custom Upload Directory
+### Local Development
 
 ```python
-# Upload specific directory
-app = ChiselApp("my-app", upload_dir="./src")
+# This works both locally and on cloud
+@capture_trace(trace_name="my_function")
+def my_function():
+    # Your GPU code here
+    pass
 
-# Upload parent directory  
-app = ChiselApp("my-app", upload_dir="../")
+# Test locally
+if __name__ == "__main__":
+    result = my_function()
+    print(f"Result: {result}")
 ```
 
 ## Type Hints
 
 ```python
 from typing import Optional
-from chisel import ChiselApp, GPUType
+from chisel import capture_trace
 import numpy as np
 
-def create_app(name: str, gpu: Optional[GPUType] = None) -> ChiselApp:
-    return ChiselApp(name, gpu=gpu)
-
-@app.capture_trace(trace_name="typed_ops")
+@capture_trace(trace_name="typed_ops")
 def process(data: np.ndarray) -> np.ndarray:
     import torch
     tensor = torch.from_numpy(data)

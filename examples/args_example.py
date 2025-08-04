@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
-from chisel import ChiselApp, GPUType
-
-app = ChiselApp("args-example", gpu=GPUType.A100_80GB_1)
+from chisel import capture_trace
 
 
-@app.capture_trace(trace_name="simple_ops", record_shapes=True)
+@capture_trace(trace_name="simple_ops", record_shapes=True)
 def simple_operations(iterations: int):
     import torch
 
