@@ -46,6 +46,26 @@ Minimal example showing the new simplified usage pattern:
 chisel python examples/simple_example.py
 ```
 
+### Large File Caching Examples (`large_file_test/`)
+Comprehensive examples demonstrating automatic caching of large files (>1GB):
+
+```bash
+# Quick test - create and process a 1.1GB file
+chisel python examples/large_file_test/quick_test.py
+
+# Full featured example with multiple large files
+chisel python examples/large_file_caching_example.py
+
+# Test deduplication with identical files
+chisel python examples/large_file_test/dedup_test.py
+```
+
+**Features demonstrated:**
+- Automatic detection and caching of files >1GB
+- SHA256-based deduplication 
+- Transparent placeholder/restoration system
+- Significant speedup on repeat runs
+
 ## Installation
 
 Make sure you have Chisel CLI installed:
@@ -94,3 +114,12 @@ On first run, Chisel CLI will automatically open your browser for authentication
 - Trace files are saved to the backend and can be downloaded for analysis
 - All examples include comprehensive error handling and user feedback
 - The same code works both locally and on cloud GPUs
+
+### Large File Caching
+
+- Files >1GB are automatically cached by SHA256 hash
+- First run uploads and caches large files
+- Subsequent runs with identical files use cache (much faster!)
+- Deduplication saves storage - identical files cached only once
+- Cache management available in frontend at `/cached-files`
+- Files restored automatically during job execution

@@ -5,6 +5,7 @@ import tempfile
 import tarfile
 import requests
 import argparse
+import json
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -15,6 +16,7 @@ from .constants import (
     GPUType,
 )
 from .spinner import SimpleSpinner
+from .cached_files import process_directory_for_cached_files, scan_directory_for_large_files
 
 # Rich imports for beautiful CLI
 try:
@@ -353,6 +355,52 @@ Examples:
 
         upload_dir = Path(upload_dir)
 
+        # Process directory for cached files
+        processed_dir = upload_dir
+        cached_files_info = []
+
+        # Check for large files that could be cached
+        large_files = scan_directory_for_large_files(upload_dir)
+        if large_files:
+            if RICH_AVAILABLE:
+                self.console.print(
+                    f"[yellow]Found {len(large_files)} large file(s) that could be cached[/yellow]"
+                )
+            else:
+                print(f"Found {len(large_files)} large file(s) that could be cached")
+
+            try:
+                # Create a temporary directory for processing
+                temp_processing_dir = Path(tempfile.mkdtemp())
+
+                # Process the directory to handle cached files
+                print(f"Processing directory: {upload_dir}")
+                processed_dir, cached_files_info = process_directory_for_cached_files(
+                    upload_dir, api_key, temp_processing_dir
+                )
+
+                if cached_files_info:
+                    if RICH_AVAILABLE:
+                        self.console.print(
+                            f"[green]Successfully processed {len(cached_files_info)} cached file(s)[/green]"
+                        )
+                    else:
+                        print(f"Successfully processed {len(cached_files_info)} cached file(s)")
+
+            except Exception as e:
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        f"[yellow]Warning: Could not process cached files: {e}[/yellow]"
+                    )
+                    self.console.print("[yellow]Continuing with original directory...[/yellow]")
+                else:
+                    print(f"Warning: Could not process cached files: {e}")
+                    print("Continuing with original directory...")
+
+                # Fallback to original directory if processing fails
+                processed_dir = upload_dir
+                cached_files_info = []
+
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
             tar_path = tmp_file.name
 
@@ -363,29 +411,43 @@ Examples:
                     TextColumn("[progress.description]{task.description}"),
                     console=self.console,
                 ) as progress:
-                    task = progress.add_task(f"Creating archive from {upload_dir.name}", total=None)
+                    task = progress.add_task(
+                        f"Creating archive from {processed_dir.name}", total=None
+                    )
 
                     try:
                         with tarfile.open(tar_path, "w:gz") as tar:
-                            tar.add(upload_dir, arcname=".", filter=tar_filter)
+                            tar.add(processed_dir, arcname=".", filter=tar_filter)
 
                         tar_size = Path(tar_path).stat().st_size
                         size_mb = tar_size / (1024 * 1024)
-                        progress.update(task, description=f"Archive created: {size_mb:.1f} MB")
+                        size_kb = tar_size / 1024
+
+                        # Show KB for small archives, MB for larger ones
+                        if size_mb < 1.0:
+                            progress.update(task, description=f"Archive created: {size_kb:.2f} KB")
+                        else:
+                            progress.update(task, description=f"Archive created: {size_mb:.3f} MB")
                     except Exception as e:
                         progress.update(task, description="Archive creation failed")
                         raise e
             else:
-                spinner = SimpleSpinner(f"Creating archive from {upload_dir.name}")
+                spinner = SimpleSpinner(f"Creating archive from {processed_dir.name}")
                 spinner.start()
 
                 try:
                     with tarfile.open(tar_path, "w:gz") as tar:
-                        tar.add(upload_dir, arcname=".", filter=tar_filter)
+                        tar.add(processed_dir, arcname=".", filter=tar_filter)
 
                     tar_size = Path(tar_path).stat().st_size
                     size_mb = tar_size / (1024 * 1024)
-                    spinner.stop(f"Archive created: {size_mb:.1f} MB")
+                    size_kb = tar_size / 1024
+
+                    # Show KB for small archives, MB for larger ones
+                    if size_mb < 1.0:
+                        spinner.stop(f"Archive created: {size_kb:.2f} KB")
+                    else:
+                        spinner.stop(f"Archive created: {size_mb:.3f} MB")
                 except Exception as e:
                     spinner.stop("Archive creation failed")
                     raise e
@@ -398,6 +460,7 @@ Examples:
                 "pip_packages": ",".join(MINIMUM_PACKAGES),
                 "gpu": gpu,
                 "script_args": " ".join(script_args) if script_args else "",
+                "cached_files": json.dumps(cached_files_info) if cached_files_info else "",
                 "requirements_file": requirements_file,
             }
 
