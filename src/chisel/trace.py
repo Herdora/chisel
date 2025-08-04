@@ -72,6 +72,7 @@ def _execute_with_trace(
         return fn(*args, **kwargs)
 
     volume_path = Path("/volume")
+    print(f"🔍 [capture_trace] App name: {os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY)}")
     job_trace_dir = (
         volume_path / job_id / TRACE_DIR / os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY)
     )
