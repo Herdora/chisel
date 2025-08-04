@@ -76,6 +76,7 @@ def _execute_with_trace(
     job_trace_dir = (
         volume_path / job_id / TRACE_DIR / os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY)
     )
+    print(f"🔍 [capture_trace] Job trace dir: {job_trace_dir}")
     job_trace_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"🔍 [capture_trace] Tracing {fn.__name__} -> {job_trace_dir}/{trace_name}.json")
