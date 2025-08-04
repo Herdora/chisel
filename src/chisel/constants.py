@@ -1,7 +1,7 @@
 from enum import Enum
 
 DEFAULT_TRACE_ACTIVITIES = ["CPU", "CUDA"]
-MINIMUM_PACKAGES = ["torch", "requests"]
+MINIMUM_PACKAGES = ["torch", "requests", "git+https://github.com/Herdora/chisel.git@dev"]
 ENV_CACHY_ENABLED = "CACHY_ENABLED"
 
 TRACE_DIR = "traces"
