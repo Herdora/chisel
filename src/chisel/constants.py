@@ -13,8 +13,8 @@ CHISEL_API_KEY_ENV_KEY = "CHISEL_API_KEY"
 CHISEL_BACKEND_URL_ENV_KEY = "CHISEL_BACKEND_URL"
 CHISEL_BACKEND_APP_NAME_ENV_KEY = "CHISEL_BACKEND_APP_NAME"
 
-CHISEL_BACKEND_URL = "http://localhost:8000"
-# CHISEL_BACKEND_URL = "https://api.keysandcaches.com"
+# CHISEL_BACKEND_URL = "http://localhost:8000"
+CHISEL_BACKEND_URL = "https://api.keysandcaches.com"
 
 
 class GPUType(Enum):
