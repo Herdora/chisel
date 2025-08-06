@@ -140,6 +140,30 @@ chisel --logout
 
 Credentials are stored securely in `~/.chisel/credentials.json`.
 
+## Backend Configuration
+
+Chisel CLI connects to the production API by default. For development, you can switch to localhost:
+
+```bash
+# Production (default)
+chisel python my_script.py
+# → Connects to https://api.keysandcaches.com
+
+# Development mode
+export CHISEL_DEV=1
+chisel python my_script.py
+# → Connects to http://localhost:8000
+
+# Custom backend
+export CHISEL_BACKEND_URL="https://custom-api.example.com"
+chisel python my_script.py
+```
+
+**Priority order:**
+1. `CHISEL_BACKEND_URL` environment variable (highest priority)
+2. `CHISEL_DEV=1` → uses localhost:8000
+3. Default → uses production API
+
 ## Development
 
 ```bash

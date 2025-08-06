@@ -36,13 +36,13 @@ chisel python train.py \
 
 **Available flags:**
 
-| Flag | Short | Description | Default | Example |
-|------|-------|-------------|---------|---------|
-| `--app-name` | `-a` | Job name for tracking | Interactive prompt | `--app-name "training-job"` |
-| `--upload-dir` | `-d` | Directory to upload | Current directory (`.`) | `--upload-dir "./src"` |
-| `--requirements` | `-r` | Requirements file | `requirements.txt` | `--requirements "dev.txt"` |
-| `--gpu` | `-g` | GPU count (1,2,4,8) | 1 | `--gpu 4` |
-| `--interactive` | `-i` | Force interactive mode | Auto-detect | `--interactive` |
+| Flag             | Short | Description            | Default                 | Example                     |
+| ---------------- | ----- | ---------------------- | ----------------------- | --------------------------- |
+| `--app-name`     | `-a`  | Job name for tracking  | Interactive prompt      | `--app-name "training-job"` |
+| `--upload-dir`   | `-d`  | Directory to upload    | Current directory (`.`) | `--upload-dir "./src"`      |
+| `--requirements` | `-r`  | Requirements file      | `requirements.txt`      | `--requirements "dev.txt"`  |
+| `--gpu`          | `-g`  | GPU count (1,2,4,8)    | 1                       | `--gpu 4`                   |
+| `--interactive`  | `-i`  | Force interactive mode | Auto-detect             | `--interactive`             |
 
 ### Mixed Configuration
 
@@ -60,12 +60,12 @@ chisel python script.py --app-name "my-job" --gpu 2
 
 When prompted or using `--gpu` flag, choose from:
 
-| Option | GPU Configuration | Memory | Use Case | Cost |
-|--------|-------------------|--------|----------|------|
-| 1 | 1x A100-80GB | 80GB | Development, inference | Lowest |
-| 2 | 2x A100-80GB | 160GB | Medium training | Low |
-| 4 | 4x A100-80GB | 320GB | Large models | Medium |
-| 8 | 8x A100-80GB | 640GB | Massive models | Highest |
+| Option | GPU Configuration | Memory | Use Case               | Cost    |
+| ------ | ----------------- | ------ | ---------------------- | ------- |
+| 1      | 1x A100-80GB      | 80GB   | Development, inference | Lowest  |
+| 2      | 2x A100-80GB      | 160GB  | Medium training        | Low     |
+| 4      | 4x A100-80GB      | 320GB  | Large models           | Medium  |
+| 8      | 8x A100-80GB      | 640GB  | Massive models         | Highest |
 
 ### GPU Selection Guidelines
 
@@ -108,11 +108,11 @@ def my_function():
 
 ### Trace Parameters
 
-| Parameter | Type | Description | Default | Overhead |
-|-----------|------|-------------|---------|----------|
-| `trace_name` | str | Operation identifier | Function name | None |
-| `record_shapes` | bool | Record tensor dimensions | False | Low |
-| `profile_memory` | bool | Track memory allocation | False | Medium |
+| Parameter        | Type | Description              | Default       | Overhead |
+| ---------------- | ---- | ------------------------ | ------------- | -------- |
+| `trace_name`     | str  | Operation identifier     | Function name | None     |
+| `record_shapes`  | bool | Record tensor dimensions | False         | Low      |
+| `profile_memory` | bool | Track memory allocation  | False         | Medium   |
 
 **Examples:**
 
@@ -139,12 +139,12 @@ def train_model():
 
 ## Environment Variables
 
-| Variable | Purpose | Set By | Example |
-|----------|---------|--------|---------|
-| `CHISEL_BACKEND_URL` | Override backend URL | User | `https://api.herdora.com` |
-| `CHISEL_BACKEND_RUN` | Running on backend | Backend | `1` |
-| `CHISEL_JOB_ID` | Current job ID | Backend | `job_123456` |
-| `CHISEL_API_KEY` | Authentication token | Auth system | `sk_...` |
+| Variable             | Purpose              | Set By      | Example                   |
+| -------------------- | -------------------- | ----------- | ------------------------- |
+| `CHISEL_BACKEND_URL` | Override backend URL | User        | `https://api.herdora.com` |
+| `CHISEL_BACKEND_RUN` | Running on backend   | Backend     | `1`                       |
+| `CHISEL_JOB_ID`      | Current job ID       | Backend     | `job_123456`              |
+| `CHISEL_API_KEY`     | Authentication token | Auth system | `sk_...`                  |
 
 ### Custom Backend
 
@@ -199,7 +199,7 @@ project/
 │   ├── main.py         # Main script
 │   └── utils.py        # Helper modules
 ├── requirements.txt    # Dependencies
-├── data/              # Data files
+├── data/              # Data files (may contain large files >1GB)
 └── .gitignore         # Exclude patterns
 ```
 
@@ -211,6 +211,16 @@ chisel python src/main.py --upload-dir "./src"
 # Upload entire project
 chisel python main.py --upload-dir "."
 ```
+
+**⚠️ Large File Upload Warning:**  
+When uploading projects with large files (>1GB), **do not refresh the browser page** during the upload process. Chisel automatically caches large files, and refreshing can interrupt this process, causing uploads to fail or restart.
+
+**Upload time estimates:**
+- **1GB file**: First upload ~2-5 minutes, subsequent uploads ~10-30 seconds  
+- **5GB file**: First upload ~10-25 minutes, subsequent uploads ~30-60 seconds
+- **10GB+ files**: First upload ~20-50+ minutes, subsequent uploads ~1-2 minutes
+
+*Times vary based on internet connection speed and server load.*
 
 ### Exclusion Patterns
 

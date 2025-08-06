@@ -123,3 +123,12 @@ On first run, Chisel CLI will automatically open your browser for authentication
 - Deduplication saves storage - identical files cached only once
 - Cache management available in frontend at `/cached-files`
 - Files restored automatically during job execution
+
+**⚠️ Important:** When uploading jobs with large cached files, **do not refresh the browser page** during the upload process. Refreshing can interrupt the caching mechanism and cause the upload to fail or restart.
+
+**Upload time estimates:**
+- **1GB file**: ~2-5 minutes first upload → ~10-30 seconds subsequent uploads
+- **5GB file**: ~10-25 minutes first upload → ~30-60 seconds subsequent uploads  
+- **10GB+ files**: ~20-50+ minutes first upload → ~1-2 minutes subsequent uploads
+
+*Actual times depend on your internet connection speed.*

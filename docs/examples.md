@@ -4,14 +4,14 @@ Working examples for different Chisel CLI use cases. All examples are available 
 
 ## Quick Reference
 
-| Example | Description | Command |
-|---------|-------------|---------|
-| [Basic Usage](#basic-usage) | Matrix operations | `chisel python examples/simple_example.py` |
-| [Command Line Args](#command-line-arguments) | Script with arguments | `chisel python examples/args_example.py --iterations 5` |
-| [Requirements](#requirements-file) | Custom dependencies | `chisel python examples/requirements_example.py` |
-| [Inline Tracing](#inline-tracing) | Wrapping external functions | `chisel python examples/specific_call.py` |
-| [Deep Learning](#deep-learning) | PyTorch training | See below |
-| [Multi-GPU](#multi-gpu) | Parallel processing | See below |
+| Example                                      | Description                 | Command                                                 |
+| -------------------------------------------- | --------------------------- | ------------------------------------------------------- |
+| [Basic Usage](#basic-usage)                  | Matrix operations           | `chisel python examples/simple_example.py`              |
+| [Command Line Args](#command-line-arguments) | Script with arguments       | `chisel python examples/args_example.py --iterations 5` |
+| [Requirements](#requirements-file)           | Custom dependencies         | `chisel python examples/requirements_example.py`        |
+| [Inline Tracing](#inline-tracing)            | Wrapping external functions | `chisel python examples/specific_call.py`               |
+| [Deep Learning](#deep-learning)              | PyTorch training            | See below                                               |
+| [Multi-GPU](#multi-gpu)                      | Parallel processing         | See below                                               |
 
 ## Basic Usage
 
@@ -433,6 +433,35 @@ if __name__ == "__main__":
 # Use 4 GPUs for maximum parallelism
 chisel python multi_gpu_example.py --app-name "multi-gpu-training" --gpu 4
 ```
+
+## Large File Caching
+
+When working with large files (>1GB), Chisel automatically caches them for faster subsequent uploads:
+
+```python
+@capture_trace(trace_name="large_file_processing")
+def process_large_dataset():
+    import numpy as np
+    
+    # Load large file - will be cached automatically
+    data = np.load("large_dataset.npy")  # >1GB file
+    
+    # Your processing code here
+    return process_data(data)
+```
+
+**⚠️ Important:** When uploading jobs with large cached files, **do not refresh the browser page** during the upload process. Refreshing can interrupt the caching mechanism and cause the upload to fail or restart.
+
+**Caching behavior:**
+- **First run**: Large files detected, uploaded to cache (~2-5 minutes for 1GB file), job processes normally
+- **Subsequent runs**: Cached files used, much faster upload times (~10-30 seconds vs 2-5 minutes)
+- **Files >1GB**: Automatically cached using SHA256 hashing
+- **Deduplication**: Identical files cached only once
+
+**Upload time estimates:**
+- **1GB file**: ~2-5 minutes first upload, ~10-30 seconds subsequent uploads
+- **5GB file**: ~10-25 minutes first upload, ~30-60 seconds subsequent uploads  
+- **10GB+ files**: ~20-50+ minutes first upload, ~1-2 minutes subsequent uploads
 
 ## Best Practices
 

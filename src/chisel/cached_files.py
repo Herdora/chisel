@@ -14,8 +14,78 @@ import requests
 
 from .constants import CHISEL_BACKEND_URL, CHISEL_BACKEND_URL_ENV_KEY
 
+# Rich imports for progress tracking
+try:
+    from rich.progress import (
+        Progress,
+        BarColumn,
+        TextColumn,
+        TimeRemainingColumn,
+        FileSizeColumn,
+        TransferSpeedColumn,
+    )
+    from rich.console import Console
+
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 # Minimum file size for caching (1GB)
 MIN_CACHE_FILE_SIZE = 1 * 1024 * 1024 * 1024
+
+
+class ProgressTrackingFile:
+    """File-like object that tracks read progress during upload."""
+
+    def __init__(self, file_path, progress, task):
+        self.file_path = file_path
+        self.progress = progress
+        self.task = task
+        self.file_obj = None
+        self.uploaded = 0
+        self.total_size = file_path.stat().st_size
+
+    def open(self):
+        """Open the file for reading."""
+        self.file_obj = open(self.file_path, "rb")
+        return self
+
+    def read(self, size=-1):
+        """Read data and track progress."""
+        if not self.file_obj:
+            return b""
+
+        chunk = self.file_obj.read(size)
+        if chunk:
+            self.uploaded += len(chunk)
+            self.progress.update(self.task, completed=self.uploaded)
+        return chunk
+
+    def close(self):
+        """Close the file."""
+        if self.file_obj:
+            self.file_obj.close()
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    @property
+    def name(self):
+        return self.file_path.name
+
+
+def upload_with_progress(url, headers, file_path, progress, task):
+    """Upload file with REAL progress tracking - NO memory bloat."""
+
+    # Use progress tracking file object
+    with ProgressTrackingFile(file_path, progress, task) as tracker:
+        files = {"file": (file_path.name, tracker, "application/octet-stream")}
+        response = requests.post(url, headers=headers, files=files)
+
+    return response
 
 
 class CachedFilesClient:
@@ -63,21 +133,74 @@ class CachedFilesClient:
 
     def upload_cached_file(self, file_path: Path) -> Optional[Dict[str, Any]]:
         """
-        Upload a file to the cache.
+        Upload a file to the cache with progress tracking.
 
         Returns:
             dict: Response with upload result or None if failed
         """
+        file_size = file_path.stat().st_size
+        file_size_mb = file_size / (1024 * 1024)
+
         try:
-            with open(file_path, "rb") as f:
-                files = {"file": (file_path.name, f, "application/octet-stream")}
-                response = requests.post(
-                    f"{self.base_url}/upload", headers=self._get_headers(), files=files
+            if RICH_AVAILABLE and file_size > 100 * 1024 * 1024:  # Show progress for files >100MB
+                console = Console()
+
+                with Progress(
+                    TextColumn("[bold blue]Caching", justify="right"),
+                    BarColumn(bar_width=40),
+                    "[progress.percentage]{task.percentage:>3.1f}%",
+                    "•",
+                    FileSizeColumn(),
+                    "•",
+                    TransferSpeedColumn(),
+                    "•",
+                    TimeRemainingColumn(),
+                    console=console,
+                    transient=False,  # Keep progress visible
+                ) as progress:
+                    task = progress.add_task(f"[cyan]{file_path.name}[/cyan]", total=file_size)
+
+                    # Use our custom upload function with realistic progress
+                    response = upload_with_progress(
+                        f"{self.base_url}/upload", self._get_headers(), file_path, progress, task
+                    )
+
+                console.print(
+                    f"✅ [green]Successfully cached {file_path.name} ({file_size_mb:.1f}MB)[/green]"
                 )
+            else:
+                # Fallback for smaller files or when Rich is not available
+                print(f"📤 Caching {file_path.name} ({file_size_mb:.1f}MB)...")
+                with open(file_path, "rb") as f:
+                    files = {"file": (file_path.name, f, "application/octet-stream")}
+                    response = requests.post(
+                        f"{self.base_url}/upload", headers=self._get_headers(), files=files
+                    )
+                print(f"✅ Successfully cached {file_path.name}")
+
             response.raise_for_status()
             return response.json()
+
         except requests.RequestException as e:
-            print(f"Error uploading cached file: {e}")
+            if RICH_AVAILABLE:
+                console = Console()
+                console.print(f"❌ [red]Error caching file: {e}[/red]")
+                # Print more detailed error info
+                if hasattr(e, "response") and e.response is not None:
+                    try:
+                        error_detail = e.response.json()
+                        console.print(f"🔍 [yellow]Server response: {error_detail}[/yellow]")
+                    except Exception:
+                        console.print(f"🔍 [yellow]Server response: {e.response.text}[/yellow]")
+            else:
+                print(f"❌ Error caching file: {e}")
+                # Print more detailed error info
+                if hasattr(e, "response") and e.response is not None:
+                    try:
+                        error_detail = e.response.json()
+                        print(f"🔍 Server response: {error_detail}")
+                    except Exception:
+                        print(f"🔍 Server response: {e.response.text}")
             return None
 
     def increment_file_reference(self, file_id: str) -> bool:

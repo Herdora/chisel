@@ -479,6 +479,26 @@ ping -c 10 your-backend-url
 iftop  # or similar network monitoring tool
 ```
 
+4. **Large file caching issues:**
+```bash
+# If upload fails with large files (>1GB)
+# ⚠️ IMPORTANT: Do NOT refresh browser during upload!
+# Refreshing interrupts caching and can cause failures
+
+# Check for large files
+find . -size +1G -type f
+
+# Remove large files from upload if not needed
+chisel python script.py --upload-dir "./src"  # exclude data directory
+```
+
+**Expected upload times for large files:**
+- **1GB**: ~2-5 minutes (first) → ~10-30 seconds (cached)
+- **5GB**: ~10-25 minutes (first) → ~30-60 seconds (cached)  
+- **10GB+**: ~20-50+ minutes (first) → ~1-2 minutes (cached)
+
+If uploads are taking significantly longer, check your internet connection or try during off-peak hours.
+
 ## Debugging
 
 ### Enable Debug Mode
@@ -558,13 +578,13 @@ if __name__ == "__main__":
 
 ## Common Error Patterns
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `ModuleNotFoundError` | Missing dependency | Add to requirements.txt |
-| `CUDA out of memory` | Insufficient GPU memory | Reduce batch size or use larger GPU |
-| `Script not found` | Wrong upload directory | Check `--upload-dir` parameter |
-| `Authentication failed` | Invalid credentials | Run `chisel --logout` and re-authenticate |
-| `Connection timeout` | Network issues | Check backend connectivity |
+| Error                    | Cause                     | Solution                                    |
+| ------------------------ | ------------------------- | ------------------------------------------- |
+| `ModuleNotFoundError`    | Missing dependency        | Add to requirements.txt                     |
+| `CUDA out of memory`     | Insufficient GPU memory   | Reduce batch size or use larger GPU         |
+| `Script not found`       | Wrong upload directory    | Check `--upload-dir` parameter              |
+| `Authentication failed`  | Invalid credentials       | Run `chisel --logout` and re-authenticate   |
+| `Connection timeout`     | Network issues            | Check backend connectivity                  |
 | `Argument parsing error` | Mixed chisel/script flags | Separate chisel flags from script arguments |
 
 ## Getting Help
