@@ -6,7 +6,7 @@ Accelerate your Python functions with cloud GPUs using a simple decorator.
 
 **1. Install Chisel CLI:**
 ```bash
-pip install git+https://github.com/Herdora/chisel.git@dev
+pip install chisel-cli
 ```
 
 **2. Create your script:**
