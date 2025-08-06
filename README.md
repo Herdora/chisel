@@ -62,8 +62,8 @@ from chisel import capture_trace
 @capture_trace(trace_name="my_function")
 def my_gpu_function():
     import torch
-    # Your GPU code here
-    return torch.randn(1000, 1000).cuda()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    return torch.randn(1000, 1000, device=device)
 
 # Runs locally with: python script.py
 # Runs on GPU with: chisel python script.py
@@ -91,7 +91,11 @@ def evaluate(data):
 ### Command Line Arguments
 
 ```bash
+# Pass arguments to your script
 chisel python train.py --epochs 100 --batch-size 32
+
+# Or configure the job directly
+chisel python train.py --app-name "training-job" --gpu 4
 ```
 
 ## GPU Options
