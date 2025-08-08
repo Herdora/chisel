@@ -211,7 +211,7 @@ def main():
 
     # Run examples
     cnn_model = run_cnn_example()
-    # transformer_model = run_transformer_example()
+    transformer_model = run_transformer_example()
 
     # Demonstrate trace analysis
     demonstrate_trace_analysis()

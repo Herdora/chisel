@@ -81,7 +81,7 @@ def capture_model(
         assert os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY), "Chisel app name is not set"
 
         # Create a wrapper class that inherits from the original model
-        class ProfiledModel(type(model)):
+        class ProfiledModel(model):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self._trace_counter = 0
