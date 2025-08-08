@@ -30,8 +30,11 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
-# Minimum file size for caching (1GB)
+# Minimum file size for caching (1GB) - DISABLED
 MIN_CACHE_FILE_SIZE = 1 * 1024 * 1024 * 1024
+
+# Maximum file size for upload (5GB)
+MAX_UPLOAD_FILE_SIZE = 5 * 1024 * 1024 * 1024
 
 
 class ProgressTrackingFile:
@@ -242,28 +245,31 @@ def scan_directory_for_large_files(
     directory: Path, min_size: int = MIN_CACHE_FILE_SIZE
 ) -> List[Path]:
     """
-    Scan a directory for files larger than the minimum cache size.
+    Scan a directory for all files (caching check disabled).
+
+    NOTE: Caching check is disabled - this function now returns all files
+    regardless of size to allow uploading folders of any size.
 
     Args:
         directory: Directory to scan
-        min_size: Minimum file size in bytes
+        min_size: Minimum file size in bytes (ignored, kept for compatibility)
 
     Returns:
-        List of file paths that are larger than min_size
+        List of all file paths in the directory
     """
-    large_files = []
+    all_files = []
     print(f"Scanning directory: {directory}")
     for file_path in directory.rglob("*"):
         if file_path.is_file():
             try:
-                if file_path.stat().st_size >= min_size:
-                    large_files.append(file_path)
+                # Caching check disabled - include all files
+                all_files.append(file_path)
             except (OSError, IOError):
                 print(f"Error accessing file: {file_path}")
                 # Skip files we can't access
                 continue
 
-    return large_files
+    return all_files
 
 
 def create_cached_file_placeholder(
@@ -348,117 +354,21 @@ def process_directory_for_cached_files(
     directory: Path, api_key: str, temp_dir: Optional[Path] = None
 ) -> Tuple[Path, List[Dict[str, Any]]]:
     """
-    Process a directory to replace large files with cached file placeholders.
+    Process a directory - CACHING DISABLED.
+
+    NOTE: Caching is disabled. This function now just returns the original
+    directory without any caching processing to allow uploading folders of any size.
 
     Args:
         directory: Directory to process
-        api_key: API key for authentication
-        temp_dir: Temporary directory to create the processed directory in
+        api_key: API key for authentication (ignored)
+        temp_dir: Temporary directory (ignored)
 
     Returns:
-        Tuple of (processed_directory_path, list_of_cached_file_references)
+        Tuple of (original_directory_path, empty_list)
     """
-    if temp_dir is None:
-        temp_dir = Path(tempfile.mkdtemp())
+    print(f"Processing directory: {directory} (caching disabled)")
 
-    # Create a copy of the directory
-    print(f"Processing directory: {directory}")
-    processed_dir = temp_dir / directory.name
-    print(f"Processed directory: {processed_dir}")
-
-    # Remove existing directory if it exists to avoid conflicts
-    if processed_dir.exists():
-        print(f"Removing existing processed directory: {processed_dir}")
-        shutil.rmtree(processed_dir)
-
-    shutil.copytree(directory, processed_dir)
-
-    # Initialize the cached files client
-    client = CachedFilesClient(api_key)
-    cached_files = []
-
-    # Find large files in the processed directory
-    large_files = scan_directory_for_large_files(processed_dir)
-    print(f"Large files: {large_files}")
-    if not large_files:
-        return processed_dir, cached_files
-
-    print(f"Found {len(large_files)} large file(s) to check for caching...")
-
-    for file_path in large_files:
-        try:
-            # Calculate hash and check if it exists in cache
-            file_hash = client.calculate_file_hash(file_path)
-            check_result = client.check_file_hash(file_hash)
-            print(f"Check result: {check_result} with file hash {file_hash}")
-
-            if check_result.get("exists", False):
-                # File exists in cache, create placeholder
-                print(f"Using cached version of {file_path.name}")
-
-                # Increment reference count
-                file_id = check_result["file_info"]["id"]
-                client.increment_file_reference(file_id)
-
-                # Create placeholder content
-                placeholder_content = create_cached_file_placeholder(
-                    file_path, check_result, processed_dir
-                )
-
-                # Replace the file with placeholder
-                placeholder_path = file_path.with_suffix(file_path.suffix + ".cached")
-                with open(placeholder_path, "w", encoding="utf-8") as f:
-                    f.write(placeholder_content)
-
-                # Remove the original large file
-                file_path.unlink()
-
-                # Track the cached file reference
-                cached_files.append(
-                    {
-                        "original_path": str(file_path.relative_to(processed_dir)),
-                        "placeholder_path": str(placeholder_path.relative_to(processed_dir)),
-                        "cached_file_id": file_id,
-                        "file_hash": file_hash,
-                    }
-                )
-
-            else:
-                # File doesn't exist in cache, upload it
-                print(f"Uploading {file_path.name} to cache...")
-
-                upload_result = client.upload_cached_file(file_path)
-                if upload_result and upload_result.get("success", False):
-                    print(f"Successfully cached {file_path.name}")
-
-                    # Create placeholder and replace file
-                    check_result = {"file_info": upload_result["file_info"]}
-                    placeholder_content = create_cached_file_placeholder(
-                        file_path, check_result, processed_dir
-                    )
-
-                    placeholder_path = file_path.with_suffix(file_path.suffix + ".cached")
-                    with open(placeholder_path, "w", encoding="utf-8") as f:
-                        f.write(placeholder_content)
-
-                    # Remove the original large file
-                    file_path.unlink()
-
-                    # Track the cached file reference
-                    cached_files.append(
-                        {
-                            "original_path": str(file_path.relative_to(processed_dir)),
-                            "placeholder_path": str(placeholder_path.relative_to(processed_dir)),
-                            "cached_file_id": upload_result["file_info"]["id"],
-                            "file_hash": file_hash,
-                        }
-                    )
-                else:
-                    print(f"Failed to upload {file_path.name} to cache, including in archive")
-
-        except Exception as e:
-            print(f"Error processing {file_path.name}: {e}")
-            # Continue with the original file if processing fails
-            continue
-
-    return processed_dir, cached_files
+    # Return the original directory without any processing
+    # No caching, no file replacement, no placeholders
+    return directory, []

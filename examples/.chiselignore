@@ -6,7 +6,7 @@ matrix_multiply.json
 
 # Exclude development/testing files
 test_*.py
-*_test.py
+
 
 # Exclude large data files (if they existed)
 *.npy

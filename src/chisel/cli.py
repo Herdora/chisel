@@ -16,7 +16,11 @@ from .constants import (
     GPUType,
 )
 from .spinner import SimpleSpinner
-from .cached_files import process_directory_for_cached_files, scan_directory_for_large_files
+from .cached_files import (
+    process_directory_for_cached_files,
+    scan_directory_for_large_files,
+    MAX_UPLOAD_FILE_SIZE,
+)
 
 # Rich imports for beautiful CLI
 try:
@@ -1021,46 +1025,93 @@ Examples:
 
         upload_dir = Path(upload_dir)
 
+        # Check for files over 5GB limit
+        oversized_files = []
+        for file_path in upload_dir.rglob("*"):
+            if file_path.is_file():
+                try:
+                    file_size = file_path.stat().st_size
+                    if file_size > MAX_UPLOAD_FILE_SIZE:
+                        oversized_files.append((file_path, file_size))
+                except (OSError, IOError):
+                    # Skip files we can't access
+                    continue
+
+        if oversized_files:
+            # Display error for files over 5GB
+            if RICH_AVAILABLE:
+                self.console.print(
+                    f"[red]❌ Error: Found {len(oversized_files)} file(s) over 5GB limit[/red]"
+                )
+                for file_path, file_size in oversized_files:
+                    size_gb = file_size / (1024 * 1024 * 1024)
+                    self.console.print(f"[red]  • {file_path.name}: {size_gb:.2f}GB[/red]")
+                self.console.print(
+                    f"[yellow]📝 Solution: Download these files within your script instead[/yellow]"
+                )
+                self.console.print(
+                    f"[yellow]   Example: Use requests.get(), urllib.request, or similar to download[/yellow]"
+                )
+                self.console.print(
+                    f"[yellow]   the files during script execution rather than uploading them.[/yellow]"
+                )
+            else:
+                print(f"❌ Error: Found {len(oversized_files)} file(s) over 5GB limit")
+                for file_path, file_size in oversized_files:
+                    size_gb = file_size / (1024 * 1024 * 1024)
+                    print(f"  • {file_path.name}: {size_gb:.2f}GB")
+                print(f"📝 Solution: Download these files within your script instead")
+                print(f"   Example: Use requests.get(), urllib.request, or similar to download")
+                print(f"   the files during script execution rather than uploading them.")
+
+            # Return error response
+            return {
+                "success": False,
+                "error": f"Files over 5GB limit detected. Please download large files within your script instead of uploading them.",
+                "oversized_files": [
+                    {"name": fp.name, "size_gb": fs / (1024 * 1024 * 1024)}
+                    for fp, fs in oversized_files
+                ],
+            }
+
         # Process directory for cached files
         processed_dir = upload_dir
         cached_files_info = []
 
-        # Check for large files that could be cached
-        large_files = scan_directory_for_large_files(upload_dir)
-        if large_files:
+        # Scan directory files (caching disabled)
+        all_files = scan_directory_for_large_files(upload_dir)
+        if all_files:
             if RICH_AVAILABLE:
                 self.console.print(
-                    f"[yellow]Found {len(large_files)} large file(s) that could be cached[/yellow]"
+                    f"[green]Found {len(all_files)} file(s) to upload (caching disabled)[/green]"
                 )
             else:
-                print(f"Found {len(large_files)} large file(s) that could be cached")
+                print(f"Found {len(all_files)} file(s) to upload (caching disabled)")
 
             try:
                 # Create a temporary directory for processing
                 temp_processing_dir = Path(tempfile.mkdtemp())
 
-                # Process the directory to handle cached files
+                # Process the directory (caching disabled - returns original directory)
                 print(f"Processing directory: {upload_dir}")
                 processed_dir, cached_files_info = process_directory_for_cached_files(
                     upload_dir, api_key, temp_processing_dir
                 )
 
-                if cached_files_info:
-                    if RICH_AVAILABLE:
-                        self.console.print(
-                            f"[green]Successfully processed {len(cached_files_info)} cached file(s)[/green]"
-                        )
-                    else:
-                        print(f"Successfully processed {len(cached_files_info)} cached file(s)")
+                # Note: cached_files_info will always be empty since caching is disabled
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        "[green]Directory processed successfully (caching disabled)[/green]"
+                    )
+                else:
+                    print("Directory processed successfully (caching disabled)")
 
             except Exception as e:
                 if RICH_AVAILABLE:
-                    self.console.print(
-                        f"[yellow]Warning: Could not process cached files: {e}[/yellow]"
-                    )
+                    self.console.print(f"[yellow]Warning: Directory processing error: {e}[/yellow]")
                     self.console.print("[yellow]Continuing with original directory...[/yellow]")
                 else:
-                    print(f"Warning: Could not process cached files: {e}")
+                    print(f"Warning: Directory processing error: {e}")
                     print("Continuing with original directory...")
 
                 # Fallback to original directory if processing fails

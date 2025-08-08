@@ -147,20 +147,31 @@ On first run, Chisel CLI will automatically open your browser for authentication
 - Real-time summaries show performance during execution
 - Detailed traces can be analyzed with `parse_model_trace()`
 
-### Large File Caching
+### Upload Limits & Large File Handling
 
-- Files >1GB are automatically cached by SHA256 hash
-- First run uploads and caches large files
-- Subsequent runs with identical files use cache (much faster!)
-- Deduplication saves storage - identical files cached only once
-- Cache management available in frontend at `/cached-files`
-- Files restored automatically during job execution
+**🔄 CACHING DISABLED** - New streamlined upload system:
 
-**⚠️ Important:** When uploading jobs with large cached files, **do not refresh the browser page** during the upload process. Refreshing can interrupt the caching mechanism and cause the upload to fail or restart.
+- ✅ **No caching threshold** - Upload folders of any total size
+- ✅ **5GB per-file limit** - Individual files cannot exceed 5GB
+- ✅ **Direct uploads** - All files upload directly (faster, simpler)
+- ✅ **Clear error messages** - Helpful guidance for oversized files
 
-**Upload time estimates:**
-- **1GB file**: ~2-5 minutes first upload → ~10-30 seconds subsequent uploads
-- **5GB file**: ~10-25 minutes first upload → ~30-60 seconds subsequent uploads  
-- **10GB+ files**: ~20-50+ minutes first upload → ~1-2 minutes subsequent uploads
+**For files over 5GB:**
+- Download them within your script instead of uploading
+- Use `requests.get()`, `boto3`, or similar libraries
+- Generate large data programmatically in your script
+- More efficient than uploading large files
 
-*Actual times depend on your internet connection speed.*
+**Test the upload limits:**
+```bash
+# Create test files with various sizes
+python test_upload_limits.py
+
+# Test upload behavior (will show 5GB limit error)
+chisel run --upload-dir upload_limit_test simple_upload_test.py
+
+# Clean up test files
+python test_upload_limits.py --cleanup
+```
+
+See `UPLOAD_LIMITS_TEST.md` for detailed examples and migration guide.
