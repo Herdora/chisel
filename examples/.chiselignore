@@ -1,0 +1,25 @@
+# Example .chiselignore file
+# This demonstrates various exclusion patterns
+
+# Exclude the large trace file (not needed for most jobs)
+matrix_multiply.json
+
+# Exclude development/testing files
+test_*.py
+*_test.py
+
+# Exclude large data files (if they existed)
+*.npy
+*.pkl
+data/
+
+# Exclude logs and temporary files
+*.log
+*.tmp
+temp/
+
+# Exclude IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo

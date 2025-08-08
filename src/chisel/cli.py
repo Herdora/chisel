@@ -41,21 +41,675 @@ EXCLUDE_PATTERNS = {
     "venv",
     ".env",
     "__pycache__",
+    ".git",
 }
 
 
-def should_exclude(path):
-    path_parts = Path(path).parts
+def load_ignore_patterns(directory: Path) -> tuple[set, set]:
+    """
+    Load patterns from .gitignore and .chiselignore files if they exist.
+
+    Returns:
+        tuple: (gitignore_patterns, chiselignore_patterns)
+    """
+    gitignore_patterns = set()
+    chiselignore_patterns = set()
+
+    # Load .gitignore patterns
+    gitignore_path = directory / ".gitignore"
+    if gitignore_path.exists():
+        try:
+            with open(gitignore_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if line and not line.startswith("#"):
+                        # Remove leading slash if present
+                        if line.startswith("/"):
+                            line = line[1:]
+                        # Add pattern to set
+                        gitignore_patterns.add(line)
+        except (IOError, UnicodeDecodeError):
+            # If we can't read .gitignore, just continue
+            pass
+
+    # Load .chiselignore patterns
+    chiselignore_path = directory / ".chiselignore"
+    if chiselignore_path.exists():
+        try:
+            with open(chiselignore_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if line and not line.startswith("#"):
+                        # Remove leading slash if present
+                        if line.startswith("/"):
+                            line = line[1:]
+                        # Add pattern to set
+                        chiselignore_patterns.add(line)
+        except (IOError, UnicodeDecodeError):
+            # If we can't read .chiselignore, just continue
+            pass
+
+    return gitignore_patterns, chiselignore_patterns
+
+
+def should_exclude(path, gitignore_patterns=None, chiselignore_patterns=None):
+    """
+    Check if a path should be excluded from upload.
+
+    Args:
+        path: Path to check (relative to upload directory)
+        gitignore_patterns: Set of gitignore patterns (optional)
+        chiselignore_patterns: Set of chiselignore patterns (optional)
+
+    Returns:
+        True if the path should be excluded, False otherwise
+    """
+    path_obj = Path(path)
+    path_parts = path_obj.parts
+
+    # Check built-in exclude patterns
     for part in path_parts:
         if part in EXCLUDE_PATTERNS:
             return True
+
+    # Helper function to check patterns
+    def matches_patterns(patterns):
+        if not patterns:
+            return False
+
+        path_str = str(path_obj)
+        for pattern in patterns:
+            # Simple pattern matching - exact match or directory match
+            if path_str == pattern or path_str.startswith(pattern + "/"):
+                return True
+            # Check if any part of the path matches the pattern
+            if pattern in path_parts:
+                return True
+            # Handle wildcard patterns (basic support)
+            if "*" in pattern:
+                import fnmatch
+
+                if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(path_obj.name, pattern):
+                    return True
+        return False
+
+    # Check chiselignore patterns first (takes precedence)
+    if matches_patterns(chiselignore_patterns):
+        return True
+
+    # Check gitignore patterns
+    if matches_patterns(gitignore_patterns):
+        return True
+
     return False
 
 
-def tar_filter(tarinfo):
-    if should_exclude(tarinfo.name):
+def tar_filter(tarinfo, gitignore_patterns=None, chiselignore_patterns=None):
+    if should_exclude(tarinfo.name, gitignore_patterns, chiselignore_patterns):
         return None
     return tarinfo
+
+
+def preview_upload_directory(upload_dir: Path, console=None) -> Dict[str, Any]:
+    """
+    Preview what files will be uploaded vs excluded from the upload directory.
+
+    Args:
+        upload_dir: Path to the directory to analyze
+        console: Rich console instance for styled output (optional)
+
+    Returns:
+        Dict containing included_files, excluded_files, and summary stats
+    """
+    included_files = []
+    excluded_files = []
+    total_size = 0
+    large_files = []
+
+    # Load ignore patterns
+    gitignore_patterns, chiselignore_patterns = load_ignore_patterns(upload_dir)
+
+    # Walk through the directory
+    for root, dirs, files in os.walk(upload_dir):
+        # Filter out excluded directories to avoid walking them
+        dirs[:] = [
+            d
+            for d in dirs
+            if not should_exclude(os.path.join(root, d), gitignore_patterns, chiselignore_patterns)
+        ]
+
+        for file in files:
+            file_path = Path(root) / file
+            relative_path = file_path.relative_to(upload_dir)
+
+            if should_exclude(str(relative_path), gitignore_patterns, chiselignore_patterns):
+                excluded_files.append(str(relative_path))
+            else:
+                try:
+                    file_size = file_path.stat().st_size
+                    total_size += file_size
+
+                    # Check if it's a large file (>1GB)
+                    if file_size > 1024 * 1024 * 1024:  # 1GB
+                        large_files.append(
+                            {
+                                "path": str(relative_path),
+                                "size": file_size,
+                                "size_mb": file_size / (1024 * 1024),
+                            }
+                        )
+
+                    included_files.append({"path": str(relative_path), "size": file_size})
+                except (OSError, PermissionError):
+                    # Skip files we can't access
+                    excluded_files.append(f"{relative_path} (access denied)")
+
+    return {
+        "included_files": included_files,
+        "excluded_files": excluded_files,
+        "large_files": large_files,
+        "total_files": len(included_files),
+        "excluded_count": len(excluded_files),
+        "total_size": total_size,
+        "total_size_mb": total_size / (1024 * 1024) if total_size > 0 else 0,
+        "gitignore_patterns": gitignore_patterns,
+        "chiselignore_patterns": chiselignore_patterns,
+    }
+
+
+def _build_file_tree(files_list, excluded_files=None):
+    """
+    Build a tree structure from a list of file paths, including both included and excluded files.
+
+    Args:
+        files_list: List of file info dicts with 'path' and 'size' keys (included files)
+        excluded_files: List of excluded file paths (optional)
+
+    Returns:
+        Dict representing the tree structure
+    """
+    tree = {}
+
+    # Add included files
+    for file_info in files_list:
+        path_parts = Path(file_info["path"]).parts
+        current_level = tree
+
+        # Navigate/create the directory structure
+        for i, part in enumerate(path_parts[:-1]):  # All but the last part (filename)
+            if part not in current_level:
+                current_level[part] = {}
+            current_level = current_level[part]
+
+        # Add the file (last part)
+        if len(path_parts) > 0:
+            filename = path_parts[-1]
+            current_level[filename] = {"size": file_info["size"], "included": True}
+
+    # Add excluded files
+    if excluded_files:
+        for excluded_path in excluded_files:
+            # Skip access denied entries (they have additional text)
+            if "(access denied)" in excluded_path:
+                continue
+
+            path_parts = Path(excluded_path).parts
+            current_level = tree
+
+            # Navigate/create the directory structure
+            for i, part in enumerate(path_parts[:-1]):  # All but the last part (filename)
+                if part not in current_level:
+                    current_level[part] = {}
+                current_level = current_level[part]
+
+            # Add the excluded file
+            if len(path_parts) > 0:
+                filename = path_parts[-1]
+                current_level[filename] = {
+                    "size": 0,
+                    "included": False,
+                }  # Size unknown for excluded files
+
+    return tree
+
+
+def _display_files_tree_rich(files_list, console, upload_dir="", excluded_files=None, max_files=20):
+    """Display files in a tree structure using Rich, showing both included and excluded files."""
+    if not files_list and not excluded_files:
+        console.print("  [dim]No files found[/dim]")
+        return
+
+    tree_dict = _build_file_tree(files_list, excluded_files)
+    files_shown = [0]  # Use list to make it mutable in nested function
+
+    # Show the root directory name
+    if upload_dir == "." or upload_dir == "":
+        root_name = Path.cwd().name
+    else:
+        root_name = Path(upload_dir).name if upload_dir else "."
+    console.print(f"📁 [bold cyan]{root_name}/[/bold cyan]")
+    files_shown[0] += 1
+
+    def _print_tree_rich(tree, prefix="", is_last=True, level=0):
+        if files_shown[0] >= max_files:
+            return
+
+        items = list(tree.items())
+        for i, (name, content) in enumerate(items):
+            if files_shown[0] >= max_files:
+                break
+
+            is_last_item = i == len(items) - 1
+
+            # Choose the right tree characters
+            current_prefix = prefix + ("└── " if is_last_item else "├── ")
+            next_prefix = prefix + ("    " if is_last_item else "│   ")
+
+            if isinstance(content, dict) and not ("size" in content and "included" in content):
+                # It's a directory
+                console.print(f"{current_prefix}📁 [bold cyan]{name}/[/bold cyan]")
+                files_shown[0] += 1
+                _print_tree_rich(content, next_prefix, is_last_item, level + 1)
+            else:
+                # It's a file (either included or excluded)
+                if content.get("included", True):
+                    # Included file - show only if we're displaying included files
+                    if files_list:  # If files_list is not empty, we're showing included files
+                        console.print(f"{current_prefix}📄 [green]{name}[/green]")
+                        files_shown[0] += 1
+                else:
+                    # Excluded file - show only if we're displaying excluded files
+                    if (
+                        excluded_files and not files_list
+                    ):  # If files_list is empty but excluded_files exists
+                        console.print(f"{current_prefix}📄 [dim red]{name}[/dim red]")
+                        files_shown[0] += 1
+                    elif files_list:  # Show excluded files with label when showing both
+                        console.print(
+                            f"{current_prefix}📄 [dim red]{name}[/dim red] [dim](excluded)[/dim]"
+                        )
+                        files_shown[0] += 1
+
+    _print_tree_rich(tree_dict, "", True, 1)  # Start with level 1 since we showed root
+
+    # Calculate total files (excluding the root directory from the count)
+    total_files = len(files_list) + (len(excluded_files) if excluded_files else 0)
+    files_actually_shown = files_shown[0] - 1  # Subtract 1 for the root directory
+
+    if files_actually_shown < total_files:
+        remaining = total_files - files_actually_shown
+        console.print(f"  [dim]... and {remaining} more files[/dim]")
+
+
+def _display_files_tree_plain(files_list, upload_dir="", excluded_files=None, max_files=20):
+    """Display files in a tree structure using plain text, showing both included and excluded files."""
+    if not files_list and not excluded_files:
+        print("  No files found")
+        return
+
+    tree_dict = _build_file_tree(files_list, excluded_files)
+    files_shown = [0]  # Use list to make it mutable in nested function
+
+    # Show the root directory name
+    if upload_dir == "." or upload_dir == "":
+        root_name = Path.cwd().name
+    else:
+        root_name = Path(upload_dir).name if upload_dir else "."
+    print(f"📁 {root_name}/")
+    files_shown[0] += 1
+
+    def _print_tree_plain(tree, prefix="", is_last=True, level=0):
+        if files_shown[0] >= max_files:
+            return
+
+        items = list(tree.items())
+        for i, (name, content) in enumerate(items):
+            if files_shown[0] >= max_files:
+                break
+
+            is_last_item = i == len(items) - 1
+
+            # Choose the right tree characters
+            current_prefix = prefix + ("└── " if is_last_item else "├── ")
+            next_prefix = prefix + ("    " if is_last_item else "│   ")
+
+            if isinstance(content, dict) and not ("size" in content and "included" in content):
+                # It's a directory
+                print(f"{current_prefix}📁 {name}/")
+                files_shown[0] += 1
+                _print_tree_plain(content, next_prefix, is_last_item, level + 1)
+            else:
+                # It's a file (either included or excluded)
+                if content.get("included", True):
+                    # Included file - show only if we're displaying included files
+                    if files_list:  # If files_list is not empty, we're showing included files
+                        print(f"{current_prefix}📄 {name}")
+                        files_shown[0] += 1
+                else:
+                    # Excluded file - show only if we're displaying excluded files
+                    if (
+                        excluded_files and not files_list
+                    ):  # If files_list is empty but excluded_files exists
+                        print(f"{current_prefix}📄 {name}")
+                        files_shown[0] += 1
+                    elif files_list:  # Show excluded files with label when showing both
+                        print(f"{current_prefix}📄 {name} (excluded)")
+                        files_shown[0] += 1
+
+    _print_tree_plain(tree_dict, "", True, 1)  # Start with level 1 since we showed root
+
+    # Calculate total files (excluding the root directory from the count)
+    total_files = len(files_list) + (len(excluded_files) if excluded_files else 0)
+    files_actually_shown = files_shown[0] - 1  # Subtract 1 for the root directory
+
+    if files_actually_shown < total_files:
+        remaining = total_files - files_actually_shown
+        print(f"  ... and {remaining} more files")
+
+
+def display_submission_summary(
+    preview_data: Dict[str, Any], upload_dir: str, app_name: str, gpu: str, console=None
+):
+    """
+    Display a submission summary with file list and ask for confirmation.
+
+    Args:
+        preview_data: Data from preview_upload_directory()
+        upload_dir: Path to upload directory (for display)
+        app_name: Job name
+        gpu: GPU configuration
+        console: Rich console instance for styled output (optional)
+
+    Returns:
+        bool: True if user confirms submission, False otherwise
+    """
+    if console and RICH_AVAILABLE:
+        # Rich formatted output
+        console.print("\n[bold cyan]🚀 Job Submission Summary (Step 5 of 5)[/bold cyan]")
+        console.print("─" * 60, style="dim")
+
+        # Job details
+        from rich.table import Table
+
+        job_table = Table(box=box.ROUNDED, border_style="green", show_header=False)
+        job_table.add_column("Field", style="cyan", width=20)
+        job_table.add_column("Value", style="white")
+
+        # Show actual directory name instead of relative paths
+        if upload_dir == "." or upload_dir == "":
+            display_upload_dir = Path.cwd().name
+        elif upload_dir == "..":
+            display_upload_dir = Path.cwd().parent.name
+        else:
+            display_upload_dir = Path(upload_dir).name if Path(upload_dir).name else upload_dir
+
+        job_table.add_row("📝 Job Name", app_name)
+        job_table.add_row("🎮 GPU Config", gpu)
+        job_table.add_row("📁 Upload Dir", display_upload_dir)
+
+        console.print(job_table)
+
+        # Upload summary
+        total_files = preview_data["total_files"]
+        excluded_count = preview_data["excluded_count"]
+        large_files_count = len(preview_data["large_files"])
+
+        # Only show upload table if there are rows to display
+        if excluded_count > 0 or large_files_count > 0:
+            upload_table = Table(box=box.ROUNDED, border_style="blue", show_header=False)
+            upload_table.add_column("Metric", style="cyan", width=20)
+            upload_table.add_column("Value", style="white")
+
+            if excluded_count > 0:
+                upload_table.add_row("🚫 Files excluded", f"{excluded_count}")
+            if large_files_count > 0:
+                upload_table.add_row("🗂️  Large files", f"{large_files_count} (will be cached)")
+
+            console.print(upload_table)
+
+        # Show included files
+        console.print(f"\n[bold green]✅ Files to Upload ({total_files}):[/bold green]")
+        _display_files_tree_rich(preview_data["included_files"], console, upload_dir, max_files=15)
+
+        # Show excluded files if any
+        if excluded_count > 0:
+            console.print(f"\n[bold red]🚫 Files Excluded ({excluded_count}):[/bold red]")
+            _display_files_tree_rich(
+                [], console, upload_dir, preview_data["excluded_files"], max_files=10
+            )
+
+        # Show large files if any (compact format)
+        if preview_data["large_files"]:
+            console.print("\n[yellow]🗂️  Large files (will be cached automatically):[/yellow]")
+            for lf in preview_data["large_files"][:3]:  # Show first 3
+                console.print(f"  • {lf['path']} ({lf['size_mb']:.1f} MB)")
+            if len(preview_data["large_files"]) > 3:
+                console.print(f"  ... and {len(preview_data['large_files']) - 3} more")
+
+        # Ask for confirmation
+        from rich.prompt import Confirm
+
+        return Confirm.ask(
+            "\n[bold yellow]🚀 Submit this job?[/bold yellow]", default=True, console=console
+        )
+
+    else:
+        # Plain text output
+        print("\n🚀 Job Submission Summary (Step 5 of 5)")
+        print("─" * 60)
+
+        # Show actual directory name instead of relative paths
+        if upload_dir == "." or upload_dir == "":
+            display_upload_dir = Path.cwd().name
+        elif upload_dir == "..":
+            display_upload_dir = Path.cwd().parent.name
+        else:
+            display_upload_dir = Path(upload_dir).name if Path(upload_dir).name else upload_dir
+
+        print(f"📝 Job Name: {app_name}")
+        print(f"🎮 GPU Config: {gpu}")
+        print(f"📁 Upload Dir: {display_upload_dir}")
+
+        total_files = preview_data["total_files"]
+        excluded_count = preview_data["excluded_count"]
+        large_files_count = len(preview_data["large_files"])
+
+        # Only show additional info if there are excluded or large files
+        if excluded_count > 0 or large_files_count > 0:
+            print()  # Add spacing
+            if excluded_count > 0:
+                print(f"🚫 Files excluded: {excluded_count}")
+            if large_files_count > 0:
+                print(f"🗂️  Large files: {large_files_count} (will be cached)")
+
+        # Show included files
+        print(f"\n✅ Files to Upload ({total_files}):")
+        _display_files_tree_plain(preview_data["included_files"], upload_dir, max_files=15)
+
+        # Show excluded files if any
+        if excluded_count > 0:
+            print(f"\n🚫 Files Excluded ({excluded_count}):")
+            _display_files_tree_plain([], upload_dir, preview_data["excluded_files"], max_files=10)
+
+        # Show large files if any (compact format)
+        if preview_data["large_files"]:
+            print("\n🗂️  Large files (will be cached automatically):")
+            for lf in preview_data["large_files"][:3]:  # Show first 3
+                print(f"  • {lf['path']} ({lf['size_mb']:.1f} MB)")
+            if len(preview_data["large_files"]) > 3:
+                print(f"  ... and {len(preview_data['large_files']) - 3} more")
+
+        # Ask for confirmation
+        while True:
+            response = input("\n🚀 Submit this job? (y/n, default: y): ").strip().lower()
+            if not response or response == "y" or response == "yes":
+                return True
+            elif response == "n" or response == "no":
+                return False
+            else:
+                print("Please enter 'y' for yes or 'n' for no.")
+
+
+def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, console=None):
+    """
+    Display a formatted preview of what will be uploaded.
+
+    Args:
+        preview_data: Data from preview_upload_directory()
+        upload_dir: Path to upload directory (for display)
+        console: Rich console instance for styled output (optional)
+    """
+    if console and RICH_AVAILABLE:
+        # Rich formatted output
+        console.print(f"\n[bold cyan]📁 Upload Directory Preview: {upload_dir}[/bold cyan]")
+        console.print("─" * 60, style="dim")
+
+        # Summary stats
+        total_files = preview_data["total_files"]
+        excluded_count = preview_data["excluded_count"]
+        total_size_mb = preview_data["total_size_mb"]
+        large_files_count = len(preview_data["large_files"])
+
+        if total_size_mb < 1.0:
+            size_display = f"{preview_data['total_size'] / 1024:.2f} KB"
+        else:
+            size_display = f"{total_size_mb:.2f} MB"
+
+        # Create summary table
+        from rich.table import Table
+
+        summary_table = Table(box=box.ROUNDED, border_style="blue")
+        summary_table.add_column("Metric", style="cyan")
+        summary_table.add_column("Value", style="white")
+
+        summary_table.add_row("📄 Files to upload", f"{total_files}")
+        summary_table.add_row("🚫 Files excluded", f"{excluded_count}")
+        summary_table.add_row("📦 Total upload size", size_display)
+        if large_files_count > 0:
+            summary_table.add_row("🗂️  Large files (>1GB)", f"{large_files_count} (will be cached)")
+
+        console.print(summary_table)
+
+        # Show large files if any
+        if preview_data["large_files"]:
+            console.print(
+                f"\n[bold yellow]🗂️  Large Files (will be automatically cached):[/bold yellow]"
+            )
+            for lf in preview_data["large_files"]:
+                console.print(f"  • {lf['path']} ({lf['size_mb']:.1f} MB)")
+
+        # Show some included files (first 10)
+        if preview_data["included_files"]:
+            console.print(f"\n[bold green]✅ Files to Upload (showing first 10):[/bold green]")
+            for i, file_info in enumerate(preview_data["included_files"][:10]):
+                size_kb = file_info["size"] / 1024
+                if size_kb < 1024:
+                    size_str = f"({size_kb:.1f} KB)"
+                else:
+                    size_str = f"({size_kb / 1024:.1f} MB)"
+                console.print(f"  • {file_info['path']} {size_str}")
+
+            if len(preview_data["included_files"]) > 10:
+                console.print(f"  ... and {len(preview_data['included_files']) - 10} more files")
+
+        # Show excluded files if any (first 10)
+        if preview_data["excluded_files"]:
+            console.print(f"\n[bold red]🚫 Excluded Files/Patterns (showing first 10):[/bold red]")
+            for i, excluded in enumerate(preview_data["excluded_files"][:10]):
+                console.print(f"  • {excluded}")
+
+            if len(preview_data["excluded_files"]) > 10:
+                console.print(f"  ... and {len(preview_data['excluded_files']) - 10} more excluded")
+
+        # Show exclusion patterns
+        console.print(f"\n[bold dim]📋 Current Exclusion Patterns:[/bold dim]")
+        for pattern in sorted(EXCLUDE_PATTERNS):
+            console.print(f"  • {pattern}", style="dim")
+
+        # Show gitignore patterns if any were found
+        gitignore_patterns = preview_data.get("gitignore_patterns", set())
+        if gitignore_patterns:
+            console.print(f"\n[bold dim]📋 .gitignore Patterns:[/bold dim]")
+            for pattern in sorted(gitignore_patterns):
+                console.print(f"  • {pattern}", style="dim")
+
+        # Show chiselignore patterns if any were found
+        chiselignore_patterns = preview_data.get("chiselignore_patterns", set())
+        if chiselignore_patterns:
+            console.print(f"\n[bold dim]📋 .chiselignore Patterns:[/bold dim]")
+            for pattern in sorted(chiselignore_patterns):
+                console.print(f"  • {pattern}", style="dim")
+
+    else:
+        # Plain text output
+        print(f"\n📁 Upload Directory Preview: {upload_dir}")
+        print("─" * 60)
+
+        total_files = preview_data["total_files"]
+        excluded_count = preview_data["excluded_count"]
+        total_size_mb = preview_data["total_size_mb"]
+        large_files_count = len(preview_data["large_files"])
+
+        if total_size_mb < 1.0:
+            size_display = f"{preview_data['total_size'] / 1024:.2f} KB"
+        else:
+            size_display = f"{total_size_mb:.2f} MB"
+
+        print(f"📄 Files to upload: {total_files}")
+        print(f"🚫 Files excluded: {excluded_count}")
+        print(f"📦 Total upload size: {size_display}")
+        if large_files_count > 0:
+            print(f"🗂️  Large files (>1GB): {large_files_count} (will be cached)")
+
+        # Show large files if any
+        if preview_data["large_files"]:
+            print(f"\n🗂️  Large Files (will be automatically cached):")
+            for lf in preview_data["large_files"]:
+                print(f"  • {lf['path']} ({lf['size_mb']:.1f} MB)")
+
+        # Show some included files
+        if preview_data["included_files"]:
+            print(f"\n✅ Files to Upload (showing first 10):")
+            for i, file_info in enumerate(preview_data["included_files"][:10]):
+                size_kb = file_info["size"] / 1024
+                if size_kb < 1024:
+                    size_str = f"({size_kb:.1f} KB)"
+                else:
+                    size_str = f"({size_kb / 1024:.1f} MB)"
+                print(f"  • {file_info['path']} {size_str}")
+
+            if len(preview_data["included_files"]) > 10:
+                print(f"  ... and {len(preview_data['included_files']) - 10} more files")
+
+        # Show excluded files if any
+        if preview_data["excluded_files"]:
+            print(f"\n🚫 Excluded Files/Patterns (showing first 10):")
+            for i, excluded in enumerate(preview_data["excluded_files"][:10]):
+                print(f"  • {excluded}")
+
+            if len(preview_data["excluded_files"]) > 10:
+                print(f"  ... and {len(preview_data['excluded_files']) - 10} more excluded")
+
+        # Show exclusion patterns
+        print(f"\n📋 Current Exclusion Patterns:")
+        for pattern in sorted(EXCLUDE_PATTERNS):
+            print(f"  • {pattern}")
+
+        # Show gitignore patterns if any were found
+        gitignore_patterns = preview_data.get("gitignore_patterns", set())
+        if gitignore_patterns:
+            print(f"\n📋 .gitignore Patterns:")
+            for pattern in sorted(gitignore_patterns):
+                print(f"  • {pattern}")
+
+        # Show chiselignore patterns if any were found
+        chiselignore_patterns = preview_data.get("chiselignore_patterns", set())
+        if chiselignore_patterns:
+            print(f"\n📋 .chiselignore Patterns:")
+            for pattern in sorted(chiselignore_patterns):
+                print(f"  • {pattern}")
 
 
 class ChiselCLI:
@@ -86,14 +740,17 @@ class ChiselCLI:
             print("╚══════════════════════════════════════════════════════════════╝")
             print()
 
-    def print_section_header(self, title: str):
-        """Print a section header."""
+    def print_section_header(self, title: str, step: int = None, total_steps: int = None):
+        """Print a section header with optional step indicator."""
+        step_indicator = f" (Step {step} of {total_steps})" if step and total_steps else ""
+        full_title = f"{title}{step_indicator}"
+
         if RICH_AVAILABLE:
-            self.console.print(f"\n[bold cyan]📋 {title}[/bold cyan]")
-            self.console.print("─" * (len(title) + 4), style="dim")
+            self.console.print(f"\n[bold cyan]📋 {full_title}[/bold cyan]")
+            self.console.print("─" * (len(full_title) + 4), style="dim")
         else:
-            print(f"📋 {title}")
-            print("─" * (len(title) + 4))
+            print(f"📋 {full_title}")
+            print("─" * (len(full_title) + 4))
 
     def get_input_with_default(self, prompt: str, default: str = "", required: bool = True) -> str:
         """Get user input with a default value."""
@@ -120,8 +777,6 @@ class ChiselCLI:
     def select_gpu(self) -> str:
         """Interactive GPU selection with navigation."""
         if RICH_AVAILABLE:
-            self.console.print("\n[bold green]🎮 GPU Configuration:[/bold green]")
-
             # Create a table for better presentation
             table = Table(
                 title="Available GPU Configurations",
@@ -158,9 +813,6 @@ class ChiselCLI:
                         "❌ Invalid choice. Please select 1, 2, 4, or 8.", style="red"
                     )
         else:
-            print("\n🎮 GPU Configuration:")
-            print("─" * 20)
-
             for option, gpu_type, description in self.gpu_options:
                 print(f"  {option}. {gpu_type}")
                 print(f"     {description}")
@@ -182,19 +834,25 @@ class ChiselCLI:
         """Interactive questionnaire to get job submission parameters."""
         self.print_header()
 
-        # App name
-        self.print_section_header("Job Configuration")
+        # Define total steps for progress tracking
+        total_steps = 5
+
+        # Step 1: App name
+        self.print_section_header("Job Configuration", step=1, total_steps=total_steps)
         app_name = self.get_input_with_default("📝 App name (for job tracking)")
 
-        # Upload directory
+        # Step 2: Upload directory
+        self.print_section_header("Upload Directory", step=2, total_steps=total_steps)
         upload_dir = self.get_input_with_default("📁 Upload directory", default=".", required=False)
 
-        # Requirements file
+        # Step 3: Requirements file
+        self.print_section_header("Dependencies", step=3, total_steps=total_steps)
         requirements_file = self.get_input_with_default(
             "📋 Requirements file", default="requirements.txt", required=False
         )
 
-        # GPU selection
+        # Step 4: GPU selection
+        self.print_section_header("GPU Configuration", step=4, total_steps=total_steps)
         gpu = self.select_gpu()
 
         # Show equivalent command for copy/paste
@@ -280,6 +938,7 @@ Examples:
   chisel python script.py --app-name my-job --gpu 4
   chisel python train.py --upload-dir ./project --requirements dev.txt
   chisel python inference.py --app-name inference-job --gpu 1
+  chisel python script.py --preview  # Preview upload contents without submitting
             """,
         )
 
@@ -315,6 +974,12 @@ Examples:
             action="store_true",
             help="Force interactive mode even when flags are provided",
         )
+        parser.add_argument(
+            "--preview",
+            "-p",
+            action="store_true",
+            help="Preview upload contents without submitting job",
+        )
 
         try:
             parsed_args = parser.parse_args(args)
@@ -336,6 +1001,7 @@ Examples:
                 "requirements_file": parsed_args.requirements,
                 "gpu": self.gpu_map[parsed_args.gpu],
                 "interactive": parsed_args.interactive,
+                "preview": parsed_args.preview,
             }
         except SystemExit:
             return None
@@ -401,6 +1067,13 @@ Examples:
                 processed_dir = upload_dir
                 cached_files_info = []
 
+        # Load ignore patterns for tar filtering
+        gitignore_patterns, chiselignore_patterns = load_ignore_patterns(Path(processed_dir))
+
+        # Create a wrapper function for tar filter with ignore patterns
+        def tar_filter_with_ignore_patterns(tarinfo):
+            return tar_filter(tarinfo, gitignore_patterns, chiselignore_patterns)
+
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
             tar_path = tmp_file.name
 
@@ -417,7 +1090,9 @@ Examples:
 
                     try:
                         with tarfile.open(tar_path, "w:gz") as tar:
-                            tar.add(processed_dir, arcname=".", filter=tar_filter)
+                            tar.add(
+                                processed_dir, arcname=".", filter=tar_filter_with_ignore_patterns
+                            )
 
                         tar_size = Path(tar_path).stat().st_size
                         size_mb = tar_size / (1024 * 1024)
@@ -437,7 +1112,7 @@ Examples:
 
                 try:
                     with tarfile.open(tar_path, "w:gz") as tar:
-                        tar.add(processed_dir, arcname=".", filter=tar_filter)
+                        tar.add(processed_dir, arcname=".", filter=tar_filter_with_ignore_patterns)
 
                     tar_size = Path(tar_path).stat().st_size
                     size_mb = tar_size / (1024 * 1024)
@@ -561,6 +1236,23 @@ Examples:
         if parsed_config is None:
             return 1
 
+        # Handle preview-only mode
+        if parsed_config["preview"]:
+            upload_dir = Path(parsed_config["upload_dir"]).resolve()
+            if not upload_dir.exists():
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        f"❌ Upload directory '{upload_dir}' does not exist", style="red"
+                    )
+                else:
+                    print(f"❌ Upload directory '{upload_dir}' does not exist")
+                return 1
+
+            # Show preview and exit
+            preview_data = preview_upload_directory(upload_dir, self.console)
+            display_upload_preview(preview_data, str(upload_dir), self.console)
+            return 0
+
         # If no app_name provided via flags, we need interactive mode
         if not parsed_config["app_name"] or parsed_config["interactive"]:
             # Get interactive inputs
@@ -592,27 +1284,6 @@ Examples:
         # Get script absolute path
         script_abs_path = Path(script_path).resolve()
 
-        # Authenticate first
-        if RICH_AVAILABLE:
-            self.console.print("🔑 Checking authentication...", style="yellow")
-        else:
-            print("🔑 Checking authentication...")
-
-        backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
-        api_key = _auth_service.authenticate(backend_url)
-
-        if not api_key:
-            if RICH_AVAILABLE:
-                self.console.print("❌ Authentication failed. Please try again.", style="red")
-            else:
-                print("❌ Authentication failed. Please try again.")
-            return 1
-
-        if RICH_AVAILABLE:
-            self.console.print("✅ Authentication successful!", style="green")
-        else:
-            print("✅ Authentication successful!")
-
         # Validate upload directory contains the script
         upload_dir = Path(final_config["upload_dir"]).resolve()
         try:
@@ -630,10 +1301,48 @@ Examples:
         script_name = str(script_relative)
         args_display = f" {' '.join(script_args)}" if script_args else ""
 
+        # Show submission summary and get confirmation BEFORE authentication
+        preview_data = preview_upload_directory(upload_dir, self.console)
+        should_submit = display_submission_summary(
+            preview_data,
+            final_config["upload_dir"],
+            final_config["app_name"],
+            final_config["gpu"],
+            self.console,
+        )
+
+        if not should_submit:
+            if RICH_AVAILABLE:
+                self.console.print("[yellow]❌ Job submission cancelled by user.[/yellow]")
+            else:
+                print("❌ Job submission cancelled by user.")
+            return 0
+
+        # NOW authenticate after user confirms
         if RICH_AVAILABLE:
-            self.console.print(f"📦 Submitting job: [bold]{script_name}{args_display}[/bold]")
+            self.console.print("\n🔑 Checking authentication...", style="yellow")
         else:
-            print(f"📦 Submitting job: {script_name}{args_display}")
+            print("\n🔑 Checking authentication...")
+
+        backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
+        api_key = _auth_service.authenticate(backend_url)
+
+        if not api_key:
+            if RICH_AVAILABLE:
+                self.console.print("❌ Authentication failed. Please try again.", style="red")
+            else:
+                print("❌ Authentication failed. Please try again.")
+            return 1
+
+        if RICH_AVAILABLE:
+            self.console.print("✅ Authentication successful!", style="green")
+        else:
+            print("✅ Authentication successful!")
+
+        if RICH_AVAILABLE:
+            self.console.print(f"\n📦 Submitting job: [bold]{script_name}{args_display}[/bold]")
+        else:
+            print(f"\n📦 Submitting job: {script_name}{args_display}")
 
         try:
             result = self.submit_job(
@@ -666,6 +1375,7 @@ def main():
             cli.console.print("  chisel python <script.py> [args...]")
             cli.console.print("  chisel python <script.py> --app-name my-job --gpu 4")
             cli.console.print("  chisel python <script.py> --interactive")
+            cli.console.print("  chisel python <script.py> --preview")
             cli.console.print("  chisel --logout")
             cli.console.print("  chisel --version")
             cli.console.print("\n[bold]Examples:[/bold]")
@@ -674,6 +1384,7 @@ def main():
             cli.console.print(
                 "  chisel python inference.py --upload-dir ./project --requirements dev.txt"
             )
+            cli.console.print("  chisel python script.py --preview  # Preview what gets uploaded")
             cli.console.print(
                 "\n💡 Tip: Interactive mode shows the equivalent command-line for copy/paste!"
             )
@@ -684,6 +1395,7 @@ def main():
             print("  chisel python <script.py> [args...]")
             print("  chisel python <script.py> --app-name my-job --gpu 4")
             print("  chisel python <script.py> --interactive")
+            print("  chisel python <script.py> --preview")
             print("  chisel --logout")
             print("  chisel --version")
             print()
@@ -691,6 +1403,7 @@ def main():
             print("  chisel python my_script.py")
             print("  chisel python train.py --app-name training-job --gpu 4")
             print("  chisel python inference.py --upload-dir ./project --requirements dev.txt")
+            print("  chisel python script.py --preview  # Preview what gets uploaded")
             print()
             print("💡 Tip: Interactive mode shows the equivalent command-line for copy/paste!")
         return 0
