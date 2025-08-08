@@ -18,6 +18,29 @@ python examples/basic_usage.py
 chisel python examples/basic_usage.py
 ```
 
+### Model Profiling (`model_profiling_example.py`)
+Demonstrates automatic profiling of PyTorch models:
+- Using the `@capture_model` decorator
+- Layer-level timing and shape analysis
+- Automatic profiling of every forward pass
+- Real-time layer summaries during execution
+
+```bash
+# Local execution (profiling simulated)
+python examples/model_profiling_example.py
+
+# Cloud GPU execution (full profiling)
+chisel python examples/model_profiling_example.py
+```
+
+**Features demonstrated:**
+- Automatic profiling of every model forward pass
+- Layer-level timing analysis with detailed breakdowns
+- Shape tracking for each layer and operation
+- Support for complex models (CNNs, Transformers)
+- Real-time layer summaries during execution
+- Detailed trace files saved to backend
+
 ### Command Line Arguments (`args_example.py`)
 Demonstrates passing command line arguments to your script:
 
@@ -114,6 +137,15 @@ On first run, Chisel CLI will automatically open your browser for authentication
 - Trace files are saved to the backend and can be downloaded for analysis
 - All examples include comprehensive error handling and user feedback
 - The same code works both locally and on cloud GPUs
+
+### Model Profiling
+
+- Use `@capture_model` decorator to automatically profile PyTorch models
+- Every forward pass is automatically profiled and traced
+- Layer-level timing shows which layers are bottlenecks
+- Shape tracking helps identify memory usage patterns
+- Real-time summaries show performance during execution
+- Detailed traces can be analyzed with `parse_model_trace()`
 
 ### Large File Caching
 

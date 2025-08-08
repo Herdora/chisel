@@ -10,4 +10,5 @@ chisel python args_example.py --iterations 2
 chisel python requirements_example.py 
 
 chisel python specific_call.py
-```
+
+chisel python model_profiling_example.py
