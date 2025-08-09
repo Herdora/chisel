@@ -721,10 +721,26 @@ class ChiselCLI:
     def __init__(self):
         self.console = Console() if RICH_AVAILABLE else None
         self.gpu_options = [
-            ("1", "A100-80GB:1", "Single GPU - Development, inference"),
-            ("2", "A100-80GB:2", "2x GPUs - Medium training"),
-            ("4", "A100-80GB:4", "4x GPUs - Large models"),
-            ("8", "A100-80GB:8", "8x GPUs - Massive models"),
+            # A100 40GB options
+            ("a1", "A100:1", "A100-40GB Single GPU - Development, inference"),
+            ("a2", "A100:2", "A100-40GB 2x GPUs - Medium training"),
+            ("a4", "A100:4", "A100-40GB 4x GPUs - Large models"),
+            ("a8", "A100:8", "A100-40GB 8x GPUs - Massive models"),
+            # A100 80GB options
+            ("1", "A100-80GB:1", "A100-80GB Single GPU - Development, inference"),
+            ("2", "A100-80GB:2", "A100-80GB 2x GPUs - Medium training"),
+            ("4", "A100-80GB:4", "A100-80GB 4x GPUs - Large models"),
+            ("8", "A100-80GB:8", "A100-80GB 8x GPUs - Massive models"),
+            # H100 options
+            ("h1", "H100:1", "H100 Single GPU - Latest architecture"),
+            ("h2", "H100:2", "H100 2x GPUs - Advanced training"),
+            ("h4", "H100:4", "H100 4x GPUs - High-performance training"),
+            ("h8", "H100:8", "H100 8x GPUs - Maximum performance"),
+            # L4 options
+            ("l1", "L4:1", "L4 Single GPU - Cost-effective inference"),
+            ("l2", "L4:2", "L4 2x GPUs - Efficient training"),
+            ("l4", "L4:4", "L4 4x GPUs - Balanced performance"),
+            ("l8", "L4:8", "L4 8x GPUs - High throughput"),
         ]
         self.gpu_map = {option: gpu_type for option, gpu_type, _ in self.gpu_options}
 
@@ -829,7 +845,7 @@ class ChiselCLI:
             while True:
                 choice = Prompt.ask(
                     "Select GPU configuration",
-                    choices=["1", "2", "4", "8"],
+                    choices=[option for option, _, _ in self.gpu_options],
                     default=default_choice or "1",
                     console=self.console,
                 )
@@ -853,7 +869,8 @@ class ChiselCLI:
                 print()
 
             while True:
-                prompt_text = f"Select GPU configuration (1-8, default: {default_choice or '1'}): "
+                valid_options = [option for option, _, _ in self.gpu_options]
+                prompt_text = f"Select GPU configuration ({'/'.join(valid_options)}, default: {default_choice or '1'}): "
                 choice = input(prompt_text).strip()
                 if not choice:
                     choice = default_choice or "1"
@@ -863,7 +880,7 @@ class ChiselCLI:
                     print(f"✅ Selected: {selected_gpu}")
                     return selected_gpu
                 else:
-                    print("❌ Invalid choice. Please select 1, 2, 4, or 8.")
+                    print(f"❌ Invalid choice. Please select one of: {', '.join(valid_options)}")
 
     def get_user_inputs_interactive(
         self, script_path: str = "<script.py>", prefilled_config: Optional[Dict[str, Any]] = None
@@ -948,9 +965,9 @@ class ChiselCLI:
                 chisel_parts.append(f'--requirements "{requirements_file}"')
 
             if gpu != "A100-80GB:1":
-                # Convert GPU type back to number
-                gpu_number = {v: k for k, v in self.gpu_map.items()}[gpu]
-                chisel_parts.append(f"--gpu {gpu_number}")
+                # Convert GPU type back to option key
+                gpu_option = {v: k for k, v in self.gpu_map.items()}[gpu]
+                chisel_parts.append(f"--gpu {gpu_option}")
 
             # Add separator and python command
             chisel_parts.append("--")
@@ -988,9 +1005,9 @@ class ChiselCLI:
                 chisel_parts.append(f'--requirements "{requirements_file}"')
 
             if gpu != "A100-80GB:1":
-                # Convert GPU type back to number
-                gpu_number = {v: k for k, v in self.gpu_map.items()}[gpu]
-                chisel_parts.append(f"--gpu {gpu_number}")
+                # Convert GPU type back to option key
+                gpu_option = {v: k for k, v in self.gpu_map.items()}[gpu]
+                chisel_parts.append(f"--gpu {gpu_option}")
 
             # Add separator and python command
             chisel_parts.append("--")
@@ -1149,9 +1166,9 @@ Examples:
         parser.add_argument(
             "--gpu",
             "-g",
-            choices=["1", "2", "4", "8"],
+            choices=[option for option, _, _ in self.gpu_options],
             default="1",
-            help="GPU configuration: 1, 2, 4, or 8 GPUs (default: 1)",
+            help="GPU configuration: a1/a2/a4/a8 (A100-40GB), 1/2/4/8 (A100-80GB), h1/h2/h4/h8 (H100), l1/l2/l4/l8 (L4) (default: 1)",
         )
         parser.add_argument(
             "--interactive",
