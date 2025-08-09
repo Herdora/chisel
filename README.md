@@ -150,7 +150,3 @@ kandc python your_model.py
 ```
 
 That’s it! Your model runs on high-performance GPUs with automatic profiling. 🎉
-
----
-
-This is now properly structured, consistently styled, and fully Markdown-compatible. If you want, I can also make a **version with linked table of contents** so navigation is instant.
