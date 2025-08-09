@@ -4,7 +4,7 @@ Long-running demo script with frequent logging.
 Duration: ~3 minutes with progress updates every 2-3 seconds.
 
 This script demonstrates:
-- Real-time stdout streaming with chisel
+- Real-time stdout streaming with kandc
 - Progress tracking for long-running jobs
 - Model training simulation with detailed logging
 - Command line arguments handling
@@ -12,7 +12,7 @@ This script demonstrates:
 Usage:
   python long_running_demo.py --epochs 5 --batch-size 32
   kandc python long_running_demo.py --epochs 10 --batch-size 64
-  chisel --app-name "long-demo" --gpu 2 -- python long_running_demo.py --epochs 15 --verbose
+  kandc --app-name "long-demo" --gpu 2 -- python long_running_demo.py --epochs 15 --verbose
 """
 
 import argparse
@@ -92,7 +92,7 @@ def run_training_epoch(model, epoch, total_epochs, batch_size, num_batches, devi
         x = torch.randn(batch_size, 512).to(device)
         y = torch.randint(0, 10, (batch_size,)).to(device)
 
-        # Forward pass (this gets profiled by chisel)
+        # Forward pass (this gets profiled by kandc)
         with torch.no_grad():
             outputs = model(x)
 
@@ -196,7 +196,7 @@ def main():
 
     # Print startup banner
     print("=" * 70)
-    print("🚀 CHISEL LONG-RUNNING DEMO")
+    print("🚀 KANDC LONG-RUNNING DEMO")
     print("=" * 70)
     print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("⚙️  Configuration:")

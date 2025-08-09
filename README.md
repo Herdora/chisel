@@ -220,8 +220,6 @@ python -m build
 # 4. Check the built package
 twine check dist/*
 
-# 5. Upload to Test PyPI (optional)
-twine upload --repository testpypi dist/*
 
 # 6. Upload to PyPI
 twine upload dist/*

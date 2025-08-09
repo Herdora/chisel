@@ -2,7 +2,7 @@
 """
 Parent directory test example.
 Tests uploading from a parent directory (../examples).
-Run from chisel root: kandc python examples/nested_directory/parent_dir_test.py --upload-dir ../examples
+Run from kandc root: kandc python examples/nested_directory/parent_dir_test.py --upload-dir ../examples
 """
 
 import torch
