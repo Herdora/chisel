@@ -7,26 +7,11 @@ This directory contains PyTorch model examples that demonstrate GPU profiling wi
 From the `examples/` directory:
 
 ```bash
-# Test locally first
+# Test locally (if you have a GPU)
 python basic_models/simple_cnn.py
 
 # Run on cloud GPU with profiling
 kandc python basic_models/simple_cnn.py
-
-# Run with specific GPU configuration
-kandc --gpu H100:4 python basic_models/simple_cnn.py      # 4x H100 GPUs
-kandc --gpu A100-80GB:2 python basic_models/simple_cnn.py # 2x A100-80GB GPUs
-kandc --gpu L4:1 python basic_models/simple_cnn.py        # 1x L4 GPU
-```
-
-## GPU Options
-
-| GPU Type  | Example Flags   | Memory    | Best For                |
-| --------- | --------------- | --------- | ----------------------- |
-| A100-40GB | `A100:1-8`      | 40GB each | Cost-effective training |
-| A100-80GB | `A100-80GB:1-8` | 80GB each | High-memory models      |
-| H100      | `H100:1-8`      | 80GB each | Latest architecture     |
-| L4        | `L4:1-8`        | 24GB each | Efficient inference     |
 
 ## Examples
 
@@ -92,7 +77,7 @@ kandc python edge_cases/basic_model_call.py
 kandc python edge_cases/model_with_args.py --model-size large --batch-size 16
 
 # Separator format
-kandc --app-name "args-test" --gpu H100:2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
+kandc --app-name "args-test" --gpu 2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
 ```
 
 **`edge_cases/long_running_demo.py`** - Long-running demo (~3 mins) with real-time streaming
@@ -104,7 +89,7 @@ kandc python edge_cases/long_running_demo.py --epochs 3 --num-batches 8
 kandc python edge_cases/long_running_demo.py --epochs 8 --validate --verbose
 
 # With custom config
-kandc --app-name "streaming-demo" --gpu H100:2 -- python edge_cases/long_running_demo.py --epochs 10 --validate
+kandc --app-name "streaming-demo" --gpu 2 -- python edge_cases/long_running_demo.py --epochs 10 --validate
 ```
 
 **`edge_cases/large_file_test.py`** - Large file caching test
