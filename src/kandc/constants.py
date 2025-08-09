@@ -2,23 +2,23 @@ import os
 from enum import Enum
 
 DEFAULT_TRACE_ACTIVITIES = ["CPU", "CUDA"]
-MINIMUM_PACKAGES = ["torch", "requests", "git+https://github.com/Herdora/chisel.git@dev"]
+MINIMUM_PACKAGES = ["torch", "requests", "git+https://github.com/Herdora/kandc.git@dev"]
 ENV_CACHY_ENABLED = "CACHY_ENABLED"
 
 TRACE_DIR = "traces"
-REPO_NAME = "chisel"
+REPO_NAME = "kandc"
 
-CHISEL_BACKEND_RUN_ENV_KEY = "CHISEL_BACKEND_RUN"
-CHISEL_JOB_ID_ENV_KEY = "CHISEL_JOB_ID"
-CHISEL_API_KEY_ENV_KEY = "CHISEL_API_KEY"
-CHISEL_BACKEND_URL_ENV_KEY = "CHISEL_BACKEND_URL"
-CHISEL_BACKEND_APP_NAME_ENV_KEY = "CHISEL_BACKEND_APP_NAME"
+KANDC_BACKEND_RUN_ENV_KEY = "KANDC_BACKEND_RUN"
+KANDC_JOB_ID_ENV_KEY = "KANDC_JOB_ID"
+KANDC_API_KEY_ENV_KEY = "KANDC_API_KEY"
+KANDC_BACKEND_URL_ENV_KEY = "KANDC_BACKEND_URL"
+KANDC_BACKEND_APP_NAME_ENV_KEY = "KANDC_BACKEND_APP_NAME"
 
 # Default to production API, use localhost only in development
-if os.environ.get("CHISEL_DEV"):
-    CHISEL_BACKEND_URL = "http://localhost:8000"
+if os.environ.get("KANDC_DEV"):
+    KANDC_BACKEND_URL = "http://localhost:8000"
 else:
-    CHISEL_BACKEND_URL = "https://api.keysandcaches.com"
+    KANDC_BACKEND_URL = "https://api.keysandcaches.com"
 
 
 class GPUType(Enum):

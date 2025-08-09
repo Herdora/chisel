@@ -1,10 +1,10 @@
-# Chisel Documentation
+# Keys & Caches Documentation
 
-Welcome to **Chisel** - the fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.
+Welcome to **Keys & Caches** - the fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.
 
 ## 📚 Documentation Overview
 
-This documentation will help you get started with Chisel and make the most of its powerful features for GPU-accelerated machine learning.
+This documentation will help you get started with Keys & Caches and make the most of its powerful features for GPU-accelerated machine learning.
 
 ### Quick Navigation
 
@@ -14,9 +14,9 @@ This documentation will help you get started with Chisel and make the most of it
 
 ---
 
-## What is Chisel?
+## What is Keys & Caches?
 
-Chisel is a command-line tool that makes it effortless to run PyTorch models on high-performance cloud GPUs. With just one command, you can:
+Keys & Caches is a command-line tool that makes it effortless to run PyTorch models on high-performance cloud GPUs. With just one command, you can:
 
 - **🚀 Submit jobs to cloud GPUs** - Access A100, H100, and L4 GPUs instantly
 - **📊 Get automatic profiling** - Detailed performance traces for every model forward pass
@@ -29,12 +29,12 @@ Chisel is a command-line tool that makes it effortless to run PyTorch models on 
 ### 🎯 **One-Command Deployment**
 ```bash
 # Run any PyTorch script on cloud GPUs
-chisel python train.py --model-size large --epochs 100
+kandc python train.py --model-size large --epochs 100
 ```
 
 ### 📈 **Automatic Model Profiling**
 ```python
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 @capture_model_class(model_name="MyModel")
 class MyModel(nn.Module):
@@ -50,13 +50,13 @@ class MyModel(nn.Module):
 ### 🔧 **Simple Command Formats**
 ```bash
 # Two command formats:
-chisel python script.py --script-args                                  # Interactive
+kandc python script.py --script-args                                  # Interactive
 chisel --app-name job --gpu H100:4 -- python script.py --script-args  # Separator
 ```
 
 ---
 
-## Who Should Use Chisel?
+## Who Should Use Keys & Caches?
 
 ### 🧑‍🔬 **Machine Learning Researchers**
 - Quickly test models on powerful GPUs without infrastructure setup
@@ -80,7 +80,7 @@ chisel --app-name job --gpu H100:4 -- python script.py --script-args  # Separato
 
 ---
 
-## Why Choose Chisel?
+## Why Choose Keys & Caches?
 
 ### **🚀 Instant Access**
 No account setup, no credit cards, no waiting. Install and run immediately.
@@ -101,7 +101,7 @@ Pay only for actual GPU time. No idle charges, no minimum commitments.
 
 ## Ready to Get Started?
 
-👉 **[Jump to Getting Started Guide](getting-started.md)** to install Chisel and run your first GPU job in under 5 minutes!
+👉 **[Jump to Getting Started Guide](getting-started.md)** to install Keys & Caches and run your first GPU job in under 5 minutes!
 
 ---
 
@@ -113,7 +113,7 @@ Here's how easy it is to run a PyTorch model on cloud GPUs:
 # your_model.py
 import torch
 import torch.nn as nn
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 @capture_model_class(model_name="SimpleModel")
 class MyModel(nn.Module):
@@ -132,7 +132,7 @@ output = model(x)  # This gets automatically profiled!
 
 ```bash
 # Run on cloud GPUs with one command
-chisel python your_model.py
+kandc python your_model.py
 ```
 
 That's it! Your model runs on high-performance GPUs with automatic profiling. 🎉

@@ -7,7 +7,7 @@ This downloads actual model weights from HuggingFace and loads them into a captu
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer, AutoConfig
-from chisel import capture_model_class
+from kandc import capture_model_class
 import os
 
 
@@ -121,10 +121,10 @@ def download_and_test_distilbert(cache_dir="./model_cache"):
 
         # Sample texts
         texts = [
-            "This is an example of using downloaded HuggingFace models with Chisel profiling.",
+            "This is an example of using downloaded HuggingFace models with Keys & Caches profiling.",
             "The capture_model decorator will profile every forward pass automatically.",
             "GPU acceleration makes transformer inference much faster.",
-            "Pretrained models from HuggingFace work seamlessly with Chisel.",
+            "Pretrained models from HuggingFace work seamlessly with Keys & Caches.",
         ]
 
         print(f"📝 Testing with {len(texts)} sample texts")
@@ -337,11 +337,11 @@ def main():
     print(f"   python nlp_models/huggingface_download_example.py")
     print(f"   ")
     print(f"   # Run with profiling on cloud GPU")
-    print(f"   chisel python nlp_models/huggingface_download_example.py")
+    print(f"   kandc python nlp_models/huggingface_download_example.py")
     print(f"   ")
     print(f"   # With custom requirements")
     print(
-        f"   chisel python nlp_models/huggingface_download_example.py --requirements requirements_examples/nlp_requirements.txt"
+        f"   kandc python nlp_models/huggingface_download_example.py --requirements requirements_examples/nlp_requirements.txt"
     )
 
 

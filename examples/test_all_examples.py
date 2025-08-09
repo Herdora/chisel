@@ -41,7 +41,7 @@ def find_python_files(directory):
 
 def main():
     """Test all example files."""
-    print("🧪 Testing All Chisel Examples")
+    print("🧪 Testing All Keys & Caches Examples")
     print("=" * 50)
 
     # Get examples directory
@@ -89,20 +89,20 @@ def main():
     print(f"\n💡 Recommendations:")
     print(f"   1. Fix any import errors shown above")
     print(f"   2. Test examples locally: python basic_models/simple_cnn.py")
-    print(f"   3. Run on cloud GPU: chisel python basic_models/simple_cnn.py")
+    print(f"   3. Run on cloud GPU: kandc python basic_models/simple_cnn.py")
     print(f"   4. Check requirements: pip install -r requirements.txt")
 
     # Example commands
     print(f"\n🚀 Example Commands:")
     print(f"   # Basic model")
-    print(f"   chisel python basic_models/simple_cnn.py")
+    print(f"   kandc python basic_models/simple_cnn.py")
     print(f"   ")
     print(f"   # With arguments")
-    print(f"   chisel python edge_cases/model_with_args.py --model-size large")
+    print(f"   kandc python edge_cases/model_with_args.py --model-size large")
     print(f"   ")
     print(f"   # Custom requirements")
     print(
-        f"   chisel python nlp_models/transformer_example.py --requirements requirements_examples/nlp_requirements.txt"
+        f"   kandc python nlp_models/transformer_example.py --requirements requirements_examples/nlp_requirements.txt"
     )
 
     return successful == total

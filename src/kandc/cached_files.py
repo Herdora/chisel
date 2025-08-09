@@ -1,5 +1,5 @@
 """
-Cached files API client for Chisel.
+Cached files API client for Keys & Caches.
 Handles communication with the backend for large file caching.
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 import requests
 
-from .constants import CHISEL_BACKEND_URL, CHISEL_BACKEND_URL_ENV_KEY
+from .constants import KANDC_BACKEND_URL, KANDC_BACKEND_URL_ENV_KEY
 
 # Rich imports for progress tracking
 try:
@@ -97,7 +97,7 @@ class CachedFilesClient:
     def __init__(self, api_key: str):
         """Initialize the cached files client."""
         self.api_key = api_key
-        self.backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
+        self.backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
         self.base_url = f"{self.backend_url}/api/v1/cached-files"
 
     def _get_headers(self) -> Dict[str, str]:
@@ -302,7 +302,7 @@ def create_cached_file_placeholder(
             "size": cached_file_info["file_info"]["file_size"],
         },
         "metadata": {
-            "created_by": "chisel",
+            "created_by": "kandc",
             "cache_date": cached_file_info["file_info"]["upload_date"],
         },
     }

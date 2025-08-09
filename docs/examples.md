@@ -1,27 +1,27 @@
-# 💡 Chisel Examples & Use Cases
+# 💡 Keys & Caches Examples & Use Cases
 
-Explore real-world examples and learn how to use Chisel for different machine learning workflows. From simple models to complex architectures, these examples will help you master Chisel's capabilities.
+Explore real-world examples and learn how to use Keys & Caches for different machine learning workflows. From simple models to complex architectures, these examples will help you master Keys & Caches' capabilities.
 
 ## 🎯 Quick Reference
 
-| Category                                       | Use Case                     | Complexity   | GPU Rec. |
-| ---------------------------------------------- | ---------------------------- | ------------ | -------- |
-| [Basic Models](#-basic-models)                 | Learning Chisel fundamentals | Beginner     | 1 GPU    |
-| [Computer Vision](#-computer-vision)           | Image classification, CNNs   | Intermediate | 1-2 GPUs |
-| [NLP & Transformers](#-nlp--transformers)      | Text processing, BERT, GPT   | Advanced     | 2-4 GPUs |
-| [Vision-Language](#-vision-language-models)    | CLIP, multi-modal AI         | Advanced     | 2-4 GPUs |
-| [Generative Models](#-generative-models)       | GANs, VAEs, diffusion        | Expert       | 4-8 GPUs |
-| [Production Workflows](#-production-workflows) | Real-world scenarios         | Expert       | Variable |
+| Category                                       | Use Case                            | Complexity   | GPU Rec. |
+| ---------------------------------------------- | ----------------------------------- | ------------ | -------- |
+| [Basic Models](#-basic-models)                 | Learning Keys & Caches fundamentals | Beginner     | 1 GPU    |
+| [Computer Vision](#-computer-vision)           | Image classification, CNNs          | Intermediate | 1-2 GPUs |
+| [NLP & Transformers](#-nlp--transformers)      | Text processing, BERT, GPT          | Advanced     | 2-4 GPUs |
+| [Vision-Language](#-vision-language-models)    | CLIP, multi-modal AI                | Advanced     | 2-4 GPUs |
+| [Generative Models](#-generative-models)       | GANs, VAEs, diffusion               | Expert       | 4-8 GPUs |
+| [Production Workflows](#-production-workflows) | Real-world scenarios                | Expert       | Variable |
 
 ---
 
 ## 🏗️ Basic Models
 
-Perfect for learning Chisel fundamentals and testing your setup.
+Perfect for learning Keys & Caches fundamentals and testing your setup.
 
 ### Linear Regression & MLP
 ```bash
-chisel python examples/basic_models/linear_regression.py
+kandc python examples/basic_models/linear_regression.py
 ```
 
 **What you'll learn:**
@@ -36,7 +36,7 @@ chisel python examples/basic_models/linear_regression.py
 
 ### Simple CNN
 ```bash
-chisel python examples/basic_models/simple_cnn.py
+kandc python examples/basic_models/simple_cnn.py
 ```
 
 **What you'll learn:**
@@ -46,7 +46,7 @@ chisel python examples/basic_models/simple_cnn.py
 
 ### Instance Wrapper Demo
 ```bash
-chisel python examples/basic_models/instance_wrapper_example.py
+kandc python examples/basic_models/instance_wrapper_example.py
 ```
 
 **What you'll learn:**
@@ -62,7 +62,7 @@ Real-world computer vision examples with popular architectures.
 
 ### ResNet & EfficientNet
 ```bash
-chisel python examples/vision_models/resnet_example.py
+kandc python examples/vision_models/resnet_example.py
 ```
 
 **Architecture Highlights:**
@@ -88,7 +88,7 @@ Advanced natural language processing with transformer models.
 
 ### Custom Transformer Implementation
 ```bash
-chisel python examples/nlp_models/transformer_example.py
+kandc python examples/nlp_models/transformer_example.py
 ```
 
 **Models Included:**
@@ -108,7 +108,7 @@ chisel python examples/nlp_models/transformer_example.py
 
 ### HuggingFace Integration
 ```bash
-chisel --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
+kandc --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
 ```
 
 **Models Used:**
@@ -122,7 +122,7 @@ chisel --requirements requirements_examples/nlp_requirements.txt -- python examp
 
 ### Large Model Downloads
 ```bash
-chisel --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/huggingface_download_example.py
+kandc --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/huggingface_download_example.py
 ```
 
 **What's Special:**
@@ -138,7 +138,7 @@ Cutting-edge multi-modal AI with vision-language understanding.
 
 ### CLIP Integration
 ```bash
-chisel --requirements requirements_examples/vlm_requirements.txt -- python examples/vlm_models/clip_example.py
+kandc --requirements requirements_examples/vlm_requirements.txt -- python examples/vlm_models/clip_example.py
 ```
 
 **Capabilities Demonstrated:**
@@ -164,7 +164,7 @@ Advanced generative modeling with GANs and VAEs.
 
 ### GAN & VAE Implementation
 ```bash
-chisel python examples/generative_models/gan_example.py
+kandc python examples/generative_models/gan_example.py
 ```
 
 **Models Included:**
@@ -185,29 +185,29 @@ chisel python examples/generative_models/gan_example.py
 
 ## 🧪 Edge Cases & Testing
 
-Specialized examples for testing Chisel's capabilities.
+Specialized examples for testing Keys & Caches' capabilities.
 
 ### Command Line Arguments
 ```bash
 # Interactive format
-chisel python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
+kandc python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
 
 # Separator format  
-chisel --app-name "args-test" --gpu A100-80GB:2 -- python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
+kandc --app-name "args-test" --gpu A100-80GB:2 -- python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
 ```
 
 **What you'll learn:**
-- Both Chisel command formats (interactive and separator)
+- Both Keys & Caches command formats (interactive and separator)
 - Script argument handling
 - Configuration flexibility
 
 ### Long-Running Demo
 ```bash
 # Quick demo (~1 minute)
-chisel python examples/edge_cases/long_running_demo.py --epochs 3 --num-batches 8
+kandc python examples/edge_cases/long_running_demo.py --epochs 3 --num-batches 8
 
 # Full demo (~3 minutes)
-chisel python examples/edge_cases/long_running_demo.py --epochs 8 --validate --verbose
+kandc python examples/edge_cases/long_running_demo.py --epochs 8 --validate --verbose
 ```
 
 **Features:**
@@ -218,7 +218,7 @@ chisel python examples/edge_cases/long_running_demo.py --epochs 8 --validate --v
 
 ### Large File Handling
 ```bash
-chisel python examples/edge_cases/large_file_test.py
+kandc python examples/edge_cases/large_file_test.py
 ```
 
 **Testing:**
@@ -243,36 +243,36 @@ class LargeModel(nn.Module):
         
 # Commands for different scales:
 # Development: 1 GPU
-chisel --gpu A100-80GB:1 python train.py --debug
+kandc --gpu A100-80GB:1 python train.py --debug
 
 # Medium training: 2-4 GPUs  
-chisel --gpu A100-80GB:4 python train.py --full-dataset
+kandc --gpu A100-80GB:4 python train.py --full-dataset
 
 # Large scale: 8 GPUs
-chisel --gpu H100:8 python train.py --full-dataset --large-batch
+kandc --gpu H100:8 python train.py --full-dataset --large-batch
 ```
 
 ### Hyperparameter Sweeps
 ```bash
 # Systematic exploration
-chisel --app-name "sweep-lr-0001" --gpu A100-80GB:2 python train.py --lr 0.001
-chisel --app-name "sweep-lr-0003" --gpu A100-80GB:2 python train.py --lr 0.003
-chisel --app-name "sweep-lr-001" --gpu A100-80GB:2 python train.py --lr 0.01
+kandc --app-name "sweep-lr-0001" --gpu A100-80GB:2 python train.py --lr 0.001
+kandc --app-name "sweep-lr-0003" --gpu A100-80GB:2 python train.py --lr 0.003
+kandc --app-name "sweep-lr-001" --gpu A100-80GB:2 python train.py --lr 0.01
 ```
 
 ### Model Comparison Pipeline
 ```bash
 # Compare different architectures
-chisel --app-name "resnet18-baseline" --gpu A100-80GB:1 python compare_models.py --arch resnet18
-chisel --app-name "resnet50-comparison" --gpu A100-80GB:2 python compare_models.py --arch resnet50
-chisel --app-name "efficientnet-test" --gpu H100:1 python compare_models.py --arch efficientnet
+kandc --app-name "resnet18-baseline" --gpu A100-80GB:1 python compare_models.py --arch resnet18
+kandc --app-name "resnet50-comparison" --gpu A100-80GB:2 python compare_models.py --arch resnet50
+kandc --app-name "efficientnet-test" --gpu H100:1 python compare_models.py --arch efficientnet
 ```
 
 ---
 
 ## 📊 Performance Analysis Examples
 
-Learn to use Chisel's profiling data effectively.
+Learn to use Keys & Caches' profiling data effectively.
 
 ### Memory Usage Patterns
 ```python
@@ -300,9 +300,9 @@ class SlowModel(nn.Module):
 ### Batch Size Optimization
 ```bash
 # Test different batch sizes
-chisel --gpu L4:1 python batch_size_test.py --batch-size 16   # Memory efficient
-chisel --gpu A100-80GB:1 python batch_size_test.py --batch-size 64   # Balanced
-chisel --gpu H100:1 python batch_size_test.py --batch-size 256  # Maximum throughput
+kandc --gpu L4:1 python batch_size_test.py --batch-size 16   # Memory efficient
+kandc --gpu A100-80GB:1 python batch_size_test.py --batch-size 64   # Balanced
+kandc --gpu H100:1 python batch_size_test.py --batch-size 256  # Maximum throughput
 ```
 
 ---
@@ -312,23 +312,23 @@ chisel --gpu H100:1 python batch_size_test.py --batch-size 256  # Maximum throug
 ### Research & Experimentation
 ```bash
 # Quick prototyping
-chisel --gpu A100-80GB:1 python prototype.py --quick-test
+kandc --gpu A100-80GB:1 python prototype.py --quick-test
 
 # Full experiment
-chisel --gpu H100:4 --app-name "paper-reproduction" python full_experiment.py
+kandc --gpu H100:4 --app-name "paper-reproduction" python full_experiment.py
 ```
 
 ### Model Debugging
 ```bash
 # Debug with detailed profiling
-chisel --gpu A100-80GB:1 python debug_model.py --verbose --profile-memory
+kandc --gpu A100-80GB:1 python debug_model.py --verbose --profile-memory
 ```
 
 ### Educational Examples
 ```bash
 # For teaching ML concepts
-chisel python examples/educational/attention_visualization.py
-chisel python examples/educational/gradient_flow_analysis.py
+kandc python examples/educational/attention_visualization.py
+kandc python examples/educational/gradient_flow_analysis.py
 ```
 
 ---
@@ -414,7 +414,7 @@ import wandb
 class TrackedModel(nn.Module):
     def forward(self, x):
         output = self.layers(x)
-        # Chisel profiling + W&B logging
+        # Keys & Caches profiling + W&B logging
         wandb.log({"batch_processed": 1})
         return output
 ```
@@ -422,7 +422,7 @@ class TrackedModel(nn.Module):
 ### Distributed Training Patterns
 ```bash
 # Multi-node setup (coming soon)
-chisel --gpu H100:8 --nodes 2 python distributed_train.py
+kandc --gpu H100:8 --nodes 2 python distributed_train.py
 ```
 
 ---
@@ -442,7 +442,7 @@ project/
 ├── data/            # Data loading utilities  
 ├── train.py         # Main training script
 ├── requirements.txt # Dependencies
-└── .chiselignore    # Exclude unnecessary files
+└── .kandcignore    # Exclude unnecessary files
 ```
 
 ### 📊 **Performance Optimization**

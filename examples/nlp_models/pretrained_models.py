@@ -6,7 +6,7 @@ This demonstrates profiling of HuggingFace models.
 
 import torch
 from transformers import AutoModel, AutoTokenizer, AutoModelForSequenceClassification
-from chisel import capture_model_instance
+from kandc import capture_model_instance
 
 
 # Use capture_model to wrap HuggingFace models directly
@@ -51,7 +51,7 @@ def main():
 
     # Sample texts for testing
     sample_texts = [
-        "This is a great example of using Chisel for model profiling.",
+        "This is a great example of using Keys & Caches for model profiling.",
         "The capture_model decorator automatically profiles PyTorch models.",
         "GPU acceleration makes deep learning much faster.",
         "Transformers have revolutionized natural language processing.",

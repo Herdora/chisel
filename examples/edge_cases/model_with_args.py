@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Model with command line arguments example.
-Tests: chisel python model_with_args.py --model-size large --batch-size 16 --num-layers 5
+Tests: kandc python model_with_args.py --model-size large --batch-size 16 --num-layers 5
 """
 
 import argparse
 import torch
 import torch.nn as nn
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="ConfigurableModel")

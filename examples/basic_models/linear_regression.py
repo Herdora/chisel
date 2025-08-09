@@ -6,7 +6,7 @@ This demonstrates basic linear model profiling.
 
 import torch
 import torch.nn as nn
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="LinearRegression")

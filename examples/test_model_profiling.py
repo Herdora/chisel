@@ -3,12 +3,12 @@
 Test script for model profiling functionality.
 
 This script tests the capture_model decorator to ensure it works correctly
-both locally and on the Chisel backend.
+both locally and on the Keys & Caches backend.
 """
 
 import torch
 import torch.nn as nn
-from chisel import capture_model_class, parse_model_trace
+from kandc import capture_model_class, parse_model_trace
 import os
 import time
 
@@ -35,8 +35,8 @@ def test_model_profiling():
     print("=" * 40)
 
     # Check environment
-    is_backend = os.environ.get("CHISEL_BACKEND_RUN") == "1"
-    print(f"🔍 Running on Chisel backend: {is_backend}")
+    is_backend = os.environ.get("KANDC_BACKEND_RUN") == "1"
+    print(f"🔍 Running on Keys & Caches backend: {is_backend}")
 
     # Create model and data
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -113,13 +113,13 @@ def test_imports():
     print("=" * 40)
 
     try:
-        from chisel import capture_model_class
+        from kandc import capture_model_class
 
         print("✅ capture_model imported successfully")
 
         # Test parse_model_trace import
         try:
-            from chisel import parse_model_trace
+            from kandc import parse_model_trace
 
             print("✅ parse_model_trace imported successfully")
         except ImportError:

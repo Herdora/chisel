@@ -2,7 +2,7 @@
 """
 Parent directory test example.
 Tests uploading from a parent directory (../examples).
-Run from chisel root: chisel python examples/nested_directory/parent_dir_test.py --upload-dir ../examples
+Run from chisel root: kandc python examples/nested_directory/parent_dir_test.py --upload-dir ../examples
 """
 
 import torch
@@ -16,7 +16,7 @@ current_dir = os.path.dirname(__file__)
 parent_dir = os.path.join(current_dir, "..")
 sys.path.insert(0, parent_dir)
 
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="ParentDirModel")
@@ -144,8 +144,8 @@ def main():
     print(f"   - Accessing parent directory files")
     print(f"   - Upload directory configuration")
     print(f"\n🚀 Example usage:")
-    print(f"   chisel python nested_directory/parent_dir_test.py")
-    print(f"   chisel python nested_directory/parent_dir_test.py --upload-dir ../examples")
+    print(f"   kandc python nested_directory/parent_dir_test.py")
+    print(f"   kandc python nested_directory/parent_dir_test.py --upload-dir ../examples")
 
 
 if __name__ == "__main__":

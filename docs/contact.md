@@ -1,6 +1,6 @@
 # 📞 Contact & Support
 
-Need help with Chisel? Have questions, feedback, or want to connect with the community? We're here to help!
+Need help with Keys & Caches? Have questions, feedback, or want to connect with the community? We're here to help!
 
 ## 🆘 Getting Help
 
@@ -14,14 +14,14 @@ Before reaching out, check if your question is answered in our docs:
 
 #### Command Line Help
 ```bash
-chisel --help              # General help
-chisel python --help       # Python-specific options
+kandc --help              # General help
+kandc python --help       # Python-specific options
 ```
 
 #### Common Solutions
 ```bash
-chisel --logout            # Clear authentication and retry
-chisel --version           # Check your Chisel version
+kandc --logout            # Clear authentication and retry
+kandc --version           # Check your Keys & Caches version
 python script.py           # Always test locally first
 ```
 
@@ -32,7 +32,7 @@ python script.py           # Always test locally first
 ### 🎮 **Discord Community** (Recommended)
 Join our active Discord server for real-time help and community discussions:
 
-**[📱 Join Chisel Discord](https://discord.gg/chisel-ml)** *(Coming Soon)*
+**[📱 Join Keys & Caches Discord](https://discord.gg/keysandcaches-ml)** *(Coming Soon)*
 
 **What you'll find:**
 - 💡 `#help-and-questions` - Get assistance from the community
@@ -44,7 +44,7 @@ Join our active Discord server for real-time help and community discussions:
 ### 📧 **Email Support**
 For direct support, bug reports, or business inquiries:
 
-**📧 support@chisel-ml.com**
+**📧 support@herdora.com**
 
 **Response Times:**
 - General questions: 24-48 hours
@@ -54,7 +54,7 @@ For direct support, bug reports, or business inquiries:
 ### 🐛 **GitHub Issues**
 For bug reports, feature requests, and technical discussions:
 
-**[🔗 GitHub Repository](https://github.com/Herdora/chisel)**
+**[🔗 GitHub Repository](https://github.com/Herdora/kandc)**
 
 **When to use GitHub:**
 - 🐛 Bug reports with reproducible examples
@@ -72,11 +72,11 @@ Help us help you! When reporting issues, please include:
 ```bash
 # System info
 python --version
-chisel --version
+kandc --version
 pip show torch
 
 # Error reproduction
-chisel python your_script.py  # Full command that failed
+kandc python your_script.py  # Full command that failed
 # Include the complete error traceback
 ```
 
@@ -86,14 +86,14 @@ chisel python your_script.py  # Full command that failed
 Brief description of the issue
 
 **Steps to Reproduce:**
-1. Run command: `chisel python script.py`
+1. Run command: `kandc python script.py`
 2. Expected behavior: Should run successfully
 3. Actual behavior: Error message
 
 **Environment:**
 - OS: [macOS/Linux/Windows]
 - Python version: [3.9/3.10/3.11]
-- Chisel version: [from chisel --version]
+- Keys & Caches version: [from kandc --version]
 - PyTorch version: [from pip show torch]
 
 **Error Log:**
@@ -120,7 +120,7 @@ We love hearing your ideas! For feature requests:
 ### 💼 **Enterprise Support**
 Need dedicated support for your organization?
 
-**📧 enterprise@chisel-ml.com**
+**📧 enterprise@herdora.com**
 
 **Enterprise Features:**
 - 🎯 Dedicated support team
@@ -130,9 +130,9 @@ Need dedicated support for your organization?
 - 🛠️ Custom integrations and features
 
 ### 🤝 **Partnerships**
-Interested in partnering with Chisel?
+Interested in partnering with Keys & Caches?
 
-**📧 partnerships@chisel-ml.com**
+**📧 partnerships@herdora.com**
 
 **Partnership Opportunities:**
 - 🏫 Academic collaborations
@@ -143,7 +143,7 @@ Interested in partnering with Chisel?
 ### 💰 **Pricing & Billing**
 Questions about costs, billing, or payment?
 
-**📧 billing@chisel-ml.com**
+**📧 billing@herdora.com**
 
 **Common Questions:**
 - GPU pricing and cost optimization
@@ -158,14 +158,14 @@ Questions about costs, billing, or payment?
 ### 🧑‍💻 **Core Team**
 
 **Steven Arellano** - *Founder & Lead Developer*
-- 📧 steven@chisel-ml.com
+- 📧 steven@herdora.com
 - 🐦 [@steven_arellano](https://twitter.com/steven_arellano)
 - 💼 [LinkedIn](https://linkedin.com/in/steven-arellano)
 
 ### 🌟 **Contributing**
-Want to contribute to Chisel? We'd love your help!
+Want to contribute to Keys & Caches? We'd love your help!
 
-**[📖 Contributing Guide](https://github.com/Herdora/chisel/blob/main/CONTRIBUTING.md)**
+**[📖 Contributing Guide](https://github.com/Herdora/kandc/blob/main/CONTRIBUTING.md)**
 
 **Ways to Contribute:**
 - 🐛 Report bugs and issues
@@ -189,21 +189,21 @@ Contributors are recognized in:
 Stay connected and get the latest updates:
 
 ### 🐦 **Twitter**
-**[@ChiselML](https://twitter.com/ChiselML)** *(Coming Soon)*
+**[@KeysAndCaches](https://twitter.com/KeysAndCaches)** *(Coming Soon)*
 - 📢 Product announcements
 - 💡 Tips and tricks
 - 🚀 Community highlights
 - 📊 Performance insights
 
 ### 💼 **LinkedIn**
-**[Chisel Company Page](https://linkedin.com/company/chisel-ml)** *(Coming Soon)*
+**[Keys & Caches Company Page](https://linkedin.com/company/keysandcaches)** *(Coming Soon)*
 - 🏢 Company updates
 - 📰 Industry insights
 - 🎯 Use case studies
 - 💼 Career opportunities
 
 ### 📺 **YouTube**
-**[Chisel ML Channel](https://youtube.com/@ChiselML)** *(Coming Soon)*
+**[Keys & Caches Channel](https://youtube.com/@KeysAndCaches)** *(Coming Soon)*
 - 🎥 Tutorial videos
 - 🔍 Deep-dive technical content
 - 🎤 Community showcases
@@ -216,13 +216,13 @@ Stay connected and get the latest updates:
 ### 🏢 **Company Information**
 **Herdora Inc.**
 - 📍 San Francisco, CA, USA
-- 🌐 [chisel-ml.com](https://chisel-ml.com)
-- 📧 hello@chisel-ml.com
+- 🌐 [keysandcaches.com](https://keysandcaches.com)
+- 📧 hello@herdora.com
 
 ### 📜 **Legal & Privacy**
-- **[Terms of Service](https://chisel-ml.com/terms)**
-- **[Privacy Policy](https://chisel-ml.com/privacy)**
-- **[Data Processing Agreement](https://chisel-ml.com/dpa)**
+- **[Terms of Service](https://keysandcaches.com/terms)**
+- **[Privacy Policy](https://keysandcaches.com/privacy)**
+- **[Data Processing Agreement](https://keysandcaches.com/dpa)**
 
 ---
 
@@ -231,7 +231,7 @@ Stay connected and get the latest updates:
 ### 🚨 **Critical Issues** (Service Down)
 - **Target Response:** 2-4 hours
 - **Resolution:** 24 hours
-- **Contact:** support@chisel-ml.com with "URGENT" in subject
+- **Contact:** support@herdora.com with "URGENT" in subject
 
 ### 🐛 **Bug Reports**
 - **Target Response:** 12-24 hours
@@ -255,7 +255,7 @@ Stay connected and get the latest updates:
 - Search existing documentation first
 - Provide complete error messages and logs
 - Include system information (OS, Python version, etc.)
-- Test with the latest Chisel version
+- Test with the latest Keys & Caches version
 - Create minimal reproducible examples
 
 ### ❌ **Avoid This:**
@@ -282,7 +282,7 @@ Stay connected and get the latest updates:
 - Welcome newcomers to the community
 
 ### 🎯 **Stay On-Topic**
-- Keep discussions relevant to Chisel and ML
+- Keep discussions relevant to Keys & Caches and ML
 - Use appropriate channels for different topics
 - Avoid spam, self-promotion, or off-topic content
 - Follow platform-specific guidelines
@@ -291,7 +291,7 @@ Stay connected and get the latest updates:
 
 ## 🎉 Thank You!
 
-Thank you for being part of the Chisel community! Whether you're:
+Thank you for being part of the Keys & Caches community! Whether you're:
 
 - 🚀 Building amazing ML models
 - 🐛 Reporting bugs to help us improve  
@@ -299,10 +299,10 @@ Thank you for being part of the Chisel community! Whether you're:
 - 📖 Contributing to documentation
 - 🤝 Helping other community members
 
-**You make Chisel better for everyone!** 
+**You make Keys & Caches better for everyone!** 
 
-We're excited to see what you'll build with Chisel. Don't hesitate to reach out - we're here to help you succeed! 🌟
+We're excited to see what you'll build with Keys & Caches. Don't hesitate to reach out - we're here to help you succeed! 🌟
 
 ---
 
-*Happy coding, and welcome to the Chisel community! 🚀*
+*Happy coding, and welcome to the Keys & Caches community! 🚀*

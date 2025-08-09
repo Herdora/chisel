@@ -7,7 +7,7 @@ This demonstrates generative model profiling.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="Generator")

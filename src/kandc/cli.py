@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
 from .constants import (
-    CHISEL_BACKEND_URL,
-    CHISEL_BACKEND_URL_ENV_KEY,
+    KANDC_BACKEND_URL,
+    KANDC_BACKEND_URL_ENV_KEY,
     MINIMUM_PACKAGES,
     GPUType,
 )
@@ -52,13 +52,13 @@ EXCLUDE_PATTERNS = {
 
 def load_ignore_patterns(directory: Path) -> tuple[set, set]:
     """
-    Load patterns from .gitignore and .chiselignore files if they exist.
+    Load patterns from .gitignore and .kandcignore files if they exist.
 
     Returns:
-        tuple: (gitignore_patterns, chiselignore_patterns)
+        tuple: (gitignore_patterns, kandcignore_patterns)
     """
     gitignore_patterns = set()
-    chiselignore_patterns = set()
+    kandcignore_patterns = set()
 
     # Load .gitignore patterns
     gitignore_path = directory / ".gitignore"
@@ -78,11 +78,11 @@ def load_ignore_patterns(directory: Path) -> tuple[set, set]:
             # If we can't read .gitignore, just continue
             pass
 
-    # Load .chiselignore patterns
-    chiselignore_path = directory / ".chiselignore"
-    if chiselignore_path.exists():
+    # Load .kandcignore patterns
+    kandcignore_path = directory / ".kandcignore"
+    if kandcignore_path.exists():
         try:
-            with open(chiselignore_path, "r", encoding="utf-8") as f:
+            with open(kandcignore_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     # Skip empty lines and comments
@@ -91,22 +91,22 @@ def load_ignore_patterns(directory: Path) -> tuple[set, set]:
                         if line.startswith("/"):
                             line = line[1:]
                         # Add pattern to set
-                        chiselignore_patterns.add(line)
+                        kandcignore_patterns.add(line)
         except (IOError, UnicodeDecodeError):
-            # If we can't read .chiselignore, just continue
+            # If we can't read .kandcignore, just continue
             pass
 
-    return gitignore_patterns, chiselignore_patterns
+    return gitignore_patterns, kandcignore_patterns
 
 
-def should_exclude(path, gitignore_patterns=None, chiselignore_patterns=None):
+def should_exclude(path, gitignore_patterns=None, kandcignore_patterns=None):
     """
     Check if a path should be excluded from upload.
 
     Args:
         path: Path to check (relative to upload directory)
         gitignore_patterns: Set of gitignore patterns (optional)
-        chiselignore_patterns: Set of chiselignore patterns (optional)
+        kandcignore_patterns: Set of kandcignore patterns (optional)
 
     Returns:
         True if the path should be excluded, False otherwise
@@ -140,8 +140,8 @@ def should_exclude(path, gitignore_patterns=None, chiselignore_patterns=None):
                     return True
         return False
 
-    # Check chiselignore patterns first (takes precedence)
-    if matches_patterns(chiselignore_patterns):
+    # Check kandcignore patterns first (takes precedence)
+    if matches_patterns(kandcignore_patterns):
         return True
 
     # Check gitignore patterns
@@ -151,8 +151,8 @@ def should_exclude(path, gitignore_patterns=None, chiselignore_patterns=None):
     return False
 
 
-def tar_filter(tarinfo, gitignore_patterns=None, chiselignore_patterns=None):
-    if should_exclude(tarinfo.name, gitignore_patterns, chiselignore_patterns):
+def tar_filter(tarinfo, gitignore_patterns=None, kandcignore_patterns=None):
+    if should_exclude(tarinfo.name, gitignore_patterns, kandcignore_patterns):
         return None
     return tarinfo
 
@@ -174,7 +174,7 @@ def preview_upload_directory(upload_dir: Path, console=None) -> Dict[str, Any]:
     large_files = []
 
     # Load ignore patterns
-    gitignore_patterns, chiselignore_patterns = load_ignore_patterns(upload_dir)
+    gitignore_patterns, kandcignore_patterns = load_ignore_patterns(upload_dir)
 
     # Walk through the directory
     for root, dirs, files in os.walk(upload_dir):
@@ -182,14 +182,14 @@ def preview_upload_directory(upload_dir: Path, console=None) -> Dict[str, Any]:
         dirs[:] = [
             d
             for d in dirs
-            if not should_exclude(os.path.join(root, d), gitignore_patterns, chiselignore_patterns)
+            if not should_exclude(os.path.join(root, d), gitignore_patterns, kandcignore_patterns)
         ]
 
         for file in files:
             file_path = Path(root) / file
             relative_path = file_path.relative_to(upload_dir)
 
-            if should_exclude(str(relative_path), gitignore_patterns, chiselignore_patterns):
+            if should_exclude(str(relative_path), gitignore_patterns, kandcignore_patterns):
                 excluded_files.append(str(relative_path))
             else:
                 try:
@@ -220,7 +220,7 @@ def preview_upload_directory(upload_dir: Path, console=None) -> Dict[str, Any]:
         "total_size": total_size,
         "total_size_mb": total_size / (1024 * 1024) if total_size > 0 else 0,
         "gitignore_patterns": gitignore_patterns,
-        "chiselignore_patterns": chiselignore_patterns,
+        "kandcignore_patterns": kandcignore_patterns,
     }
 
 
@@ -640,11 +640,11 @@ def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, consol
             for pattern in sorted(gitignore_patterns):
                 console.print(f"  • {pattern}", style="dim")
 
-        # Show chiselignore patterns if any were found
-        chiselignore_patterns = preview_data.get("chiselignore_patterns", set())
-        if chiselignore_patterns:
-            console.print(f"\n[bold dim]📋 .chiselignore Patterns:[/bold dim]")
-            for pattern in sorted(chiselignore_patterns):
+        # Show kandcignore patterns if any were found
+        kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
+        if kandcignore_patterns:
+            console.print(f"\n[bold dim]📋 .kandcignore Patterns:[/bold dim]")
+            for pattern in sorted(kandcignore_patterns):
                 console.print(f"  • {pattern}", style="dim")
 
     else:
@@ -709,15 +709,15 @@ def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, consol
             for pattern in sorted(gitignore_patterns):
                 print(f"  • {pattern}")
 
-        # Show chiselignore patterns if any were found
-        chiselignore_patterns = preview_data.get("chiselignore_patterns", set())
-        if chiselignore_patterns:
-            print(f"\n📋 .chiselignore Patterns:")
-            for pattern in sorted(chiselignore_patterns):
+        # Show kandcignore patterns if any were found
+        kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
+        if kandcignore_patterns:
+            print(f"\n📋 .kandcignore Patterns:")
+            for pattern in sorted(kandcignore_patterns):
                 print(f"  • {pattern}")
 
 
-class ChiselCLI:
+class KandcCLI:
     def __init__(self):
         self.console = Console() if RICH_AVAILABLE else None
         self.gpu_options = [
@@ -744,7 +744,7 @@ class ChiselCLI:
     def print_header(self):
         """Print the CLI header with styling."""
         if RICH_AVAILABLE:
-            title = Text("🚀 Chisel CLI", style="bold blue")
+            title = Text("🚀 Keys & Caches CLI", style="bold blue")
             subtitle = Text("GPU Job Submission Tool", style="dim")
 
             header = Panel(
@@ -753,7 +753,7 @@ class ChiselCLI:
             self.console.print(header)
         else:
             print("╔══════════════════════════════════════════════════════════════╗")
-            print("║                    🚀 Chisel CLI                            ║")
+            print("║                🚀 Keys & Caches CLI                         ║")
             print("║                GPU Job Submission Tool                      ║")
             print("╚══════════════════════════════════════════════════════════════╝")
             print()
@@ -946,29 +946,29 @@ class ChiselCLI:
         """Show the equivalent command-line command for copy/paste."""
         if RICH_AVAILABLE:
             # Build the command using separator format
-            chisel_parts = ["chisel"]
+            kandc_parts = ["kandc"]
 
-            # Add chisel flags first
+            # Add kandc flags first
             if app_name:
-                chisel_parts.append(f'--app-name "{app_name}"')
+                kandc_parts.append(f'--app-name "{app_name}"')
 
             if upload_dir != ".":
-                chisel_parts.append(f'--upload-dir "{upload_dir}"')
+                kandc_parts.append(f'--upload-dir "{upload_dir}"')
 
             if requirements_file != "requirements.txt":
-                chisel_parts.append(f'--requirements "{requirements_file}"')
+                kandc_parts.append(f'--requirements "{requirements_file}"')
 
             if gpu != "A100-80GB:1":
                 # Convert GPU type back to option key
                 gpu_option = {v: k for k, v in self.gpu_map.items()}[gpu]
-                chisel_parts.append(f"--gpu {gpu_option}")
+                kandc_parts.append(f"--gpu {gpu_option}")
 
             # Add separator and python command
-            chisel_parts.append("--")
-            chisel_parts.append("python")
-            chisel_parts.append(script_path)
+            kandc_parts.append("--")
+            kandc_parts.append("python")
+            kandc_parts.append(script_path)
 
-            command = " ".join(chisel_parts)
+            command = " ".join(kandc_parts)
 
             # Create a beautiful panel for the command
             command_text = Text(command, style="bold green")
@@ -986,29 +986,29 @@ class ChiselCLI:
             print("═" * 60)
 
             # Build the command using separator format
-            chisel_parts = ["chisel"]
+            kandc_parts = ["kandc"]
 
-            # Add chisel flags first
+            # Add kandc flags first
             if app_name:
-                chisel_parts.append(f'--app-name "{app_name}"')
+                kandc_parts.append(f'--app-name "{app_name}"')
 
             if upload_dir != ".":
-                chisel_parts.append(f'--upload-dir "{upload_dir}"')
+                kandc_parts.append(f'--upload-dir "{upload_dir}"')
 
             if requirements_file != "requirements.txt":
-                chisel_parts.append(f'--requirements "{requirements_file}"')
+                kandc_parts.append(f'--requirements "{requirements_file}"')
 
             if gpu != "A100-80GB:1":
                 # Convert GPU type back to option key
                 gpu_option = {v: k for k, v in self.gpu_map.items()}[gpu]
-                chisel_parts.append(f"--gpu {gpu_option}")
+                kandc_parts.append(f"--gpu {gpu_option}")
 
             # Add separator and python command
-            chisel_parts.append("--")
-            chisel_parts.append("python")
-            chisel_parts.append(script_path)
+            kandc_parts.append("--")
+            kandc_parts.append("python")
+            kandc_parts.append(script_path)
 
-            command = " ".join(chisel_parts)
+            command = " ".join(kandc_parts)
             print(f"$ {command}")
             print("═" * 60)
             print()
@@ -1017,8 +1017,8 @@ class ChiselCLI:
         """Parse command line arguments and return configuration.
 
         Supports two formats:
-        1. chisel --chisel-flags -- python script.py --script-args (separator format)
-        2. chisel python script.py --script-args (interactive format)
+        1. kandc --kandc-flags -- python script.py --script-args (separator format)
+        2. kandc python script.py --script-args (interactive format)
         """
         # Check if we have the -- separator format
         if "--" in args:
@@ -1027,24 +1027,24 @@ class ChiselCLI:
             return self._parse_interactive_format(args)
 
     def _parse_with_separator(self, args: List[str]) -> Optional[Dict[str, Any]]:
-        """Parse arguments with -- separator: chisel --chisel-flags -- python script.py --script-args"""
+        """Parse arguments with -- separator: kandc --kandc-flags -- python script.py --script-args"""
         try:
             separator_index = args.index("--")
-            chisel_args = args[:separator_index]
+            kandc_args = args[:separator_index]
             command_args = args[separator_index + 1 :]
 
-            # Parse chisel flags
-            parser = self._create_chisel_parser()
-            # Add dummy command for chisel-only args
+            # Parse kandc flags
+            parser = self._create_kandc_parser()
+            # Add dummy command for kandc-only args
             parser.add_argument("dummy", nargs="*", help=argparse.SUPPRESS)
 
-            parsed_chisel = parser.parse_args(chisel_args + ["dummy"])
+            parsed_kandc = parser.parse_args(kandc_args + ["dummy"])
 
             # Validate command format
             if len(command_args) < 2 or command_args[0] != "python":
                 print("❌ After --, expected: python <script.py> [script-args...]")
                 print(
-                    "Usage: chisel --app-name my-job --gpu 2 -- python script.py --model-size large"
+                    "Usage: kandc --app-name my-job --gpu A100-80GB:2 -- python script.py --model-size large"
                 )
                 return None
 
@@ -1054,12 +1054,12 @@ class ChiselCLI:
             return {
                 "script_path": script_path,
                 "script_args": script_args,
-                "app_name": parsed_chisel.app_name,
-                "upload_dir": parsed_chisel.upload_dir,
-                "requirements_file": parsed_chisel.requirements,
-                "gpu": self.gpu_map[parsed_chisel.gpu],
-                "interactive": parsed_chisel.interactive,
-                "preview": parsed_chisel.preview,
+                "app_name": parsed_kandc.app_name,
+                "upload_dir": parsed_kandc.upload_dir,
+                "requirements_file": parsed_kandc.requirements,
+                "gpu": self.gpu_map[parsed_kandc.gpu],
+                "interactive": parsed_kandc.interactive,
+                "preview": parsed_kandc.preview,
             }
         except (ValueError, SystemExit) as e:
             if isinstance(e, ValueError):
@@ -1067,10 +1067,10 @@ class ChiselCLI:
             return None
 
     def _parse_interactive_format(self, args: List[str]) -> Optional[Dict[str, Any]]:
-        """Parse interactive format: chisel python script.py --script-args
+        """Parse interactive format: kandc python script.py --script-args
 
-        This format does NOT accept chisel flags - all configuration must be done interactively.
-        If chisel flags are provided without the -- separator, it's an error.
+        This format does NOT accept kandc flags - all configuration must be done interactively.
+        If kandc flags are provided without the -- separator, it's an error.
         """
         # Try to find where 'python' starts
         python_index = None
@@ -1081,18 +1081,18 @@ class ChiselCLI:
 
         if python_index is None:
             print("❌ Error: 'python' command not found")
-            print("💡 Use: chisel python script.py --script-args")
-            print("💡 Or: chisel --chisel-flags -- python script.py --script-args")
+            print("💡 Use: kandc python script.py --script-args")
+            print("💡 Or: kandc --kandc-flags -- python script.py --script-args")
             return None
 
-        # Check if there are any potential chisel flags before 'python'
-        potential_chisel_args = args[:python_index]
-        if potential_chisel_args:
-            print("❌ Error: Chisel flags are not allowed in interactive format")
-            print(f"   Found: {' '.join(potential_chisel_args)}")
+        # Check if there are any potential kandc flags before 'python'
+        potential_kandc_args = args[:python_index]
+        if potential_kandc_args:
+            print("❌ Error: Keys & Caches flags are not allowed in interactive format")
+            print(f"   Found: {' '.join(potential_kandc_args)}")
             print("💡 Use the separator format instead:")
             print(
-                f"   chisel {' '.join(potential_chisel_args)} -- python {' '.join(args[python_index + 1 :])}"
+                f"   kandc {' '.join(potential_kandc_args)} -- python {' '.join(args[python_index + 1 :])}"
             )
             return None
 
@@ -1120,18 +1120,18 @@ class ChiselCLI:
             "has_prefilled_values": False,
         }
 
-    def _create_chisel_parser(self):
-        """Create the argument parser for chisel-specific flags."""
+    def _create_kandc_parser(self):
+        """Create the argument parser for kandc-specific flags."""
         parser = argparse.ArgumentParser(
-            description="Chisel CLI - GPU Job Submission Tool",
+            description="Keys & Caches CLI - GPU Job Submission Tool",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
-  # Separator format (chisel flags first, then -- separator):
-  chisel --app-name my-job --gpu 4 -- python script.py --model-size large
+  # Separator format (kandc flags first, then -- separator):
+  kandc --app-name my-job --gpu A100-80GB:4 -- python script.py --model-size large
   
-  # Interactive mode (script args only, prompts for chisel config):
-  chisel python script.py --model-size large --epochs 10
+  # Interactive mode (script args only, prompts for kandc config):
+  kandc python script.py --model-size large --epochs 10
             """,
         )
 
@@ -1182,7 +1182,7 @@ Examples:
         api_key: str,
     ) -> Dict[str, Any]:
         """Submit job to backend."""
-        backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
+        backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
 
         upload_dir = Path(upload_dir)
 
@@ -1280,11 +1280,11 @@ Examples:
                 cached_files_info = []
 
         # Load ignore patterns for tar filtering
-        gitignore_patterns, chiselignore_patterns = load_ignore_patterns(Path(processed_dir))
+        gitignore_patterns, kandcignore_patterns = load_ignore_patterns(Path(processed_dir))
 
         # Create a wrapper function for tar filter with ignore patterns
         def tar_filter_with_ignore_patterns(tarinfo):
-            return tar_filter(tarinfo, gitignore_patterns, chiselignore_patterns)
+            return tar_filter(tarinfo, gitignore_patterns, kandcignore_patterns)
 
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
             tar_path = tmp_file.name
@@ -1462,20 +1462,22 @@ Examples:
             if os.path.exists(tar_path):
                 os.unlink(tar_path)
 
-    def run_chisel_command(self, command: List[str]) -> int:
-        """Run the chisel command with improved interface."""
+    def run_kandc_command(self, command: List[str]) -> int:
+        """Run the kandc command with improved interface."""
         if len(command) < 2:
             if RICH_AVAILABLE:
                 self.console.print("❌ No command provided!", style="red")
                 self.console.print("\n[bold]Usage:[/bold]")
-                self.console.print("  chisel python <script.py> [script-args]")
+                self.console.print("  kandc python <script.py> [script-args]")
                 self.console.print(
-                    "  chisel --app-name my-job --gpu 2 -- python <script.py> [script-args]"
+                    "  kandc --app-name my-job --gpu A100-80GB:2 -- python <script.py> [script-args]"
                 )
             else:
                 print("❌ No command provided!")
-                print("Usage: chisel python <script.py> [script-args]")
-                print("       chisel --app-name my-job --gpu 2 -- python <script.py> [script-args]")
+                print("Usage: kandc python <script.py> [script-args]")
+                print(
+                    "       kandc --app-name my-job --gpu A100-80GB:2 -- python <script.py> [script-args]"
+                )
             return 1
 
         # Try to parse command line arguments first
@@ -1563,7 +1565,7 @@ Examples:
         else:
             print("\n🔑 Checking authentication...")
 
-        backend_url = os.environ.get(CHISEL_BACKEND_URL_ENV_KEY) or CHISEL_BACKEND_URL
+        backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
         api_key = _auth_service.authenticate(backend_url)
 
         if not api_key:
@@ -1605,22 +1607,19 @@ Examples:
 
 def main():
     """Main CLI entry point."""
-    cli = ChiselCLI()
+    cli = KandcCLI()
 
     if len(sys.argv) < 2:
         if cli.console:
-            cli.console.print("Chisel CLI is installed and working!", style="bold green")
+            cli.console.print("Keys & Caches CLI is installed and working!", style="bold green")
             cli.console.print("\n[bold]Usage Formats:[/bold]")
             cli.console.print(
-                "  [cyan]Separator format:[/cyan] chisel [chisel-flags] -- python <script.py> [script-args]"
+                "  [cyan]Separator format:[/cyan] kandc [kandc-flags] -- python <script.py> [script-args]"
             )
             cli.console.print(
-                "  [cyan]Interactive:[/cyan]      chisel python <script.py> [script-args]"
+                "  [cyan]Interactive:[/cyan]      kandc python <script.py> [script-args]"
             )
-            cli.console.print(
-                "  [cyan]Pre-filled:[/cyan]       chisel [chisel-flags] python <script.py> [script-args]"
-            )
-            cli.console.print("\n[bold]Chisel Flags:[/bold]")
+            cli.console.print("\n[bold]Keys & Caches Flags:[/bold]")
             cli.console.print("  --app-name, -a     Job name for tracking")
             cli.console.print("  --gpu, -g          GPU count (1,2,4,8)")
             cli.console.print("  --upload-dir, -d   Directory to upload")
@@ -1630,34 +1629,27 @@ def main():
             cli.console.print("  --logout           Clear authentication")
             cli.console.print("  --version          Show version")
             cli.console.print("\n[bold]Examples:[/bold]")
-            cli.console.print("  [green]# Separator format (chisel flags first, then --):[/green]")
+            cli.console.print("  [green]# Separator format (kandc flags first, then --):[/green]")
             cli.console.print(
-                "  chisel --app-name my-job --gpu 2 -- python train.py --model-size large"
+                "  kandc --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
             )
             cli.console.print(
                 "  [green]# Interactive mode (script args only, prompts for config):[/green]"
             )
-            cli.console.print("  chisel python train.py --model-size large --epochs 10")
-            cli.console.print(
-                "  [green]# Pre-filled mode (chisel flags pre-fill interactive prompts):[/green]"
-            )
-            cli.console.print(
-                "  chisel --app-name my-job --gpu 2 python train.py --model-size large"
-            )
+            cli.console.print("  kandc python train.py --model-size large --epochs 10")
             cli.console.print(
                 "\n💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
             )
         else:
-            print("Chisel CLI is installed and working!")
+            print("Keys & Caches CLI is installed and working!")
             print()
             print("Usage Formats:")
-            print("  Separator format: chisel [chisel-flags] -- python <script.py> [script-args]")
-            print("  Interactive:      chisel python <script.py> [script-args]")
-            print("  Pre-filled:       chisel [chisel-flags] python <script.py> [script-args]")
+            print("  Separator format: kandc [kandc-flags] -- python <script.py> [script-args]")
+            print("  Interactive:      kandc python <script.py> [script-args]")
             print()
-            print("Chisel Flags:")
+            print("Keys & Caches Flags:")
             print("  --app-name, -a     Job name for tracking")
-            print("  --gpu, -g          GPU count (1,2,4,8)")
+            print("  --gpu, -g          GPU configuration (e.g., A100-80GB:2, H100:4)")
             print("  --upload-dir, -d   Directory to upload")
             print("  --requirements, -r Requirements file")
             print("  --interactive, -i  Force interactive mode")
@@ -1666,12 +1658,12 @@ def main():
             print("  --version          Show version")
             print()
             print("Examples:")
-            print("  # Separator format (chisel flags first, then --):")
-            print("  chisel --app-name my-job --gpu 2 -- python train.py --model-size large")
+            print("  # Separator format (kandc flags first, then --):")
+            print(
+                "  kandc --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
+            )
             print("  # Interactive mode (script args only, prompts for config):")
-            print("  chisel python train.py --model-size large --epochs 10")
-            print("  # Pre-filled mode (chisel flags pre-fill interactive prompts):")
-            print("  chisel --app-name my-job --gpu 2 python train.py --model-size large")
+            print("  kandc python train.py --model-size large --epochs 10")
             print()
             print(
                 "💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
@@ -1682,18 +1674,18 @@ def main():
     if sys.argv[1] in ["--version", "-v", "version"]:
         from . import __version__
 
-        print(f"Chisel CLI v{__version__}")
+        print(f"Keys & Caches CLI v{__version__}")
         return 0
 
     # Handle logout flag
     if sys.argv[1] == "--logout":
         if _auth_service.is_authenticated():
             _auth_service.clear()
-            print("✅ Successfully logged out from Chisel CLI")
+            print("✅ Successfully logged out from Keys & Caches CLI")
         else:
             print("ℹ️  No active authentication found")
         return 0
 
-    # Run chisel command
+    # Run kandc command
     command = sys.argv[1:]
-    return cli.run_chisel_command(command)
+    return cli.run_kandc_command(command)

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Model example using custom requirements file.
-Run with: chisel python model_with_custom_requirements.py --requirements requirements_examples/nlp_requirements.txt
+Run with: kandc python model_with_custom_requirements.py --requirements requirements_examples/nlp_requirements.txt
 """
 
 import torch
 import torch.nn as nn
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 # Try to import optional dependencies
 try:

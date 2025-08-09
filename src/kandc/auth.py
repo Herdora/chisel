@@ -5,12 +5,12 @@ import requests
 import json
 import webbrowser
 import time
-from .constants import CHISEL_BACKEND_URL
+from .constants import KANDC_BACKEND_URL
 
 
 class AuthService:
     def __init__(self):
-        self.config_dir = Path.home() / ".chisel"
+        self.config_dir = Path.home() / ".kandc"
         self.config_path = self.config_dir / "credentials.json"
         self.config = self._load_config()
 
@@ -45,17 +45,17 @@ class AuthService:
         return {}
 
     def _save_config(self) -> None:
-        # Handle potential conflicts with existing .chisel file
+        # Handle potential conflicts with existing .kandc file
         if self.config_dir.exists() and self.config_dir.is_file():
-            # Backup existing .chisel file and convert to directory structure
-            backup_path = self.config_dir.with_suffix(".chisel.backup")
-            print(f"⚠️ Found existing .chisel file, backing up to {backup_path}")
+            # Backup existing .kandc file and convert to directory structure
+            backup_path = self.config_dir.with_suffix(".kandc.backup")
+            print(f"⚠️ Found existing .kandc file, backing up to {backup_path}")
             self.config_dir.rename(backup_path)
 
-        # Create .chisel directory
+        # Create .kandc directory
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        # Ensure .chisel directory has proper permissions
+        # Ensure .kandc directory has proper permissions
         os.chmod(self.config_dir, 0o700)
 
         with open(self.config_path, "w") as f:
@@ -186,5 +186,5 @@ def is_authenticated() -> bool:
 
 
 def authenticate(backend_url: str = None) -> Optional[str]:
-    backend_url = backend_url or CHISEL_BACKEND_URL
+    backend_url = backend_url or KANDC_BACKEND_URL
     return _auth_service.authenticate(backend_url)

@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chisel-cli"
-version = "0.1.33"
-description = "Chisel CLI - Accelerate your Python functions with cloud GPUs"
+name = "kandc"
+version = "0.0.1"
+description = "Keys & Caches CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -36,12 +36,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Herdora/chisel"
-Repository = "https://github.com/Herdora/chisel.git"
-Issues = "https://github.com/Herdora/chisel/issues"
+Homepage = "https://github.com/Herdora/kandc"
+Repository = "https://github.com/Herdora/kandc.git"
+Issues = "https://github.com/Herdora/kandc/issues"
 
 [project.scripts]
-chisel = "chisel:main"
+kandc = "kandc.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -7,7 +7,7 @@ This demonstrates computer vision model profiling.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 class BasicBlock(nn.Module):

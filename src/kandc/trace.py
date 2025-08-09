@@ -2,9 +2,9 @@ import os
 import json
 from typing import Optional, Callable, Any, Dict, List
 from .constants import (
-    CHISEL_BACKEND_APP_NAME_ENV_KEY,
-    CHISEL_BACKEND_RUN_ENV_KEY,
-    CHISEL_JOB_ID_ENV_KEY,
+    KANDC_BACKEND_APP_NAME_ENV_KEY,
+    KANDC_BACKEND_RUN_ENV_KEY,
+    KANDC_JOB_ID_ENV_KEY,
     TRACE_DIR,
 )
 
@@ -18,7 +18,7 @@ def capture_trace(
     """
     Decorator for GPU execution and tracing.
 
-    This function only activates when running on the Chisel backend.
+    This function only activates when running on the Keys & Caches backend.
     When running locally, it acts as a pass-through decorator.
 
     Args:
@@ -32,13 +32,13 @@ def capture_trace(
     """
 
     def decorator(fn: Callable) -> Callable:
-        # Check if we're running on the Chisel backend
+        # Check if we're running on the Keys & Caches backend
 
-        if os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) != "1":
+        if os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) != "1":
             # Running locally - return original function
             return fn
 
-        assert os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY), "Chisel app name is not set"
+        assert os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY), "Keys & Caches app name is not set"
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
             return _execute_with_trace(
@@ -82,12 +82,12 @@ def capture_model_instance(
         model = MyModel()
         model = capture_model_instance(model, model_name="MyModel")
     """
-    # Check if we're running on the Chisel backend
-    if os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) != "1":
+    # Check if we're running on the Keys & Caches backend
+    if os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) != "1":
         # Running locally - return original model instance
         return model_instance
 
-    assert os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY), "Chisel app name is not set"
+    assert os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY), "Keys & Caches app name is not set"
 
     # Store the original forward method
     original_forward = model_instance.forward
@@ -152,12 +152,12 @@ def capture_model_class(
     """
 
     def decorator(model):
-        # Check if we're running on the Chisel backend
-        if os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) != "1":
+        # Check if we're running on the Keys & Caches backend
+        if os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) != "1":
             # Running locally - return original model
             return model
 
-        assert os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY), "Chisel app name is not set"
+        assert os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY), "Keys & Caches app name is not set"
 
         # Create a wrapper class that inherits from the original model
         class ProfiledModel(model):
@@ -192,14 +192,16 @@ def _execute_with_trace(
     **kwargs: Any,
 ) -> Any:
     """Execute function with PyTorch profiling and save trace."""
-    assert os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) == "1", "Chisel is not running on backend"
+    assert os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) == "1", (
+        "Keys & Caches is not running on backend"
+    )
 
     import torch
     from torch.profiler import profile, ProfilerActivity
     from pathlib import Path
 
     trace_name = trace_name or fn.__name__
-    job_id = os.environ.get(CHISEL_JOB_ID_ENV_KEY)
+    job_id = os.environ.get(KANDC_JOB_ID_ENV_KEY)
 
     if not job_id:
         print("⚠️  No job ID found, skipping trace")
@@ -207,7 +209,7 @@ def _execute_with_trace(
 
     volume_path = Path("/volume")
     job_trace_dir = (
-        volume_path / os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
+        volume_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
     )
     job_trace_dir.mkdir(parents=True, exist_ok=True)
 
@@ -242,13 +244,15 @@ def _execute_model_forward(
     **kwargs: Any,
 ) -> Any:
     """Execute model forward pass with PyTorch profiling and save trace."""
-    assert os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) == "1", "Chisel is not running on backend"
+    assert os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) == "1", (
+        "Keys & Caches is not running on backend"
+    )
 
     import torch
     from torch.profiler import profile, ProfilerActivity
     from pathlib import Path
 
-    job_id = os.environ.get(CHISEL_JOB_ID_ENV_KEY)
+    job_id = os.environ.get(KANDC_JOB_ID_ENV_KEY)
     if not job_id:
         print("⚠️  No job ID found, skipping model trace")
         return original_forward(*args, **kwargs)
@@ -259,7 +263,7 @@ def _execute_model_forward(
 
     volume_path = Path("/volume")
     job_trace_dir = (
-        volume_path / os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
+        volume_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
     )
     job_trace_dir.mkdir(parents=True, exist_ok=True)
 

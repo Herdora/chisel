@@ -1,17 +1,17 @@
-# Chisel CLI
+# Keys & Caches CLI
 
 Accelerate your Python functions with cloud GPUs using a simple decorator.
 
 ## Quick Start
 
-**1. Install Chisel CLI:**
+**1. Install Keys & Caches CLI:**
 ```bash
-pip install chisel-cli
+pip install kandc
 ```
 
 **2. Create your script:**
 ```python
-from chisel import capture_trace
+from kandc import capture_trace
 
 @capture_trace(trace_name="matrix_ops")
 def matrix_multiply(size=1000):
@@ -35,15 +35,15 @@ if __name__ == "__main__":
 python my_script.py
 
 # Cloud GPU execution (interactive format)
-chisel python my_script.py
+kandc python my_script.py
 
 # Cloud GPU execution (separator format)
-chisel --app-name "matrix-ops" --gpu 2 -- python my_script.py
+kandc --app-name "matrix-ops" --gpu A100-80GB:2 -- python my_script.py
 ```
 
 **4. Two execution formats:**
-- **Interactive format**: `chisel python script.py [script-args]` - CLI prompts for chisel configuration
-- **Separator format**: `chisel [chisel-flags] -- python script.py [script-args]` - All configuration upfront
+- **Interactive format**: `kandc python script.py [script-args]` - CLI prompts for configuration
+- **Separator format**: `kandc [kandc-flags] -- python script.py [script-args]` - All configuration upfront
 - First-time authentication opens browser automatically
 - Real-time job status and output streaming
 
@@ -61,7 +61,7 @@ chisel --app-name "matrix-ops" --gpu 2 -- python my_script.py
 ### Basic Example
 
 ```python
-from chisel import capture_trace
+from kandc import capture_trace
 
 @capture_trace(trace_name="my_function")
 def my_gpu_function():
@@ -70,7 +70,7 @@ def my_gpu_function():
     return torch.randn(1000, 1000, device=device)
 
 # Runs locally with: python script.py
-# Runs on GPU with: chisel python script.py
+# Runs on GPU with: kandc python script.py
 ```
 
 ### Multiple Functions
@@ -94,23 +94,23 @@ def evaluate(data):
 
 ### Command Line Arguments
 
-Chisel CLI supports **two clean argument formats** for handling chisel configuration and script arguments:
+Keys & Caches CLI supports **two clean argument formats** for handling kandc configuration and script arguments:
 
 ```bash
-# 1. Separator format (RECOMMENDED) - chisel flags first, then -- separator
-chisel --app-name "training-job" --gpu 4 -- python train.py --epochs 100 --batch-size 32
+# 1. Separator format (RECOMMENDED) - kandc flags first, then -- separator
+kandc --app-name "training-job" --gpu 4 -- python train.py --epochs 100 --batch-size 32
 
-# 2. Interactive format - script args only (prompts for chisel config)
-chisel python train.py --epochs 100 --batch-size 32
+# 2. Interactive format - script args only (prompts for kandc config)
+kandc python train.py --epochs 100 --batch-size 32
 ```
 
 **Key Features:**
-- **Clean Separation**: Use `--` for explicit separation between chisel and script arguments
-- **Interactive Fallback**: Script args only triggers interactive mode for chisel configuration
-- **Error Prevention**: Mixing chisel flags with script args is not allowed - keeps things simple
+- **Clean Separation**: Use `--` for explicit separation between kandc and script arguments
+- **Interactive Fallback**: Script args only triggers interactive mode for kandc configuration
+- **Error Prevention**: Mixing kandc flags with script args is not allowed - keeps things simple
 - **Helpful Errors**: Clear messages guide you to the correct format
 
-**Available Chisel Flags:**
+**Available Keys & Caches Flags:**
 - `--app-name, -a` - Job name for tracking
 - `--gpu, -g` - GPU count (1, 2, 4, 8)
 - `--upload-dir, -d` - Directory to upload
@@ -118,8 +118,8 @@ chisel python train.py --epochs 100 --batch-size 32
 - `--interactive, -i` - Force interactive mode
 - `--preview, -p` - Preview upload contents
 
-**The `--` separator is what determines chisel flags vs script arguments:**
-- **Before `--`** = chisel flags  
+**The `--` separator is what determines kandc flags vs script arguments:**
+- **Before `--`** = kandc flags  
 - **After `--`** = script arguments (regardless of flag names)
 - **No `--`** = interactive mode (ALL args after `python script.py` are script args)
 
@@ -148,33 +148,33 @@ When prompted by the CLI, choose from:
 
 ```bash
 # Simple script execution
-chisel python my_script.py
+kandc python my_script.py
 
 # With custom configuration (separator format)
-chisel --app-name "matrix-ops" --gpu 2 -- python my_script.py
+kandc --app-name "matrix-ops" --gpu 2 -- python my_script.py
 ```
 
 ### Script Arguments
 
 ```bash
-# Interactive format - script args only (prompts for chisel config)
-chisel python train.py --model-size large --epochs 100 --batch-size 32
+# Interactive format - script args only (prompts for kandc config)
+kandc python train.py --model-size large --epochs 100 --batch-size 32
 
 # Separator format - clean separation with --
-chisel --app-name "training-job" --gpu 4 -- python train.py --model-size large --epochs 100 --batch-size 32
+kandc --app-name "training-job" --gpu 4 -- python train.py --model-size large --epochs 100 --batch-size 32
 ```
 
 ### Advanced Configuration
 
 ```bash
 # Custom requirements and upload directory
-chisel --requirements custom_requirements.txt --upload-dir src/ --gpu 2 -- python models/train.py --config config.yaml
+kandc --requirements custom_requirements.txt --upload-dir src/ --gpu 2 -- python models/train.py --config config.yaml
 
 # Preview upload contents before submission
-chisel --preview -- python my_script.py
+kandc --preview -- python my_script.py
 
 # Force interactive mode even with flags
-chisel --interactive python my_script.py
+kandc --interactive python my_script.py
 ```
 
 ### Working Examples
@@ -189,48 +189,48 @@ See the [examples](examples/) directory for comprehensive working code:
 
 ## Authentication
 
-Chisel CLI handles authentication automatically:
+Keys & Caches CLI handles authentication automatically:
 
 ```bash
 # First time: Browser opens for authentication
-chisel python my_script.py
+kandc python my_script.py
 
 # Logout to clear credentials
-chisel --logout
+kandc --logout
 ```
 
-Credentials are stored securely in `~/.chisel/credentials.json`.
+Credentials are stored securely in `~/.kandc/credentials.json`.
 
 ## Backend Configuration
 
-Chisel CLI connects to the production API by default. For development, you can switch to localhost:
+Keys & Caches CLI connects to the production API by default. For development, you can switch to localhost:
 
 ```bash
 # Production (default)
-chisel python my_script.py
+kandc python my_script.py
 # → Connects to https://api.keysandcaches.com
 
 # Development mode
-export CHISEL_DEV=1
-chisel python my_script.py
+export KANDC_DEV=1
+kandc python my_script.py
 # → Connects to http://localhost:8000
 
 # Custom backend
-export CHISEL_BACKEND_URL="https://custom-api.example.com"
-chisel python my_script.py
+export KANDC_BACKEND_URL="https://custom-api.example.com"
+kandc python my_script.py
 ```
 
 **Priority order:**
-1. `CHISEL_BACKEND_URL` environment variable (highest priority)
-2. `CHISEL_DEV=1` → uses localhost:8000
+1. `KANDC_BACKEND_URL` environment variable (highest priority)
+2. `KANDC_DEV=1` → uses localhost:8000
 3. Default → uses production API
 
 ## Development
 
 ```bash
 # Clone repository
-git clone https://github.com/Herdora/chisel.git
-cd chisel
+git clone https://github.com/Herdora/kandc.git
+cd kandc
 
 # Install in development mode
 pip install -e .
@@ -242,6 +242,56 @@ pytest
 ruff check src/ examples/
 ```
 
+## Publishing to PyPI
+
+### Prerequisites
+```bash
+# Install build and publishing tools
+pip install build twine
+
+# Ensure you have PyPI credentials configured
+# Create ~/.pypirc or use environment variables
+```
+
+### Build and Upload Process
+```bash
+# 1. Update version in pyproject.toml
+# Edit the version field: version = "0.1.1"
+
+# 2. Clean previous builds
+rm -rf dist/ build/
+
+# 3. Build the package
+python -m build
+
+# 4. Check the built package
+twine check dist/*
+
+# 5. Upload to Test PyPI (optional)
+twine upload --repository testpypi dist/*
+
+# 6. Upload to PyPI
+twine upload dist/*
+```
+
+### Version Management
+```bash
+# Current version: 0.1.0
+# Update pyproject.toml before each release:
+# - Patch: 0.1.1 (bug fixes)
+# - Minor: 0.2.0 (new features)
+# - Major: 1.0.0 (breaking changes)
+```
+
+### Verification
+```bash
+# Test installation from PyPI
+pip install kandc
+
+# Verify it works
+kandc --version
+```
+
 ## Contributing
 
 We welcome contributions! Please see [Development Guide](docs/development.md) for details.
@@ -249,8 +299,8 @@ We welcome contributions! Please see [Development Guide](docs/development.md) fo
 ## Support
 
 - **📧 Email**: [contact@herdora.com](mailto:contact@herdora.com)
-- **🐛 Issues**: [GitHub Issues](https://github.com/Herdora/chisel/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/Herdora/chisel/discussions)
+- **🐛 Issues**: [GitHub Issues](https://github.com/Herdora/kandc/issues)
+- **💬 Discussions**: [GitHub Discussions](https://github.com/Herdora/kandc/discussions)
 
 ## License
 

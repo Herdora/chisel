@@ -14,7 +14,7 @@ from PIL import Image
 import requests
 from io import BytesIO
 import os
-from chisel import capture_model_instance
+from kandc import capture_model_instance
 
 
 def create_clip_model(model_name="openai/clip-vit-base-patch32", cache_dir=None):

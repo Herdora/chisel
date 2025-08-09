@@ -1,4 +1,4 @@
-# Chisel Examples .chiselignore file
+# Keys & Caches Examples .kandcignore file
 # This demonstrates various exclusion patterns for the examples directory
 
 # Exclude large test files created by examples

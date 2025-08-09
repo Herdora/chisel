@@ -1,6 +1,6 @@
-# 🚀 Getting Started with Chisel
+# 🚀 Getting Started with Keys & Caches
 
-Get up and running with Chisel in under 5 minutes! This guide will walk you through installation, your first GPU job, and essential concepts.
+Get up and running with Keys & Caches in under 5 minutes! This guide will walk you through installation, your first GPU job, and essential concepts.
 
 ## 📋 Prerequisites
 
@@ -12,22 +12,22 @@ Get up and running with Chisel in under 5 minutes! This guide will walk you thro
 
 ### Option 1: Install from GitHub (Recommended)
 ```bash
-pip install git+https://github.com/Herdora/chisel.git@dev
+pip install kandc
 ```
 
 ### Option 2: Clone and Install
 ```bash
-git clone https://github.com/Herdora/chisel.git
-cd chisel
+git clone https://github.com/Herdora/kandc.git
+cd kandc
 pip install -e .
 ```
 
 ### Verify Installation
 ```bash
-chisel --version
+kandc --version
 ```
 
-You should see something like: `Chisel CLI v1.0.0`
+You should see something like: `Keys & Caches CLI v0.1.0`
 
 ---
 
@@ -43,7 +43,7 @@ Create a file called `my_first_model.py`:
 #!/usr/bin/env python3
 import torch
 import torch.nn as nn
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 @capture_model_class(model_name="FirstModel")
 class SimpleModel(nn.Module):
@@ -61,7 +61,7 @@ class SimpleModel(nn.Module):
         return self.layers(x)
 
 def main():
-    print("🚀 Running my first Chisel job!")
+    print("🚀 Running my first Keys & Caches job!")
     
     # Create model and sample data
     model = SimpleModel()
@@ -92,7 +92,7 @@ python my_first_model.py
 
 You should see output like:
 ```
-🚀 Running my first Chisel job!
+🚀 Running my first Keys & Caches job!
 📊 Input shape: torch.Size([32, 784])
 📊 Model parameters: 269,322
 🔄 Forward pass 1...
@@ -109,11 +109,11 @@ You should see output like:
 Now let's run it on cloud GPUs with automatic profiling:
 
 ```bash
-chisel python my_first_model.py
+kandc python my_first_model.py
 ```
 
 **What happens next:**
-1. **Interactive Setup**: Chisel will prompt you for job configuration
+1. **Interactive Setup**: Keys & Caches will prompt you for job configuration
 2. **Authentication**: You'll be guided through a simple auth flow
 3. **File Upload**: Your code gets uploaded to the cloud
 4. **GPU Execution**: Your model runs on high-performance GPUs
@@ -131,19 +131,19 @@ After your job completes:
 
 ## 🎮 Command Formats
 
-Chisel supports two simple command formats:
+Keys & Caches supports two simple command formats:
 
 ### 1. Interactive Format (Beginner-Friendly)
 ```bash
-chisel python my_model.py --epochs 10 --batch-size 32
+kandc python my_model.py --epochs 10 --batch-size 32
 ```
 - Prompts you for all job configuration (app name, GPU count, etc.)
 - Great for getting started and one-off experiments
-- No chisel flags allowed - everything configured interactively
+- No kandc flags allowed - everything configured interactively
 
 ### 2. Separator Format (Automation-Ready)
 ```bash
-chisel --app-name "my-experiment" --gpu A100-80GB:2 -- python my_model.py --epochs 10
+kandc --app-name "my-experiment" --gpu A100-80GB:2 -- python my_model.py --epochs 10
 ```
 - Fully specified with `--` separator, no interactive prompts
 - All configuration via command line flags
@@ -181,11 +181,11 @@ transformers  # if using HuggingFace models
 
 ## 📊 Model Profiling Basics
 
-Chisel automatically profiles your models when you use the decorators:
+Keys & Caches automatically profiles your models when you use the decorators:
 
 ### Class Decorator (Most Common)
 ```python
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 @capture_model_class(model_name="MyModel")
 class MyModel(nn.Module):
@@ -194,7 +194,7 @@ class MyModel(nn.Module):
 
 ### Instance Wrapper (For Pre-built Models)
 ```python
-from chisel import capture_model_instance
+from kandc import capture_model_instance
 
 # For HuggingFace models, etc.
 model = AutoModel.from_pretrained("bert-base-uncased")
@@ -217,7 +217,7 @@ model = capture_model_instance(model, model_name="BERT")
 python my_model.py
 
 # Then run on cloud GPUs
-chisel python my_model.py
+kandc python my_model.py
 ```
 
 ### 2. Start Small, Scale Up
@@ -227,7 +227,7 @@ chisel python my_model.py
 
 ### 3. Use Descriptive Job Names
 ```bash
-chisel --app-name "resnet50-imagenet-experiment" --gpu H100:2 python train.py
+kandc --app-name "resnet50-imagenet-experiment" --gpu H100:2 python train.py
 ```
 
 ### 4. Organize Your Code
@@ -237,11 +237,11 @@ my_project/
 ├── train.py             # Main training script
 ├── model.py             # Model definitions
 ├── data.py              # Data loading
-└── .chiselignore        # Files to exclude from upload
+└── .kandcignore        # Files to exclude from upload
 ```
 
 ### 5. Exclude Unnecessary Files
-Create a `.chiselignore` file:
+Create a `.kandcignore` file:
 ```
 # Large files that can be downloaded in the script
 *.bin
@@ -259,15 +259,15 @@ __pycache__/
 
 ### Common Issues
 
-**❌ "No module named chisel"**
+**❌ "No module named kandc"**
 ```bash
-pip install git+https://github.com/Herdora/chisel.git@dev
+pip install kandc
 ```
 
 **❌ "Authentication failed"**
 - Follow the auth flow prompts carefully
 - Check your internet connection
-- Try `chisel --logout` then retry
+- Try `kandc --logout` then retry
 
 **❌ "Script not found"**
 - Ensure your script path is correct
@@ -282,13 +282,13 @@ pip install git+https://github.com/Herdora/chisel.git@dev
 1. **Check Examples**: See our [Examples Guide](examples.md)
 2. **Community Support**: Join our Discord/Slack
 3. **Bug Reports**: Open issues on GitHub
-4. **Documentation**: This guide and inline help (`chisel --help`)
+4. **Documentation**: This guide and inline help (`kandc --help`)
 
 ---
 
 ## 🎉 Next Steps
 
-Congratulations! You've successfully run your first Chisel job. Here's what to explore next:
+Congratulations! You've successfully run your first Keys & Caches job. Here's what to explore next:
 
 ### 📚 Learn More
 - **[Examples Guide](examples.md)** - See real-world use cases
@@ -298,13 +298,13 @@ Congratulations! You've successfully run your first Chisel job. Here's what to e
 ### 🚀 Try More Examples
 ```bash
 # Computer vision
-chisel python examples/vision_models/resnet_example.py
+kandc python examples/vision_models/resnet_example.py
 
 # NLP with transformers
-chisel --gpu A100-80GB:2 --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
+kandc --gpu A100-80GB:2 --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
 
 # Generative models
-chisel python examples/generative_models/gan_example.py
+kandc python examples/generative_models/gan_example.py
 ```
 
 ### 🔧 Advanced Usage

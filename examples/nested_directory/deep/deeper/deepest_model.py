@@ -2,7 +2,7 @@
 """
 Deeply nested model example.
 Tests running models from deeply nested directory structures.
-Run from examples/: chisel python nested_directory/deep/deeper/deepest_model.py
+Run from examples/: kandc python nested_directory/deep/deeper/deepest_model.py
 """
 
 import torch
@@ -14,7 +14,7 @@ import sys
 examples_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 sys.path.insert(0, examples_dir)
 
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="DeepestModel")

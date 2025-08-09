@@ -7,7 +7,7 @@ This demonstrates NLP model profiling with attention mechanisms.
 import torch
 import torch.nn as nn
 import math
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="SimpleTransformer")

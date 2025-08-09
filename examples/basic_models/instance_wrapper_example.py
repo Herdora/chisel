@@ -8,7 +8,7 @@ to automatically profile every forward pass.
 
 import torch
 import torch.nn as nn
-from chisel import capture_model_instance
+from kandc import capture_model_instance
 
 
 def create_simple_model():

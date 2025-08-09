@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Large file test example.
-This creates and uses a large file to test Chisel's file caching system.
+This creates and uses a large file to test Keys & Caches's file caching system.
 """
 
 import torch
 import torch.nn as nn
 import numpy as np
 import os
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="LargeDataModel")

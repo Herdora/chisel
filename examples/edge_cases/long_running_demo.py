@@ -11,7 +11,7 @@ This script demonstrates:
 
 Usage:
   python long_running_demo.py --epochs 5 --batch-size 32
-  chisel python long_running_demo.py --epochs 10 --batch-size 64
+  kandc python long_running_demo.py --epochs 10 --batch-size 64
   chisel --app-name "long-demo" --gpu 2 -- python long_running_demo.py --epochs 15 --verbose
 """
 
@@ -21,7 +21,7 @@ import random
 from datetime import datetime
 import torch
 import torch.nn as nn
-from chisel import capture_model_class
+from kandc import capture_model_class
 
 
 @capture_model_class(model_name="LongRunningModel", record_shapes=True, profile_memory=True)
@@ -321,7 +321,7 @@ def main():
     print(f"   Number of layers: {config['num_layers']}")
 
     print("\n✅ Demo completed successfully!")
-    print("🚀 Thank you for using Chisel!")
+    print("🚀 Thank you for using Keys & Caches!")
     print("=" * 70)
 
 
