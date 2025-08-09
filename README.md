@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Keys & Caches Banner" width="500">
+</p>
+
 # Keys & Caches CLI
 
 Accelerate your Python functions with cloud GPUs using a simple decorator.
