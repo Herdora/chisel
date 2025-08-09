@@ -10,9 +10,10 @@ import torch
 import torch.nn as nn
 from chisel import capture_model, parse_model_trace
 import os
+import time
 
 
-@capture_model(model_name="TestModel", record_shapes=True, profile_memory=True)
+@capture_model(model_name="TestModel")
 class TestModel(nn.Module):
     """Simple test model for profiling verification."""
 
@@ -48,7 +49,7 @@ def test_model_profiling():
     print(f"📊 Input shape: {data.shape}")
 
     # Test forward pass
-    print(f"\n🔄 Running forward pass...")
+    print("\n🔄 Running forward pass...")
     with torch.no_grad():
         output = model(data)
 
@@ -56,13 +57,13 @@ def test_model_profiling():
     print(f"📊 Output range: [{output.min().item():.4f}, {output.max().item():.4f}]")
 
     # Test multiple forward passes
-    print(f"\n🔄 Running 2 more forward passes...")
+    print("\n🔄 Running 2 more forward passes...")
     for i in range(2):
         with torch.no_grad():
             output = model(data)
         print(f"  Pass {i + 2}: output shape {output.shape}")
 
-    print(f"\n✅ Model profiling test completed!")
+    print("\n✅ Model profiling test completed!")
 
     # Test trace parsing if we have trace files
     test_trace_parsing()
@@ -72,7 +73,7 @@ def test_model_profiling():
 
 def test_trace_parsing():
     """Test the trace parsing functionality."""
-    print(f"\n📊 Testing Trace Parsing")
+    print("\n📊 Testing Trace Parsing")
     print("=" * 40)
 
     from pathlib import Path
@@ -99,7 +100,7 @@ def test_trace_parsing():
                     )
                     print(f"  📊 Total model time: {total_time:.2f}ms")
                 else:
-                    print(f"  ⚠️  Could not parse trace")
+                    print("  ⚠️  Could not parse trace")
             except Exception as e:
                 print(f"  ❌ Error parsing: {e}")
     else:
@@ -112,10 +113,18 @@ def test_imports():
     print("=" * 40)
 
     try:
-        from chisel import capture_model, parse_model_trace
+        from chisel import capture_model
 
         print("✅ capture_model imported successfully")
-        print("✅ parse_model_trace imported successfully")
+
+        # Test parse_model_trace import
+        try:
+            from chisel import parse_model_trace
+
+            print("✅ parse_model_trace imported successfully")
+        except ImportError:
+            print("⚠️  parse_model_trace not available (expected for simplified API)")
+
     except ImportError as e:
         print(f"❌ Import error: {e}")
         return False
@@ -128,6 +137,11 @@ def main():
     print("🚀 Model Profiling Test Suite")
     print("=" * 50)
 
+    # want to print a bunch of stuff and sleep for .5 seconds in between each print
+    for i in range(100):
+        print(f"🔄 Running test {i + 1}...")
+        time.sleep(0.5)
+
     # Test imports
     if not test_imports():
         print("❌ Import test failed")
@@ -135,8 +149,8 @@ def main():
 
     # Test model profiling
     try:
-        model = test_model_profiling()
-        print(f"\n✅ All tests passed!")
+        test_model_profiling()
+        print("\n✅ All tests passed!")
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback

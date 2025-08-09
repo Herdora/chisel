@@ -1,25 +1,44 @@
-# Example .chiselignore file
-# This demonstrates various exclusion patterns
+# Chisel Examples .chiselignore file
+# This demonstrates various exclusion patterns for the examples directory
 
-# Exclude the large trace file (not needed for most jobs)
-matrix_multiply.json
-
-# Exclude development/testing files
-test_*.py
-
-
-# Exclude large data files (if they existed)
+# Exclude large test files created by examples
+large_test_data.bin
 *.npy
 *.pkl
 data/
+
+# Exclude generated files
+training_loss.png
+*.json  # Trace files
+*.pt    # PyTorch model files
+*.pth   # PyTorch checkpoint files
 
 # Exclude logs and temporary files
 *.log
 *.tmp
 temp/
+__pycache__/
+*.pyc
 
 # Exclude IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+.DS_Store
+
+# Exclude virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Exclude Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Exclude any downloaded model files or datasets
+models/
+datasets/
+model_cache/  # HuggingFace model cache directory
+*.tar.gz
+*.zip

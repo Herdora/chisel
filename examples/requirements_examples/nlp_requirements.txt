@@ -1,9 +1,9 @@
-# Core requirements for Chisel examples
+# Requirements for NLP models
 torch>=2.0.0
 torchvision>=0.15.0
 numpy>=1.21.0
-matplotlib>=3.5.0
-scikit-learn>=1.0.0
 transformers>=4.20.0
 datasets>=2.0.0
+tokenizers>=0.13.0
 accelerate>=0.20.0
+sentencepiece>=0.1.99
