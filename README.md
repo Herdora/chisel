@@ -1,250 +1,201 @@
-# Keys & Caches CLI
+# Keys & Caches
 
 ![Keys & Caches Banner](assets/banner.png)
 
-Accelerate your Python functions with cloud GPUs using a simple decorator.
+**The fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.**
 
-## Quick Start
+---
 
-**1. Install Keys & Caches CLI:**
+## 🚀 What is Keys & Caches?
+
+Keys & Caches is a command-line tool that makes it effortless to run PyTorch models on high-performance cloud GPUs. With just one command, you can:
+
+- **🚀 Submit jobs to cloud GPUs** - Access A100, H100, and L4 GPUs instantly
+- **📊 Get automatic profiling** - Detailed performance traces for every model forward pass
+- **🔍 Debug performance bottlenecks** - Chrome trace format for visual analysis
+- **⚡ Stream real-time logs** - Watch your training progress live
+- **💰 Pay only for what you use** - No idle time charges
+
+## 🎯 Key Features
+
+### 🎮 **One-Command Deployment**
+```bash
+# Run any PyTorch script on cloud GPUs
+kandc python train.py --model-size large --epochs 100
+```
+
+### 📈 **Automatic Model Profiling**
+```python
+from kandc import capture_model_class
+
+@capture_model_class(model_name="MyModel")
+class MyModel(nn.Module):
+    # Your model automatically gets profiled!
+```
+
+### 🎮 **Flexible GPU Configurations**
+- **A100 GPUs** (40GB/80GB) - Proven performance for training and inference
+- **H100 GPUs** (80GB) - Latest architecture with enhanced performance
+- **L4 GPUs** (24GB) - Cost-effective option for efficient workloads
+- **Scale 1-8 GPUs** - From development to massive scale training
+
+## 🔧 Installation
+
+### Prerequisites
+- **Python 3.8+** (Python 3.9+ recommended)
+- **PyTorch** installed in your environment
+
+### Install Keys & Caches
 ```bash
 pip install kandc
 ```
 
-**2. Create your script:**
-```python
-from kandc import capture_trace
+### Verify Installation
+```bash
+kandc --version
+```
 
-@capture_trace(trace_name="matrix_ops")
-def matrix_multiply(size=1000):
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+## 🎯 Quick Start (5 Minutes)
+
+### 1. Create a Simple Model
+Create `my_first_model.py`:
+
+```python
+import torch
+import torch.nn as nn
+from kandc import capture_model_class
+
+@capture_model_class(model_name="FirstModel")
+class SimpleModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(784, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 10)
+        )
     
-    a = torch.randn(size, size, device=device)
-    b = torch.randn(size, size, device=device)
-    result = torch.mm(a, b)
+    def forward(self, x):
+        return self.layers(x)
+
+def main():
+    print("🚀 Running my first Keys & Caches job!")
     
-    return result.cpu().numpy()
+    model = SimpleModel()
+    x = torch.randn(32, 784)
+    
+    # Forward pass (automatically profiled!)
+    model.eval()
+    with torch.no_grad():
+        output = model(x)
+        print(f"✅ Output shape: {output.shape}")
+    
+    print("✅ Job completed successfully!")
 
 if __name__ == "__main__":
-    result = matrix_multiply(2000)
-    print(f"Result shape: {result.shape}")
+    main()
 ```
 
-**3. Run on cloud GPU:**
+### 2. Test Locally First
 ```bash
-# Local execution
-python my_script.py
-
-# Cloud GPU execution (interactive format)
-kandc python my_script.py
-
-# Cloud GPU execution (separator format)
-kandc --app-name "matrix-ops" --gpu A100-80GB:2 -- python my_script.py
+python my_first_model.py
 ```
 
-**4. Two execution formats:**
-- **Interactive format**: `kandc python script.py [script-args]` - CLI prompts for configuration
-- **Separator format**: `kandc [kandc-flags] -- python script.py [script-args]` - All configuration upfront
-- First-time authentication opens browser automatically
-- Real-time job status and output streaming
+### 3. Run on Cloud GPUs
+```bash
+kandc python my_first_model.py
+```
 
-## Features
+That's it! Your model runs on high-performance GPUs with automatic profiling. 🎉
 
-- **Simple decorator**: Just add `@capture_trace()` to your functions
-- **Local & cloud**: Same code runs locally or on cloud GPUs
-- **Interactive CLI**: Guided setup for job configuration
-- **Real-time streaming**: Live output and job status
-- **GPU profiling**: Automatic performance traces and memory analysis
-- **Multi-GPU support**: Scale from 1 to 8x A100-80GB GPUs
+## 🎮 Command Formats
 
-## Usage
+### Interactive Format (Beginner-Friendly)
+```bash
+kandc python my_model.py --epochs 10 --batch-size 32
+```
+- Prompts you for job configuration (app name, GPU count, etc.)
+- Great for getting started and experiments
 
-### Basic Example
+### Separator Format (Automation-Ready)
+```bash
+kandc --app-name "my-experiment" --gpu A100-80GB:2 -- python my_model.py --epochs 10
+```
+- Fully specified with `--` separator
+- Ideal for scripts and automation
 
+## 🎯 GPU Options
+
+| GPU Type  | Count | Memory    | Use Case                | Example Flag        |
+| --------- | ----- | --------- | ----------------------- | ------------------- |
+| A100-40GB | 1-8   | 40GB each | Cost-effective training | `--gpu A100:4`      |
+| A100-80GB | 1-8   | 80GB each | High-memory models      | `--gpu A100-80GB:2` |
+| H100      | 1-8   | 80GB each | Latest architecture     | `--gpu H100:8`      |
+| L4        | 1-8   | 24GB each | Efficient inference     | `--gpu L4:1`        |
+
+## 📊 Automatic Model Profiling
+
+Keys & Caches automatically profiles your models:
+
+### Class Decorator (Most Common)
 ```python
-from kandc import capture_trace
+from kandc import capture_model_class
 
-@capture_trace(trace_name="my_function")
-def my_gpu_function():
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    return torch.randn(1000, 1000, device=device)
-
-# Runs locally with: python script.py
-# Runs on GPU with: kandc python script.py
+@capture_model_class(model_name="MyModel")
+class MyModel(nn.Module):
+    # Your model definition
 ```
 
-### Multiple Functions
-
+### Instance Wrapper (For Pre-built Models)
 ```python
-@capture_trace(trace_name="preprocess")
-def preprocess(data): 
-    # Data preprocessing
-    pass
+from kandc import capture_model_instance
 
-@capture_trace(trace_name="train")  
-def train(data): 
-    # Model training
-    pass
-
-@capture_trace(trace_name="evaluate")
-def evaluate(data): 
-    # Model evaluation
-    pass
+# For HuggingFace models, etc.
+model = AutoModel.from_pretrained("bert-base-uncased")
+model = capture_model_instance(model, model_name="BERT")
 ```
 
-### Command Line Arguments
+### Profiling Features
+- **⏱️ Layer-level timing** - See which layers are bottlenecks
+- **💾 Memory tracking** - Monitor GPU memory usage
+- **🔍 Shape recording** - Debug tensor dimension issues
+- **📈 Chrome traces** - Visual timeline in chrome://tracing
 
-Keys & Caches CLI supports **two clean argument formats** for handling kandc configuration and script arguments:
+## 💡 Examples
 
+### Computer Vision
 ```bash
-# 1. Separator format (RECOMMENDED) - kandc flags first, then -- separator
-kandc --app-name "training-job" --gpu 4 -- python train.py --epochs 100 --batch-size 32
-
-# 2. Interactive format - script args only (prompts for kandc config)
-kandc python train.py --epochs 100 --batch-size 32
+# ResNet training
+kandc python examples/vision_models/resnet_example.py
 ```
 
-**Key Features:**
-- **Clean Separation**: Use `--` for explicit separation between kandc and script arguments
-- **Interactive Fallback**: Script args only triggers interactive mode for kandc configuration
-- **Error Prevention**: Mixing kandc flags with script args is not allowed - keeps things simple
-- **Helpful Errors**: Clear messages guide you to the correct format
-
-**Available Keys & Caches Flags:**
-- `--app-name, -a` - Job name for tracking
-- `--gpu, -g` - GPU count (1, 2, 4, 8)
-- `--upload-dir, -d` - Directory to upload
-- `--requirements, -r` - Requirements file
-- `--interactive, -i` - Force interactive mode
-- `--preview, -p` - Preview upload contents
-
-**The `--` separator is what determines kandc flags vs script arguments:**
-- **Before `--`** = kandc flags  
-- **After `--`** = script arguments (regardless of flag names)
-- **No `--`** = interactive mode (ALL args after `python script.py` are script args)
-
-## GPU Options
-
-When prompted by the CLI, choose from:
-
-| Option | GPU Configuration | Memory | Use Case               |
-| ------ | ----------------- | ------ | ---------------------- |
-| 1      | 1x A100-80GB      | 80GB   | Development, inference |
-| 2      | 2x A100-80GB      | 160GB  | Medium training        |
-| 4      | 4x A100-80GB      | 320GB  | Large models           |
-| 8      | 8x A100-80GB      | 640GB  | Massive models         |
-
-## Documentation
-
-- **[Getting Started](docs/getting-started.md)** - Installation and first steps
-- **[API Reference](docs/api-reference.md)** - Complete function reference
-- **[Examples](docs/examples.md)** - Working code examples
-- **[Configuration](docs/configuration.md)** - Setup and optimization
-- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
-
-## Examples
-
-### Basic Usage
-
+### NLP & Transformers
 ```bash
-# Simple script execution
-kandc python my_script.py
-
-# With custom configuration (separator format)
-kandc --app-name "matrix-ops" --gpu 2 -- python my_script.py
+# HuggingFace BERT
+kandc --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
 ```
 
-### Script Arguments
-
+### Vision-Language Models
 ```bash
-# Interactive format - script args only (prompts for kandc config)
-kandc python train.py --model-size large --epochs 100 --batch-size 32
-
-# Separator format - clean separation with --
-kandc --app-name "training-job" --gpu 4 -- python train.py --model-size large --epochs 100 --batch-size 32
+# OpenAI CLIP
+kandc --requirements requirements_examples/vlm_requirements.txt -- python examples/vlm_models/clip_example.py
 ```
 
-### Advanced Configuration
-
+### Generative Models
 ```bash
-# Custom requirements and upload directory
-kandc --requirements custom_requirements.txt --upload-dir src/ --gpu 2 -- python models/train.py --config config.yaml
-
-# Preview upload contents before submission
-kandc --preview -- python my_script.py
-
-# Force interactive mode even with flags
-kandc --interactive python my_script.py
+# GANs and VAEs
+kandc python examples/generative_models/gan_example.py
 ```
+ 
+## 📚 Documentation
 
-### Working Examples
+- **[🚀 Getting Started](docs/getting-started.md)** - Installation, setup, and your first GPU job
+- **[💡 Examples](docs/examples.md)** - Comprehensive examples and use cases  
+- **[📞 Contact & Support](docs/contact.md)** - Get help and connect with the community
 
-See the [examples](examples/) directory for comprehensive working code:
-
-- **[Basic Models](examples/basic_models/)** - Simple CNN and linear regression
-- **[NLP Models](examples/nlp_models/)** - Transformers and HuggingFace integration  
-- **[Vision Models](examples/vision_models/)** - ResNet and computer vision
-- **[Edge Cases](examples/edge_cases/)** - Command line arguments and long-running demos
-- **[Requirements Examples](examples/requirements_examples/)** - Custom dependency configurations
-
-## Authentication
-
-Keys & Caches CLI handles authentication automatically:
-
-```bash
-# First time: Browser opens for authentication
-kandc python my_script.py
-
-# Logout to clear credentials
-kandc --logout
-```
-
-Credentials are stored securely in `~/.kandc/credentials.json`.
-
-## Backend Configuration
-
-Keys & Caches CLI connects to the production API by default. For development, you can switch to localhost:
-
-```bash
-# Production (default)
-kandc python my_script.py
-# → Connects to https://api.keysandcaches.com
-
-# Development mode
-export KANDC_DEV=1
-kandc python my_script.py
-# → Connects to http://localhost:8000
-
-# Custom backend
-export KANDC_BACKEND_URL="https://custom-api.example.com"
-kandc python my_script.py
-```
-
-**Priority order:**
-1. `KANDC_BACKEND_URL` environment variable (highest priority)
-2. `KANDC_DEV=1` → uses localhost:8000
-3. Default → uses production API
-
-## Development
-
-```bash
-# Clone repository
-git clone https://github.com/Herdora/kandc.git
-cd kandc
-
-# Install in development mode
-pip install -e .
-
-# Run tests
-pytest
-
-# Check code style
-ruff check src/ examples/
-```
-
-## Publishing to PyPI
+## 💰 Publishing to PyPI
 
 ### Prerequisites
 ```bash
@@ -276,34 +227,16 @@ twine upload --repository testpypi dist/*
 twine upload dist/*
 ```
 
-### Version Management
-```bash
-# Current version: 0.1.0
-# Update pyproject.toml before each release:
-# - Patch: 0.1.1 (bug fixes)
-# - Minor: 0.2.0 (new features)
-# - Major: 1.0.0 (breaking changes)
-```
+## 🆘 Support
 
-### Verification
-```bash
-# Test installation from PyPI
-pip install kandc
-
-# Verify it works
-kandc --version
-```
-
-## Contributing
-
-We welcome contributions! Please see [Development Guide](docs/development.md) for details.
-
-## Support
-
-- **📧 Email**: [contact@herdora.com](mailto:contact@herdora.com)
+- **📧 Email**: [support@herdora.com](mailto:support@herdora.com)
 - **🐛 Issues**: [GitHub Issues](https://github.com/Herdora/kandc/issues)
 - **💬 Discussions**: [GitHub Discussions](https://github.com/Herdora/kandc/discussions)
 
-## License
+## 📜 License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+*Ready to accelerate your ML workflows? Install Keys & Caches and run your first GPU job in under 5 minutes! 🚀*
