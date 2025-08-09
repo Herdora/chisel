@@ -52,8 +52,6 @@ def capture_trace(
 
 def capture_model(
     model_name: Optional[str] = None,
-    record_shapes: bool = True,
-    profile_memory: bool = True,
     **profiler_kwargs: Any,
 ):
     """
@@ -92,8 +90,9 @@ def capture_model(
                     self,
                     super().forward,
                     self._model_name,
-                    record_shapes,
-                    profile_memory,
+                    record_shapes=True,
+                    profile_memory=True,
+                    with_stack=True,
                     *args,
                     **kwargs,
                 )
@@ -175,6 +174,7 @@ def _execute_model_forward(
     model_name: str,
     record_shapes: bool,
     profile_memory: bool,
+    with_stack: bool,
     *args: Any,
     **kwargs: Any,
 ) -> Any:
@@ -211,7 +211,7 @@ def _execute_model_forward(
         activities=activities,
         record_shapes=record_shapes,
         profile_memory=profile_memory,
-        with_stack=True,
+        with_stack=with_stack,
     ) as prof:
         print(f"⚡ [capture_model] Profiling {model_name} forward pass (job_id: {job_id})")
         result = original_forward(*args, **kwargs)
