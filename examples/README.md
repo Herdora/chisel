@@ -41,6 +41,7 @@ examples/
 ├── edge_cases/                         # Testing edge cases
 │   ├── basic_model_call.py            # Simplest possible model call
 │   ├── model_with_args.py             # Command line arguments handling
+│   ├── long_running_demo.py           # Long-running demo with real-time streaming (~3 mins)
 │   └── large_file_test.py             # Large file caching test
 │
 ├── nested_directory/                   # Directory structure tests
@@ -163,15 +164,43 @@ chisel python edge_cases/basic_model_call.py
 Tests the simplest possible `capture_model` usage.
 
 ### Command Line Arguments
+
+Chisel CLI supports **two clean argument formats** to handle chisel configuration and script arguments:
+
 ```bash
-# Test different configurations
+# 1. Separator format - chisel flags first, then -- separator (RECOMMENDED)
+chisel --app-name "args-test" --gpu 2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
+
+# 2. Interactive format - script args only (prompts for chisel config)
 chisel python edge_cases/model_with_args.py --model-size large --batch-size 16 --num-layers 5
-
-# With chisel-specific flags
-chisel python edge_cases/model_with_args.py --app-name "args-test" --gpu 2 --model-size xl --epochs 3
 ```
-Tests argument parsing with both Chisel and script-specific arguments.
 
+**Key Features:**
+- **Clean Separation**: Use `--` for explicit separation between chisel and script arguments
+- **Interactive Fallback**: Script args only triggers interactive mode for chisel configuration
+- **Error Prevention**: Mixing chisel flags with script args is not allowed - keeps things simple
+- **Helpful Errors**: Clear messages guide you to the correct format
+
+### Long-Running Demo with Real-Time Streaming
+
+```bash
+# Quick demo (~1 minute)
+chisel python edge_cases/long_running_demo.py --epochs 3 --num-batches 8
+
+# Full demo (~3 minutes with validation)
+chisel python edge_cases/long_running_demo.py --epochs 8 --validate --verbose
+
+# Separator format with custom configuration
+chisel --app-name "streaming-demo" --gpu 2 -- python edge_cases/long_running_demo.py --epochs 10 --model-size large --validate
+```
+
+**Perfect for testing:**
+- **Real-time stdout streaming** - See logs as they happen
+- **Progress tracking** - Visual progress bars and status updates
+- **Comprehensive logging** - Detailed training metrics and timestamps
+- **Flexible duration** - Configure epochs and batches for desired runtime
+- **Model profiling** - Uses `@capture_model` decorator for GPU profiling
+ 
 ### Large File Handling
 ```bash
 chisel python edge_cases/large_file_test.py
@@ -226,6 +255,9 @@ chisel python vision_models/resnet_example.py --requirements requirements_exampl
 
 # Scientific computing
 chisel python requirements_examples/model_with_custom_requirements.py --requirements requirements_examples/scientific_requirements.txt
+
+# Separator format - chisel flags first, then -- separator
+chisel --requirements requirements_examples/minimal_requirements.txt --gpu 2 -- python edge_cases/model_with_args.py --model-size large --epochs 5
 ```
 
 ### Requirements Files Available:
@@ -236,17 +268,22 @@ chisel python requirements_examples/model_with_custom_requirements.py --requirem
 
 ## 🎮 Interactive Examples
 
-Most examples support interactive configuration:
+All examples support **two clean argument formats**:
 
 ```bash
-# CLI will prompt for:
-# - App name (job identifier)
-# - Upload directory
-# - Requirements file
-# - GPU configuration (1, 2, 4, or 8 GPUs)
+# 1. Interactive format - script args only (prompts for chisel config)
 chisel python basic_models/simple_cnn.py
+chisel python edge_cases/model_with_args.py --model-size large --epochs 10 --batch-size 32
+# CLI will prompt for: app name, upload directory, requirements file, GPU configuration
 
-# Or provide all configuration upfront:
+# 2. Separator format - chisel flags first, then -- separator
+chisel --app-name "configurable-test" --gpu 2 -- \
+  python edge_cases/model_with_args.py \
+  --model-size large \
+  --epochs 10 \
+  --batch-size 32
+
+# Traditional chisel-only configuration (still supported)
 chisel python basic_models/simple_cnn.py \
   --app-name "cnn-test" \
   --upload-dir "." \
@@ -317,8 +354,33 @@ chisel python vision_models/resnet_example.py
 ```
 
 ### Advanced Usage
+
+**Separator Format (RECOMMENDED)**
 ```bash
-# Specific GPU count and custom requirements
+# Clean separation with -- for complex configurations
+chisel --app-name "complex-training" --gpu 4 --requirements requirements_examples/scientific_requirements.txt -- \
+  python edge_cases/model_with_args.py \
+  --model-size xl \
+  --num-layers 8 \
+  --batch-size 64 \
+  --epochs 100 \
+  --verbose
+```
+
+**Interactive Format**
+```bash
+# Script args only - prompts for chisel configuration
+chisel python edge_cases/model_with_args.py \
+  --model-size xl \
+  --num-layers 8 \
+  --batch-size 64 \
+  --epochs 100 \
+  --verbose
+```
+
+**Traditional Chisel-Only**
+```bash
+# Traditional approach (still supported)
 chisel python generative_models/gan_example.py \
   --app-name "gan-training" \
   --gpu 4 \
@@ -432,20 +494,20 @@ except ImportError:
 
 ## 📝 Example Usage Summary
 
+**Two Clean Argument Formats:**
+
 ```bash
-# Basic usage
+# 1. Interactive format - script args only (prompts for chisel config)
 chisel python basic_models/simple_cnn.py
-
-# With arguments
 chisel python edge_cases/model_with_args.py --model-size large --batch-size 16
+chisel python edge_cases/long_running_demo.py --epochs 5 --validate
 
-# Custom requirements
-chisel python nlp_models/pretrained_models.py --requirements requirements_examples/nlp_requirements.txt
+# 2. Separator format - chisel flags first, then -- separator
+chisel --app-name "test" --gpu 2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
+chisel --app-name "streaming-demo" --gpu 2 -- python edge_cases/long_running_demo.py --epochs 8 --validate --verbose
+chisel --gpu 4 --requirements requirements_examples/nlp_requirements.txt -- python nlp_models/pretrained_models.py
 
-# Multi-GPU
-chisel python vision_models/resnet_example.py --gpu 4
-
-# Full configuration
+# Traditional chisel-only configuration (still supported)
 chisel python generative_models/gan_example.py \
   --app-name "gan-experiment" \
   --upload-dir "." \

@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Optional, Callable, Any, Dict, List, Tuple, Set
+from typing import Optional, Callable, Any, Dict, List
 from .constants import (
     CHISEL_BACKEND_APP_NAME_ENV_KEY,
     CHISEL_BACKEND_RUN_ENV_KEY,
@@ -200,10 +200,7 @@ def _execute_model_forward(
     job_trace_dir = (
         volume_path / os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
     )
-    print(f"🔍 [capture_model] Job trace dir: {job_trace_dir}")
     job_trace_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"🔍 [capture_model] Tracing {model_name} forward pass #{model._trace_counter}")
 
     activities = [ProfilerActivity.CPU]
     if torch.cuda.is_available():
@@ -215,13 +212,14 @@ def _execute_model_forward(
         profile_memory=profile_memory,
         with_stack=with_stack,
     ) as prof:
-        print(f"⚡ [capture_model] Profiling {model_name} forward pass (job_id: {job_id})")
         result = original_forward(*args, **kwargs)
 
     trace_file = job_trace_dir / f"{trace_name}.json"
     prof.export_chrome_trace(str(trace_file))
 
-    print(f"💾 [capture_model] Saved trace: {trace_file}")
+    print(
+        f"💾 [capture_model] {model_name} forward pass #{model._trace_counter} → {trace_name}.json"
+    )
 
     # Generate layer-level analysis
     layer_analysis = _analyze_model_trace(str(trace_file), model_name)
@@ -366,7 +364,8 @@ def _print_layer_summary(layer_analysis: Dict):
                 shapes_str = f"{len(shape_list)} unique shapes"
 
         print(
-            f"{layer_name:<25} {stats['call_count']:<8} {total_time_ms:<15.2f} {avg_time_ms:<15.2f} {shapes_str:<20}"
+            f"{layer_name:<25} {stats['call_count']:<8} "
+            f"{total_time_ms:<15.2f} {avg_time_ms:<15.2f} {shapes_str:<20}"
         )
 
     # Print total model time

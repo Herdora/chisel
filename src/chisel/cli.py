@@ -875,25 +875,30 @@ class ChiselCLI:
     ):
         """Show the equivalent command-line command for copy/paste."""
         if RICH_AVAILABLE:
-            # Build the command
-            cmd_parts = ["chisel", "python", script_path]
+            # Build the command using separator format
+            chisel_parts = ["chisel"]
 
-            # Add flags
+            # Add chisel flags first
             if app_name:
-                cmd_parts.append(f'--app-name "{app_name}"')
+                chisel_parts.append(f'--app-name "{app_name}"')
 
             if upload_dir != ".":
-                cmd_parts.append(f'--upload-dir "{upload_dir}"')
+                chisel_parts.append(f'--upload-dir "{upload_dir}"')
 
             if requirements_file != "requirements.txt":
-                cmd_parts.append(f'--requirements "{requirements_file}"')
+                chisel_parts.append(f'--requirements "{requirements_file}"')
 
             if gpu != "A100-80GB:1":
                 # Convert GPU type back to number
                 gpu_number = {v: k for k, v in self.gpu_map.items()}[gpu]
-                cmd_parts.append(f"--gpu {gpu_number}")
+                chisel_parts.append(f"--gpu {gpu_number}")
 
-            command = " ".join(cmd_parts)
+            # Add separator and python command
+            chisel_parts.append("--")
+            chisel_parts.append("python")
+            chisel_parts.append(script_path)
+
+            command = " ".join(chisel_parts)
 
             # Create a beautiful panel for the command
             command_text = Text(command, style="bold green")
@@ -910,46 +915,129 @@ class ChiselCLI:
             print("📋 Equivalent Command (copy/paste for future use):")
             print("═" * 60)
 
-            # Build the command
-            cmd_parts = ["chisel", "python", script_path]
+            # Build the command using separator format
+            chisel_parts = ["chisel"]
 
-            # Add flags
+            # Add chisel flags first
             if app_name:
-                cmd_parts.append(f'--app-name "{app_name}"')
+                chisel_parts.append(f'--app-name "{app_name}"')
 
             if upload_dir != ".":
-                cmd_parts.append(f'--upload-dir "{upload_dir}"')
+                chisel_parts.append(f'--upload-dir "{upload_dir}"')
 
             if requirements_file != "requirements.txt":
-                cmd_parts.append(f'--requirements "{requirements_file}"')
+                chisel_parts.append(f'--requirements "{requirements_file}"')
 
             if gpu != "A100-80GB:1":
                 # Convert GPU type back to number
                 gpu_number = {v: k for k, v in self.gpu_map.items()}[gpu]
-                cmd_parts.append(f"--gpu {gpu_number}")
+                chisel_parts.append(f"--gpu {gpu_number}")
 
-            command = " ".join(cmd_parts)
+            # Add separator and python command
+            chisel_parts.append("--")
+            chisel_parts.append("python")
+            chisel_parts.append(script_path)
+
+            command = " ".join(chisel_parts)
             print(f"$ {command}")
             print("═" * 60)
             print()
 
     def parse_command_line_args(self, args: List[str]) -> Optional[Dict[str, Any]]:
-        """Parse command line arguments and return configuration."""
+        """Parse command line arguments and return configuration.
+
+        Supports two formats:
+        1. chisel --chisel-flags -- python script.py --script-args (separator format)
+        2. chisel python script.py --script-args (interactive format)
+        """
+        # Check if we have the -- separator format
+        if "--" in args:
+            return self._parse_with_separator(args)
+        else:
+            return self._parse_interactive_format(args)
+
+    def _parse_with_separator(self, args: List[str]) -> Optional[Dict[str, Any]]:
+        """Parse arguments with -- separator: chisel --chisel-flags -- python script.py --script-args"""
+        try:
+            separator_index = args.index("--")
+            chisel_args = args[:separator_index]
+            command_args = args[separator_index + 1 :]
+
+            # Parse chisel flags
+            parser = self._create_chisel_parser()
+            # Add dummy command for chisel-only args
+            parser.add_argument("dummy", nargs="*", help=argparse.SUPPRESS)
+
+            parsed_chisel = parser.parse_args(chisel_args + ["dummy"])
+
+            # Validate command format
+            if len(command_args) < 2 or command_args[0] != "python":
+                print("❌ After --, expected: python <script.py> [script-args...]")
+                print(
+                    "Usage: chisel --app-name my-job --gpu 2 -- python script.py --model-size large"
+                )
+                return None
+
+            script_path = command_args[1]
+            script_args = command_args[2:] if len(command_args) > 2 else []
+
+            return {
+                "script_path": script_path,
+                "script_args": script_args,
+                "app_name": parsed_chisel.app_name,
+                "upload_dir": parsed_chisel.upload_dir,
+                "requirements_file": parsed_chisel.requirements,
+                "gpu": self.gpu_map[parsed_chisel.gpu],
+                "interactive": parsed_chisel.interactive,
+                "preview": parsed_chisel.preview,
+            }
+        except (ValueError, SystemExit) as e:
+            if isinstance(e, ValueError):
+                print("❌ Error parsing arguments with -- separator")
+            return None
+
+    def _parse_interactive_format(self, args: List[str]) -> Optional[Dict[str, Any]]:
+        """Parse interactive format: chisel python script.py --script-args
+
+        In interactive format (no -- separator), ALL arguments after 'python script.py'
+        are treated as script arguments, regardless of their names.
+        """
+        # Check if args start with python
+        if len(args) < 2 or args[0] != "python":
+            print("❌ Interactive format requires 'python' as the first argument!")
+            print("Usage: chisel python <script.py> [script-args...]")
+            print("   or: chisel --app-name my-job --gpu 2 -- python <script.py> [script-args...]")
+            return None
+
+        script_path = args[1]
+        script_args = args[2:] if len(args) > 2 else []
+
+        # In interactive format, ALL arguments after 'python script.py' are script args
+        # The -- separator is what determines chisel flags vs script args, not flag names
+        return {
+            "script_path": script_path,
+            "script_args": script_args,
+            "app_name": None,  # Will trigger interactive mode
+            "upload_dir": ".",
+            "requirements_file": "requirements.txt",
+            "gpu": self.gpu_map["1"],  # Default
+            "interactive": True,  # Force interactive
+            "preview": False,
+        }
+
+    def _create_chisel_parser(self):
+        """Create the argument parser for chisel-specific flags."""
         parser = argparse.ArgumentParser(
             description="Chisel CLI - GPU Job Submission Tool",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
-  chisel python script.py --app-name my-job --gpu 4
-  chisel python train.py --upload-dir ./project --requirements dev.txt
-  chisel python inference.py --app-name inference-job --gpu 1
-  chisel python script.py --preview  # Preview upload contents without submitting
+  # Separator format (chisel flags first, then -- separator):
+  chisel --app-name my-job --gpu 4 -- python script.py --model-size large
+  
+  # Interactive mode (script args only, prompts for chisel config):
+  chisel python script.py --model-size large --epochs 10
             """,
-        )
-
-        # Script and arguments (positional)
-        parser.add_argument(
-            "command", nargs="+", help="Python command to run (e.g., python script.py arg1 arg2)"
         )
 
         # Job configuration
@@ -986,30 +1074,7 @@ Examples:
             help="Preview upload contents without submitting job",
         )
 
-        try:
-            parsed_args = parser.parse_args(args)
-
-            # Extract python command parts
-            if parsed_args.command[0] != "python":
-                print("❌ Chisel currently only supports 'python' commands!")
-                print("Usage: chisel python <script.py> [args...]")
-                return None
-
-            script_path = parsed_args.command[1]
-            script_args = parsed_args.command[2:] if len(parsed_args.command) > 2 else []
-
-            return {
-                "script_path": script_path,
-                "script_args": script_args,
-                "app_name": parsed_args.app_name,
-                "upload_dir": parsed_args.upload_dir,
-                "requirements_file": parsed_args.requirements,
-                "gpu": self.gpu_map[parsed_args.gpu],
-                "interactive": parsed_args.interactive,
-                "preview": parsed_args.preview,
-            }
-        except SystemExit:
-            return None
+        return parser
 
     def submit_job(
         self,
@@ -1308,14 +1373,14 @@ Examples:
             if RICH_AVAILABLE:
                 self.console.print("❌ No command provided!", style="red")
                 self.console.print("\n[bold]Usage:[/bold]")
-                self.console.print("  chisel python <script.py> [args...]")
-                self.console.print("  chisel python <script.py> --app-name my-job --gpu 4")
-                self.console.print("  chisel python <script.py> --interactive")
+                self.console.print("  chisel python <script.py> [script-args]")
+                self.console.print(
+                    "  chisel --app-name my-job --gpu 2 -- python <script.py> [script-args]"
+                )
             else:
                 print("❌ No command provided!")
-                print("Usage: chisel python <script.py> [args...]")
-                print("       chisel python <script.py> --app-name my-job --gpu 4")
-                print("       chisel python <script.py> --interactive")
+                print("Usage: chisel python <script.py> [script-args]")
+                print("       chisel --app-name my-job --gpu 2 -- python <script.py> [script-args]")
             return 1
 
         # Try to parse command line arguments first
@@ -1458,41 +1523,58 @@ def main():
     if len(sys.argv) < 2:
         if cli.console:
             cli.console.print("Chisel CLI is installed and working!", style="bold green")
-            cli.console.print("\n[bold]Usage:[/bold]")
-            cli.console.print("  chisel python <script.py> [args...]")
-            cli.console.print("  chisel python <script.py> --app-name my-job --gpu 4")
-            cli.console.print("  chisel python <script.py> --interactive")
-            cli.console.print("  chisel python <script.py> --preview")
-            cli.console.print("  chisel --logout")
-            cli.console.print("  chisel --version")
-            cli.console.print("\n[bold]Examples:[/bold]")
-            cli.console.print("  chisel python my_script.py")
-            cli.console.print("  chisel python train.py --app-name training-job --gpu 4")
+            cli.console.print("\n[bold]Usage Formats:[/bold]")
             cli.console.print(
-                "  chisel python inference.py --upload-dir ./project --requirements dev.txt"
+                "  [cyan]Separator format:[/cyan] chisel [chisel-flags] -- python <script.py> [script-args]"
             )
-            cli.console.print("  chisel python script.py --preview  # Preview what gets uploaded")
             cli.console.print(
-                "\n💡 Tip: Interactive mode shows the equivalent command-line for copy/paste!"
+                "  [cyan]Interactive:[/cyan]      chisel python <script.py> [script-args]"
+            )
+            cli.console.print("\n[bold]Chisel Flags:[/bold]")
+            cli.console.print("  --app-name, -a     Job name for tracking")
+            cli.console.print("  --gpu, -g          GPU count (1,2,4,8)")
+            cli.console.print("  --upload-dir, -d   Directory to upload")
+            cli.console.print("  --requirements, -r Requirements file")
+            cli.console.print("  --interactive, -i  Force interactive mode")
+            cli.console.print("  --preview, -p      Preview upload contents")
+            cli.console.print("  --logout           Clear authentication")
+            cli.console.print("  --version          Show version")
+            cli.console.print("\n[bold]Examples:[/bold]")
+            cli.console.print("  [green]# Separator format (chisel flags first, then --):[/green]")
+            cli.console.print(
+                "  chisel --app-name my-job --gpu 2 -- python train.py --model-size large"
+            )
+            cli.console.print(
+                "  [green]# Interactive mode (script args only, prompts for config):[/green]"
+            )
+            cli.console.print("  chisel python train.py --model-size large --epochs 10")
+            cli.console.print(
+                "\n💡 Tip: Use [bold cyan]--[/bold cyan] separator to specify chisel configuration upfront!"
             )
         else:
             print("Chisel CLI is installed and working!")
             print()
-            print("Usage:")
-            print("  chisel python <script.py> [args...]")
-            print("  chisel python <script.py> --app-name my-job --gpu 4")
-            print("  chisel python <script.py> --interactive")
-            print("  chisel python <script.py> --preview")
-            print("  chisel --logout")
-            print("  chisel --version")
+            print("Usage Formats:")
+            print("  Separator format: chisel [chisel-flags] -- python <script.py> [script-args]")
+            print("  Interactive:      chisel python <script.py> [script-args]")
+            print()
+            print("Chisel Flags:")
+            print("  --app-name, -a     Job name for tracking")
+            print("  --gpu, -g          GPU count (1,2,4,8)")
+            print("  --upload-dir, -d   Directory to upload")
+            print("  --requirements, -r Requirements file")
+            print("  --interactive, -i  Force interactive mode")
+            print("  --preview, -p      Preview upload contents")
+            print("  --logout           Clear authentication")
+            print("  --version          Show version")
             print()
             print("Examples:")
-            print("  chisel python my_script.py")
-            print("  chisel python train.py --app-name training-job --gpu 4")
-            print("  chisel python inference.py --upload-dir ./project --requirements dev.txt")
-            print("  chisel python script.py --preview  # Preview what gets uploaded")
+            print("  # Separator format (chisel flags first, then --):")
+            print("  chisel --app-name my-job --gpu 2 -- python train.py --model-size large")
+            print("  # Interactive mode (script args only, prompts for config):")
+            print("  chisel python train.py --model-size large --epochs 10")
             print()
-            print("💡 Tip: Interactive mode shows the equivalent command-line for copy/paste!")
+            print("💡 Tip: Use -- separator to specify chisel configuration upfront!")
         return 0
 
     # Handle version flag

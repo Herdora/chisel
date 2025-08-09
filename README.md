@@ -34,12 +34,16 @@ if __name__ == "__main__":
 # Local execution
 python my_script.py
 
-# Cloud GPU execution
+# Cloud GPU execution (interactive format)
 chisel python my_script.py
+
+# Cloud GPU execution (separator format)
+chisel --app-name "matrix-ops" --gpu 2 -- python my_script.py
 ```
 
-**4. Interactive setup:**
-- Chisel CLI prompts for app name, upload directory, requirements file, and GPU configuration
+**4. Two execution formats:**
+- **Interactive format**: `chisel python script.py [script-args]` - CLI prompts for chisel configuration
+- **Separator format**: `chisel [chisel-flags] -- python script.py [script-args]` - All configuration upfront
 - First-time authentication opens browser automatically
 - Real-time job status and output streaming
 
@@ -90,13 +94,34 @@ def evaluate(data):
 
 ### Command Line Arguments
 
-```bash
-# Pass arguments to your script
-chisel python train.py --epochs 100 --batch-size 32
+Chisel CLI supports **two clean argument formats** for handling chisel configuration and script arguments:
 
-# Or configure the job directly
-chisel python train.py --app-name "training-job" --gpu 4
+```bash
+# 1. Separator format (RECOMMENDED) - chisel flags first, then -- separator
+chisel --app-name "training-job" --gpu 4 -- python train.py --epochs 100 --batch-size 32
+
+# 2. Interactive format - script args only (prompts for chisel config)
+chisel python train.py --epochs 100 --batch-size 32
 ```
+
+**Key Features:**
+- **Clean Separation**: Use `--` for explicit separation between chisel and script arguments
+- **Interactive Fallback**: Script args only triggers interactive mode for chisel configuration
+- **Error Prevention**: Mixing chisel flags with script args is not allowed - keeps things simple
+- **Helpful Errors**: Clear messages guide you to the correct format
+
+**Available Chisel Flags:**
+- `--app-name, -a` - Job name for tracking
+- `--gpu, -g` - GPU count (1, 2, 4, 8)
+- `--upload-dir, -d` - Directory to upload
+- `--requirements, -r` - Requirements file
+- `--interactive, -i` - Force interactive mode
+- `--preview, -p` - Preview upload contents
+
+**The `--` separator is what determines chisel flags vs script arguments:**
+- **Before `--`** = chisel flags  
+- **After `--`** = script arguments (regardless of flag names)
+- **No `--`** = interactive mode (ALL args after `python script.py` are script args)
 
 ## GPU Options
 
@@ -119,12 +144,48 @@ When prompted by the CLI, choose from:
 
 ## Examples
 
-See the [examples](examples/) directory for working code:
+### Basic Usage
 
-- [Basic usage](examples/simple_example.py) - Matrix operations
-- [Command line args](examples/args_example.py) - Script with arguments
-- [Deep learning](docs/examples.md#deep-learning) - PyTorch training
-- [Multi-GPU](docs/examples.md#multi-gpu) - Parallel processing
+```bash
+# Simple script execution
+chisel python my_script.py
+
+# With custom configuration (separator format)
+chisel --app-name "matrix-ops" --gpu 2 -- python my_script.py
+```
+
+### Script Arguments
+
+```bash
+# Interactive format - script args only (prompts for chisel config)
+chisel python train.py --model-size large --epochs 100 --batch-size 32
+
+# Separator format - clean separation with --
+chisel --app-name "training-job" --gpu 4 -- python train.py --model-size large --epochs 100 --batch-size 32
+```
+
+### Advanced Configuration
+
+```bash
+# Custom requirements and upload directory
+chisel --requirements custom_requirements.txt --upload-dir src/ --gpu 2 -- python models/train.py --config config.yaml
+
+# Preview upload contents before submission
+chisel --preview -- python my_script.py
+
+# Force interactive mode even with flags
+chisel --interactive python my_script.py
+```
+
+### Working Examples
+
+See the [examples](examples/) directory for comprehensive working code:
+
+- **[Basic Models](examples/basic_models/)** - Simple CNN and linear regression
+- **[NLP Models](examples/nlp_models/)** - Transformers and HuggingFace integration  
+- **[Vision Models](examples/vision_models/)** - ResNet and computer vision
+- **[Edge Cases](examples/edge_cases/)** - Command line arguments and long-running demos
+- **[Requirements Examples](examples/requirements_examples/)** - Custom dependency configurations
 
 ## Authentication
 
