@@ -35,6 +35,9 @@ examples/
 ├── vision_models/                      # Computer Vision
 │   └── resnet_example.py              # ResNet-18 and EfficientNet-style models
 │
+├── vlm_models/                         # Vision-Language Models
+│   └── clip_example.py                # CLIP model for image-text understanding
+│
 ├── generative_models/                  # Generative Models
 │   └── gan_example.py                 # GAN and VAE implementations
 │
@@ -52,6 +55,7 @@ examples/
 │   ├── minimal_requirements.txt       # Minimal PyTorch setup
 │   ├── nlp_requirements.txt          # NLP-specific packages
 │   ├── vision_requirements.txt       # Computer vision packages
+│   ├── vlm_requirements.txt          # Vision-language models
 │   ├── scientific_requirements.txt   # Scientific computing
 │   └── model_with_custom_requirements.py # Custom requirements demo
 │
@@ -145,7 +149,26 @@ chisel python vision_models/resnet_example.py
 - EfficientNet-style mobile architecture
 - Multiple input size testing
 
-### 4. Generative Models (`generative_models/`)
+### 4. Vision-Language Models (`vlm_models/`)
+
+**CLIP Example** (`clip_example.py`)
+```bash
+# Basic run
+chisel python vlm_models/clip_example.py
+
+# With VLM-specific requirements
+chisel --requirements requirements_examples/vlm_requirements.txt -- python vlm_models/clip_example.py
+
+# Interactive format
+chisel python vlm_models/clip_example.py
+```
+- **OpenAI CLIP model** - Downloads actual pretrained weights (~600MB)
+- **Zero-shot image classification** - Classify images using text descriptions
+- **Image-text similarity** - Compute similarity between images and text
+- **Vision-language understanding** - Demonstrates multimodal AI capabilities
+- **Real-world image processing** - Downloads sample images from the web
+
+### 5. Generative Models (`generative_models/`)
 
 **GAN Example** (`gan_example.py`)
 ```bash
@@ -253,6 +276,9 @@ chisel python nlp_models/transformer_example.py --requirements requirements_exam
 # Vision packages
 chisel python vision_models/resnet_example.py --requirements requirements_examples/vision_requirements.txt
 
+# Vision-language models
+chisel python vlm_models/clip_example.py --requirements requirements_examples/vlm_requirements.txt
+
 # Scientific computing
 chisel python requirements_examples/model_with_custom_requirements.py --requirements requirements_examples/scientific_requirements.txt
 
@@ -264,6 +290,7 @@ chisel --requirements requirements_examples/minimal_requirements.txt --gpu 2 -- 
 - `minimal_requirements.txt` - Just PyTorch and NumPy
 - `nlp_requirements.txt` - Transformers, tokenizers, datasets
 - `vision_requirements.txt` - Computer vision libraries
+- `vlm_requirements.txt` - Vision-language models (CLIP, etc.)
 - `scientific_requirements.txt` - Scientific computing stack
 
 ## 🎮 Interactive Examples
@@ -501,11 +528,13 @@ except ImportError:
 chisel python basic_models/simple_cnn.py
 chisel python edge_cases/model_with_args.py --model-size large --batch-size 16
 chisel python edge_cases/long_running_demo.py --epochs 5 --validate
+chisel python vlm_models/clip_example.py
 
 # 2. Separator format - chisel flags first, then -- separator
 chisel --app-name "test" --gpu 2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
 chisel --app-name "streaming-demo" --gpu 2 -- python edge_cases/long_running_demo.py --epochs 8 --validate --verbose
 chisel --gpu 4 --requirements requirements_examples/nlp_requirements.txt -- python nlp_models/pretrained_models.py
+chisel --requirements requirements_examples/vlm_requirements.txt -- python vlm_models/clip_example.py
 
 # Traditional chisel-only configuration (still supported)
 chisel python generative_models/gan_example.py \

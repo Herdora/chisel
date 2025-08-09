@@ -221,13 +221,6 @@ def _execute_model_forward(
         f"💾 [capture_model] {model_name} forward pass #{model._trace_counter} → {trace_name}.json"
     )
 
-    # Generate layer-level analysis
-    layer_analysis = _analyze_model_trace(str(trace_file), model_name)
-    if layer_analysis:
-        print(f"\n📊 Layer Analysis for {model_name}")
-        print("─" * 60)
-        _print_layer_summary(layer_analysis)
-
     return result
 
 

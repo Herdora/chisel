@@ -39,6 +39,8 @@ env/
 # Exclude any downloaded model files or datasets
 models/
 datasets/
-model_cache/  # HuggingFace model cache directory
+model_cache/  # HuggingFace model cache directory (includes CLIP, etc.)
 *.tar.gz
 *.zip
+*.bin  # Model weight files
+*.safetensors  # HuggingFace safetensors format
