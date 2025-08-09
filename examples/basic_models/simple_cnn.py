@@ -7,10 +7,10 @@ This demonstrates basic convolutional neural network profiling.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="SimpleCNN")
+@capture_model_class(model_name="SimpleCNN")
 class SimpleCNN(nn.Module):
     """Basic CNN for image classification."""
 

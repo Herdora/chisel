@@ -8,12 +8,12 @@ both locally and on the Chisel backend.
 
 import torch
 import torch.nn as nn
-from chisel import capture_model, parse_model_trace
+from chisel import capture_model_class, parse_model_trace
 import os
 import time
 
 
-@capture_model(model_name="TestModel")
+@capture_model_class(model_name="TestModel")
 class TestModel(nn.Module):
     """Simple test model for profiling verification."""
 
@@ -113,7 +113,7 @@ def test_imports():
     print("=" * 40)
 
     try:
-        from chisel import capture_model
+        from chisel import capture_model_class
 
         print("✅ capture_model imported successfully")
 

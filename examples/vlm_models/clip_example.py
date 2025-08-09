@@ -14,55 +14,38 @@ from PIL import Image
 import requests
 from io import BytesIO
 import os
-from chisel import capture_model
+from chisel import capture_model_instance
 
 
-@capture_model(model_name="CLIP_VisionLanguage")
-class CLIPVisionLanguageModel(nn.Module):
+def create_clip_model(model_name="openai/clip-vit-base-patch32", cache_dir=None):
     """
-    CLIP model wrapper that downloads actual pretrained weights from HuggingFace.
-    Demonstrates vision-language model profiling.
+    Create and wrap a CLIP model with capture_model for profiling.
+    Downloads actual pretrained weights from HuggingFace.
     """
+    print(f"📦 Downloading CLIP model: {model_name}")
+    print("   This may take a few minutes on first run...")
 
-    def __init__(self, model_name="openai/clip-vit-base-patch32", cache_dir=None):
-        super().__init__()
-        self.model_name = model_name
+    # Download and load the actual CLIP model
+    clip_model = CLIPModel.from_pretrained(
+        model_name,
+        cache_dir=cache_dir,
+        torch_dtype=torch.float32,
+    )
 
-        print(f"📦 Downloading CLIP model: {model_name}")
-        print("   This may take a few minutes on first run...")
+    # Load processor for text and image preprocessing
+    processor = CLIPProcessor.from_pretrained(model_name, cache_dir=cache_dir)
 
-        # Download and load the actual CLIP model
-        self.clip_model = CLIPModel.from_pretrained(
-            model_name,
-            cache_dir=cache_dir,
-            torch_dtype=torch.float32,
-        )
+    print(f"✅ CLIP model downloaded and loaded successfully!")
+    print(f"   Vision encoder: {clip_model.vision_model.config.hidden_size}D")
+    print(f"   Text encoder: {clip_model.text_model.config.hidden_size}D")
 
-        # Load processor for text and image preprocessing
-        self.processor = CLIPProcessor.from_pretrained(model_name, cache_dir=cache_dir)
+    # Wrap the model with capture_model_instance for profiling
+    wrapped_model = capture_model_instance(clip_model, model_name="CLIP_VisionLanguage")
 
-        print(f"✅ CLIP model downloaded and loaded successfully!")
-        print(f"   Vision encoder: {self.clip_model.vision_model.config.hidden_size}D")
-        print(f"   Text encoder: {self.clip_model.text_model.config.hidden_size}D")
+    # Attach processor to the wrapped model for convenience
+    wrapped_model.processor = processor
 
-    def forward(self, pixel_values=None, input_ids=None, attention_mask=None):
-        """
-        Forward pass through CLIP model.
-        Can process images, text, or both simultaneously.
-        """
-        outputs = self.clip_model(
-            pixel_values=pixel_values,
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            return_dict=True,
-        )
-
-        return {
-            "logits_per_image": outputs.logits_per_image,
-            "logits_per_text": outputs.logits_per_text,
-            "image_embeds": outputs.image_embeds,
-            "text_embeds": outputs.text_embeds,
-        }
+    return wrapped_model
 
 
 def download_sample_images():
@@ -286,7 +269,7 @@ def main():
 
     try:
         # Create CLIP model (this will download weights)
-        model = CLIPVisionLanguageModel(
+        model = create_clip_model(
             model_name="openai/clip-vit-base-patch32", cache_dir=cache_dir
         ).to(device)
 

@@ -2,9 +2,9 @@ __version__ = "0.1.0"
 
 from .constants import GPUType
 
-# Import capture_trace and capture_model from trace module
+# Import capture_trace, capture_model_instance, and capture_model_class from trace module
 try:
-    from .trace import capture_trace, capture_model, parse_model_trace
+    from .trace import capture_trace, capture_model_instance, capture_model_class, parse_model_trace
 except ImportError:
     # Fallback for backward compatibility - create a pass-through decorator
     def capture_trace(trace_name=None, record_shapes=False, profile_memory=False, **kwargs):
@@ -15,8 +15,14 @@ except ImportError:
 
         return decorator
 
-    def capture_model(model_name=None, record_shapes=True, profile_memory=True, **kwargs):
-        """Fallback capture_model decorator for backward compatibility."""
+    def capture_model_instance(
+        model_instance, model_name=None, record_shapes=True, profile_memory=True, **kwargs
+    ):
+        """Fallback capture_model_instance function for backward compatibility."""
+        return model_instance
+
+    def capture_model_class(model_name=None, record_shapes=True, profile_memory=True, **kwargs):
+        """Fallback capture_model_class decorator for backward compatibility."""
 
         def decorator(model):
             return model
@@ -40,7 +46,8 @@ def capture_trace_fallback(trace_name=None, record_shapes=False, profile_memory=
 
 __all__ = [
     "capture_trace",
-    "capture_model",
+    "capture_model_instance", 
+    "capture_model_class",
     "parse_model_trace",
     "capture_trace_fallback",
     "GPUType",

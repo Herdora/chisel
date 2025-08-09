@@ -7,10 +7,10 @@ This demonstrates generative model profiling.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="Generator")
+@capture_model_class(model_name="Generator")
 class Generator(nn.Module):
     """Simple generator for DCGAN-style architecture."""
 
@@ -61,7 +61,7 @@ class Generator(nn.Module):
         return img
 
 
-@capture_model(model_name="Discriminator")
+@capture_model_class(model_name="Discriminator")
 class Discriminator(nn.Module):
     """Simple discriminator for DCGAN-style architecture."""
 
@@ -99,7 +99,7 @@ class Discriminator(nn.Module):
         return out
 
 
-@capture_model(model_name="VAE_Encoder")
+@capture_model_class(model_name="VAE_Encoder")
 class VAEEncoder(nn.Module):
     """Variational Autoencoder Encoder."""
 
@@ -141,7 +141,7 @@ class VAEEncoder(nn.Module):
         return mu, logvar
 
 
-@capture_model(model_name="VAE_Decoder")
+@capture_model_class(model_name="VAE_Decoder")
 class VAEDecoder(nn.Module):
     """Variational Autoencoder Decoder."""
 

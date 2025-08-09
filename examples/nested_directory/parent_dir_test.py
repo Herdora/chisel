@@ -16,10 +16,10 @@ current_dir = os.path.dirname(__file__)
 parent_dir = os.path.join(current_dir, "..")
 sys.path.insert(0, parent_dir)
 
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="ParentDirModel")
+@capture_model_class(model_name="ParentDirModel")
 class ParentDirModel(nn.Module):
     """Model for testing parent directory uploads."""
 

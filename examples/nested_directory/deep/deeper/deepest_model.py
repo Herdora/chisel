@@ -14,10 +14,10 @@ import sys
 examples_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 sys.path.insert(0, examples_dir)
 
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="DeepestModel")
+@capture_model_class(model_name="DeepestModel")
 class DeepestModel(nn.Module):
     """A model that lives in the deepest directory."""
 

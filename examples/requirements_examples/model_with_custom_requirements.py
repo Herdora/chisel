@@ -6,7 +6,7 @@ Run with: chisel python model_with_custom_requirements.py --requirements require
 
 import torch
 import torch.nn as nn
-from chisel import capture_model
+from chisel import capture_model_class
 
 # Try to import optional dependencies
 try:
@@ -31,7 +31,7 @@ except ImportError:
     HAS_PANDAS = False
 
 
-@capture_model(model_name="CustomRequirementsModel")
+@capture_model_class(model_name="CustomRequirementsModel")
 class CustomRequirementsModel(nn.Module):
     """Model that demonstrates custom requirements usage."""
 

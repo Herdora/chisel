@@ -7,11 +7,11 @@ This downloads actual model weights from HuggingFace and loads them into a captu
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer, AutoConfig
-from chisel import capture_model
+from chisel import capture_model_class
 import os
 
 
-@capture_model(model_name="DownloadedDistilBERT")
+@capture_model_class(model_name="DownloadedDistilBERT")
 class DownloadedDistilBERTModel(nn.Module):
     """
     Model that downloads and loads actual DistilBERT weights from HuggingFace.
@@ -63,7 +63,7 @@ class DownloadedDistilBERTModel(nn.Module):
         }
 
 
-@capture_model(model_name="DownloadedGPT2")
+@capture_model_class(model_name="DownloadedGPT2")
 class DownloadedGPT2Model(nn.Module):
     """
     Model that downloads and loads actual GPT-2 weights from HuggingFace.

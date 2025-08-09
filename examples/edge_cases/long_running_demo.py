@@ -21,10 +21,10 @@ import random
 from datetime import datetime
 import torch
 import torch.nn as nn
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="LongRunningModel", record_shapes=True, profile_memory=True)
+@capture_model_class(model_name="LongRunningModel", record_shapes=True, profile_memory=True)
 class DemoModel(nn.Module):
     """A model that simulates realistic training time."""
 

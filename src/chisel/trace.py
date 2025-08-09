@@ -50,14 +50,83 @@ def capture_trace(
     return decorator
 
 
-def capture_model(
+def capture_model_instance(
+    model_instance,
     model_name: Optional[str] = None,
     record_shapes: bool = True,
     profile_memory: bool = True,
     **profiler_kwargs: Any,
 ):
     """
-    Decorator for PyTorch models that profiles every forward pass.
+    Wrap a model instance to profile every forward pass.
+
+    This function wraps an existing model instance (like HuggingFace models)
+    to automatically profile each forward() call and save detailed traces.
+
+    Args:
+        model_instance: The model instance to wrap
+        model_name: Name for the model traces (defaults to model class name)
+        record_shapes: Record tensor shapes for each operation
+        profile_memory: Profile memory usage
+        **profiler_kwargs: Additional profiler arguments
+
+    Returns:
+        Wrapped model instance that profiles every forward pass
+
+    Examples:
+        # Wrap a HuggingFace model
+        model = AutoModel.from_pretrained("bert-base-uncased")
+        model = capture_model_instance(model, model_name="BERT")
+
+        # Wrap any PyTorch model instance
+        model = MyModel()
+        model = capture_model_instance(model, model_name="MyModel")
+    """
+    # Check if we're running on the Chisel backend
+    if os.environ.get(CHISEL_BACKEND_RUN_ENV_KEY) != "1":
+        # Running locally - return original model instance
+        return model_instance
+
+    assert os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY), "Chisel app name is not set"
+
+    # Store the original forward method
+    original_forward = model_instance.forward
+    trace_counter = 0
+
+    def profiled_forward(*args, **kwargs):
+        nonlocal trace_counter
+        trace_counter += 1
+
+        # Temporarily set trace counter on the model for compatibility
+        model_instance._trace_counter = trace_counter
+
+        return _execute_model_forward(
+            model_instance,
+            original_forward,
+            model_name or model_instance.__class__.__name__,
+            record_shapes,
+            profile_memory,
+            True,  # with_stack
+            *args,
+            **kwargs,
+        )
+
+    # Replace the forward method
+    model_instance.forward = profiled_forward
+    model_instance._trace_counter = trace_counter
+    model_instance._model_name = model_name or model_instance.__class__.__name__
+
+    return model_instance
+
+
+def capture_model_class(
+    model_name: Optional[str] = None,
+    record_shapes: bool = True,
+    profile_memory: bool = True,
+    **profiler_kwargs: Any,
+):
+    """
+    Decorator for PyTorch model classes that profiles every forward pass.
 
     This creates a model wrapper that automatically profiles each forward() call
     and saves detailed traces with layer-level timing and shape information.
@@ -70,6 +139,16 @@ def capture_model(
 
     Returns:
         Model wrapper that profiles every forward pass
+
+    Examples:
+        @capture_model_class(model_name="MyModel")
+        class MyModel(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = nn.Linear(10, 1)
+            
+            def forward(self, x):
+                return self.linear(x)
     """
 
     def decorator(model):

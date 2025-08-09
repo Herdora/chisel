@@ -7,10 +7,10 @@ This demonstrates NLP model profiling with attention mechanisms.
 import torch
 import torch.nn as nn
 import math
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="SimpleTransformer")
+@capture_model_class(model_name="SimpleTransformer")
 class SimpleTransformer(nn.Module):
     """Simplified transformer model for text processing."""
 
@@ -81,7 +81,7 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:seq_len, :].transpose(0, 1)
 
 
-@capture_model(model_name="BERTLikeModel")
+@capture_model_class(model_name="BERTLikeModel")
 class BERTLikeModel(nn.Module):
     """BERT-like model for masked language modeling."""
 

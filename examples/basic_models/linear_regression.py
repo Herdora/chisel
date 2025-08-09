@@ -6,10 +6,10 @@ This demonstrates basic linear model profiling.
 
 import torch
 import torch.nn as nn
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="LinearRegression")
+@capture_model_class(model_name="LinearRegression")
 class LinearRegression(nn.Module):
     """Simple linear regression model."""
 
@@ -21,7 +21,7 @@ class LinearRegression(nn.Module):
         return self.linear(x)
 
 
-@capture_model(model_name="MultiLayerPerceptron")
+@capture_model_class(model_name="MultiLayerPerceptron")
 class MLP(nn.Module):
     """Multi-layer perceptron for comparison."""
 

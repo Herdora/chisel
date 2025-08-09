@@ -6,34 +6,22 @@ This demonstrates profiling of HuggingFace models.
 
 import torch
 from transformers import AutoModel, AutoTokenizer, AutoModelForSequenceClassification
-from chisel import capture_model
+from chisel import capture_model_instance
 
 
-# Wrap HuggingFace models with capture_model
-@capture_model(model_name="DistilBERT")
-class WrappedDistilBERT(torch.nn.Module):
-    """Wrapped DistilBERT model for profiling."""
-
-    def __init__(self):
-        super().__init__()
-        self.model = AutoModel.from_pretrained("distilbert-base-uncased")
-
-    def forward(self, input_ids, attention_mask=None):
-        return self.model(input_ids=input_ids, attention_mask=attention_mask)
+# Use capture_model to wrap HuggingFace models directly
+def create_wrapped_distilbert():
+    """Create a wrapped DistilBERT model for profiling."""
+    model = AutoModel.from_pretrained("distilbert-base-uncased")
+    return capture_model_instance(model, model_name="DistilBERT")
 
 
-@capture_model(model_name="DistilBERTClassifier")
-class WrappedDistilBERTClassifier(torch.nn.Module):
-    """Wrapped DistilBERT classifier for profiling."""
-
-    def __init__(self, num_labels=2):
-        super().__init__()
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased", num_labels=num_labels
-        )
-
-    def forward(self, input_ids, attention_mask=None, labels=None):
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+def create_wrapped_distilbert_classifier(num_labels=2):
+    """Create a wrapped DistilBERT classifier for profiling."""
+    model = AutoModelForSequenceClassification.from_pretrained(
+        "distilbert-base-uncased", num_labels=num_labels
+    )
+    return capture_model_instance(model, model_name="DistilBERTClassifier")
 
 
 def create_sample_text_data(tokenizer, texts, max_length=128, device="cpu"):
@@ -81,7 +69,7 @@ def main():
     print("-" * 40)
 
     try:
-        base_model = WrappedDistilBERT().to(device)
+        base_model = create_wrapped_distilbert().to(device)
         print(f"📊 Base model parameters: {sum(p.numel() for p in base_model.parameters()):,}")
 
         base_model.eval()
@@ -106,7 +94,7 @@ def main():
     print("-" * 40)
 
     try:
-        classifier_model = WrappedDistilBERTClassifier(num_labels=2).to(device)
+        classifier_model = create_wrapped_distilbert_classifier(num_labels=2).to(device)
         print(
             f"📊 Classifier parameters: {sum(p.numel() for p in classifier_model.parameters()):,}"
         )

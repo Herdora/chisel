@@ -8,10 +8,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 import os
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="LargeDataModel")
+@capture_model_class(model_name="LargeDataModel")
 class LargeDataModel(nn.Module):
     """Model that processes large data files."""
 

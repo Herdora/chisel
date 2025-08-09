@@ -7,7 +7,7 @@ This demonstrates computer vision model profiling.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from chisel import capture_model
+from chisel import capture_model_class
 
 
 class BasicBlock(nn.Module):
@@ -41,7 +41,7 @@ class BasicBlock(nn.Module):
         return out
 
 
-@capture_model(model_name="ResNet18")
+@capture_model_class(model_name="ResNet18")
 class ResNet18(nn.Module):
     """ResNet-18 implementation with profiling."""
 
@@ -88,7 +88,7 @@ class ResNet18(nn.Module):
         return out
 
 
-@capture_model(model_name="EfficientNet")
+@capture_model_class(model_name="EfficientNet")
 class SimpleEfficientNet(nn.Module):
     """Simplified EfficientNet-like model."""
 

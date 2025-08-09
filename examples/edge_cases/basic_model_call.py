@@ -6,10 +6,10 @@ This is the most basic edge case to ensure everything works.
 
 import torch
 import torch.nn as nn
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="BasicModel")
+@capture_model_class(model_name="BasicModel")
 class BasicModel(nn.Module):
     """The simplest possible model for testing."""
 

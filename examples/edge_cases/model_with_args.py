@@ -7,10 +7,10 @@ Tests: chisel python model_with_args.py --model-size large --batch-size 16 --num
 import argparse
 import torch
 import torch.nn as nn
-from chisel import capture_model
+from chisel import capture_model_class
 
 
-@capture_model(model_name="ConfigurableModel")
+@capture_model_class(model_name="ConfigurableModel")
 class ConfigurableModel(nn.Module):
     """Model that can be configured via command line arguments."""
 
