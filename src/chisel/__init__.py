@@ -46,7 +46,7 @@ def capture_trace_fallback(trace_name=None, record_shapes=False, profile_memory=
 
 __all__ = [
     "capture_trace",
-    "capture_model_instance", 
+    "capture_model_instance",
     "capture_model_class",
     "parse_model_trace",
     "capture_trace_fallback",

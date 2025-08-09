@@ -146,7 +146,7 @@ def capture_model_class(
             def __init__(self):
                 super().__init__()
                 self.linear = nn.Linear(10, 1)
-            
+
             def forward(self, x):
                 return self.linear(x)
     """
@@ -209,19 +209,11 @@ def _execute_with_trace(
     job_trace_dir = (
         volume_path / os.environ.get(CHISEL_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
     )
-    print(f"🔍 [capture_trace] Job trace dir: {job_trace_dir}")
     job_trace_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"🔍 [capture_trace] Tracing {fn.__name__} -> {job_trace_dir}/{trace_name}.json")
 
     activities = [ProfilerActivity.CPU]
     if torch.cuda.is_available():
         activities.append(ProfilerActivity.CUDA)
-        gpu_count = torch.cuda.device_count()
-        print(f"🚀 [capture_trace] GPU(s) available: {gpu_count}")
-        for i in range(gpu_count):
-            gpu_name = torch.cuda.get_device_name(i)
-            print(f"    GPU {i}: {gpu_name}")
 
     with profile(
         activities=activities,
@@ -229,22 +221,12 @@ def _execute_with_trace(
         profile_memory=profile_memory,
         with_stack=True,
     ) as prof:
-        print(f"⚡ [capture_trace] Profiling {fn.__name__} (job_id: {job_id})")
         result = fn(*args, **kwargs)
 
     trace_file = job_trace_dir / f"{trace_name}.json"
     prof.export_chrome_trace(str(trace_file))
 
-    print(f"💾 [capture_trace] Saved trace: {trace_file}")
-
-    if torch.cuda.is_available():
-        print("\n🏎️  GPU Profiling Summary")
-        print("─" * 50)
-        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=5))
-    else:
-        print("\n💻 CPU Profiling Summary")
-        print("─" * 50)
-        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=5))
+    print(f"💾 [capture_trace] {fn.__name__} → {trace_name}.json")
 
     return result
 
