@@ -12,14 +12,6 @@ This documentation will help you get started with Keys & Caches and make the mos
 
 ---
 
-## Quick Navigation
-
-* 🚀 [Getting Started](#getting-started) — Installation, setup, and your first GPU job
-* 💡 [Examples](#examples) — Comprehensive examples and use cases
-* 📞 [Contact & Support](#contact--support) — Get help and connect with the community
-
----
-
 ## What is Keys & Caches?
 
 Keys & Caches is a command-line tool that makes it effortless to run PyTorch models on high-performance cloud GPUs. With just one command, you can:
@@ -38,7 +30,7 @@ Keys & Caches is a command-line tool that makes it effortless to run PyTorch mod
 
 ```bash
 # Run any PyTorch script on cloud GPUs
-kandc python train.py --model-size large --epochs 100
+kandc python infer.py --model-size large --epochs 100
 ```
 
 ---
@@ -52,15 +44,6 @@ from kandc import capture_model_class
 class MyModel(nn.Module):
     # Your model automatically gets profiled!
 ```
-
----
-
-### 🎮 Flexible GPU Configurations
-
-* **A100 GPUs** (40GB/80GB) — Proven performance for training and inference
-* **H100 GPUs** (80GB) — Latest architecture with enhanced performance
-* **L4 GPUs** (24GB) — Cost-effective option for efficient workloads
-* **Scale 1–8 GPUs** — From development to massive scale training
 
 ---
 
@@ -115,7 +98,7 @@ chisel --app-name job --gpu H100:4 -- python script.py --script-args  # Separato
 
 ## Ready to Get Started?
 
-👉 Jump to the **Getting Started Guide** to install Keys & Caches and run your first GPU job in under 5 minutes!
+👉 Jump to the **[Getting Started Guide](https://www.keysandcaches.com/docs)** to install Keys & Caches and run your first GPU job in under 5 minutes!
 
 ---
 
