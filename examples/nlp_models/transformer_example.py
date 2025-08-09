@@ -101,14 +101,16 @@ class BERTLikeModel(nn.Module):
         x = self.embedding(input_ids)
         x = self.pos_encoding(x)
 
-        # Create attention mask if provided
+        # Create padding mask if provided
+        padding_mask = None
         if attention_mask is not None:
-            # Convert attention mask to the format expected by transformer
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            attention_mask = (1.0 - attention_mask) * -10000.0
+            # Convert attention mask to padding mask for transformer
+            # attention_mask: 1 for real tokens, 0 for padding
+            # padding_mask: True for padding tokens, False for real tokens
+            padding_mask = attention_mask == 0
 
         # Transformer
-        x = self.transformer(x, src_key_padding_mask=attention_mask)
+        x = self.transformer(x, src_key_padding_mask=padding_mask)
 
         # MLM head
         predictions = self.mlm_head(x)

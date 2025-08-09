@@ -779,8 +779,23 @@ class ChiselCLI:
                         return user_input
                     print("❌ This field is required!")
 
-    def select_gpu(self) -> str:
-        """Interactive GPU selection with navigation."""
+    def select_gpu(self, default_gpu: str = None) -> str:
+        """Interactive GPU selection with navigation.
+
+        Args:
+            default_gpu: Pre-filled GPU value to use as default
+        """
+        # Determine the default choice number from GPU string
+        if default_gpu:
+            default_choice = None
+            for choice, gpu_type in self.gpu_map.items():
+                if gpu_type == default_gpu:
+                    default_choice = choice
+                    break
+        else:
+            default_choice = "1"
+            default_gpu = self.gpu_map["1"]
+
         if RICH_AVAILABLE:
             # Create a table for better presentation
             table = Table(
@@ -795,9 +810,19 @@ class ChiselCLI:
             table.add_column("Description", style="white")
 
             for option, gpu_type, description in self.gpu_options:
-                table.add_row(option, gpu_type, description)
+                # Highlight the default option
+                if default_choice and option == default_choice:
+                    table.add_row(
+                        f"[bold green]{option}*[/bold green]",
+                        f"[bold green]{gpu_type}[/bold green]",
+                        f"[bold green]{description} (default)[/bold green]",
+                    )
+                else:
+                    table.add_row(option, gpu_type, description)
 
             self.console.print(table)
+            if default_choice:
+                self.console.print(f"[dim]* Pre-filled default: {default_gpu}[/dim]")
             self.console.print()
 
             # Use a simple but effective selection method
@@ -805,7 +830,7 @@ class ChiselCLI:
                 choice = Prompt.ask(
                     "Select GPU configuration",
                     choices=["1", "2", "4", "8"],
-                    default="1",
+                    default=default_choice or "1",
                     console=self.console,
                 )
 
@@ -819,14 +844,19 @@ class ChiselCLI:
                     )
         else:
             for option, gpu_type, description in self.gpu_options:
-                print(f"  {option}. {gpu_type}")
-                print(f"     {description}")
+                if default_choice and option == default_choice:
+                    print(f"  {option}. {gpu_type} * (default)")
+                    print(f"     {description}")
+                else:
+                    print(f"  {option}. {gpu_type}")
+                    print(f"     {description}")
                 print()
 
             while True:
-                choice = input("Select GPU configuration (1-8, default: 1): ").strip()
+                prompt_text = f"Select GPU configuration (1-8, default: {default_choice or '1'}): "
+                choice = input(prompt_text).strip()
                 if not choice:
-                    choice = "1"
+                    choice = default_choice or "1"
 
                 if choice in self.gpu_map:
                     selected_gpu = self.gpu_map[choice]
@@ -835,30 +865,59 @@ class ChiselCLI:
                 else:
                     print("❌ Invalid choice. Please select 1, 2, 4, or 8.")
 
-    def get_user_inputs_interactive(self, script_path: str = "<script.py>") -> Dict[str, Any]:
-        """Interactive questionnaire to get job submission parameters."""
+    def get_user_inputs_interactive(
+        self, script_path: str = "<script.py>", prefilled_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Interactive questionnaire to get job submission parameters.
+
+        Args:
+            script_path: Path to the script being run
+            prefilled_config: Optional pre-filled values from command line flags
+        """
+        prefilled = prefilled_config or {}
         self.print_header()
+
+        # Show pre-filled values if any exist
+        if prefilled.get("has_prefilled_values"):
+            if RICH_AVAILABLE:
+                self.console.print("✨ [bold cyan]Pre-filled values detected![/bold cyan]")
+                self.console.print("   Values from command line flags will be used as defaults.")
+                self.console.print("   Press Enter to accept, or type new values to override.\n")
+            else:
+                print("✨ Pre-filled values detected!")
+                print("   Values from command line flags will be used as defaults.")
+                print("   Press Enter to accept, or type new values to override.\n")
 
         # Define total steps for progress tracking
         total_steps = 5
 
         # Step 1: App name
         self.print_section_header("Job Configuration", step=1, total_steps=total_steps)
-        app_name = self.get_input_with_default("📝 App name (for job tracking)")
+        app_name_default = prefilled.get("app_name", "")
+        app_name = self.get_input_with_default(
+            "📝 App name (for job tracking)",
+            default=app_name_default,
+            required=not bool(app_name_default),
+        )
 
         # Step 2: Upload directory
         self.print_section_header("Upload Directory", step=2, total_steps=total_steps)
-        upload_dir = self.get_input_with_default("📁 Upload directory", default=".", required=False)
+        upload_dir_default = prefilled.get("upload_dir", ".")
+        upload_dir = self.get_input_with_default(
+            "📁 Upload directory", default=upload_dir_default, required=False
+        )
 
         # Step 3: Requirements file
         self.print_section_header("Dependencies", step=3, total_steps=total_steps)
+        requirements_default = prefilled.get("requirements_file", "requirements.txt")
         requirements_file = self.get_input_with_default(
-            "📋 Requirements file", default="requirements.txt", required=False
+            "📋 Requirements file", default=requirements_default, required=False
         )
 
         # Step 4: GPU selection
         self.print_section_header("GPU Configuration", step=4, total_steps=total_steps)
-        gpu = self.select_gpu()
+        gpu_default = prefilled.get("gpu", self.gpu_map["1"])
+        gpu = self.select_gpu(default_gpu=gpu_default)
 
         # Show equivalent command for copy/paste
         self.show_equivalent_command(app_name, upload_dir, requirements_file, gpu, script_path)
@@ -946,15 +1005,16 @@ class ChiselCLI:
     def parse_command_line_args(self, args: List[str]) -> Optional[Dict[str, Any]]:
         """Parse command line arguments and return configuration.
 
-        Supports two formats:
+        Supports three formats:
         1. chisel --chisel-flags -- python script.py --script-args (separator format)
         2. chisel python script.py --script-args (interactive format)
+        3. chisel --chisel-flags python script.py --script-args (mixed format - pre-fills interactive)
         """
         # Check if we have the -- separator format
         if "--" in args:
             return self._parse_with_separator(args)
         else:
-            return self._parse_interactive_format(args)
+            return self._parse_mixed_or_interactive_format(args)
 
     def _parse_with_separator(self, args: List[str]) -> Optional[Dict[str, Any]]:
         """Parse arguments with -- separator: chisel --chisel-flags -- python script.py --script-args"""
@@ -996,33 +1056,65 @@ class ChiselCLI:
                 print("❌ Error parsing arguments with -- separator")
             return None
 
-    def _parse_interactive_format(self, args: List[str]) -> Optional[Dict[str, Any]]:
-        """Parse interactive format: chisel python script.py --script-args
+    def _parse_mixed_or_interactive_format(self, args: List[str]) -> Optional[Dict[str, Any]]:
+        """Parse mixed format (chisel flags + python script) or pure interactive format.
 
-        In interactive format (no -- separator), ALL arguments after 'python script.py'
-        are treated as script arguments, regardless of their names.
+        This handles:
+        1. chisel --chisel-flags python script.py --script-args (mixed - pre-fills interactive)
+        2. chisel python script.py --script-args (pure interactive)
         """
-        # Check if args start with python
-        if len(args) < 2 or args[0] != "python":
-            print("❌ Interactive format requires 'python' as the first argument!")
+        # Try to find where 'python' starts
+        python_index = None
+        for i, arg in enumerate(args):
+            if arg == "python":
+                python_index = i
+                break
+
+        if python_index is None:
+            print("❌ Command must include 'python <script.py>'")
             print("Usage: chisel python <script.py> [script-args...]")
+            print("   or: chisel --app-name my-job --gpu 2 python <script.py> [script-args...]")
             print("   or: chisel --app-name my-job --gpu 2 -- python <script.py> [script-args...]")
             return None
 
-        script_path = args[1]
-        script_args = args[2:] if len(args) > 2 else []
+        # Split into chisel flags (before python) and python command (from python onwards)
+        chisel_args = args[:python_index]
+        python_command = args[python_index:]
 
-        # In interactive format, ALL arguments after 'python script.py' are script args
-        # The -- separator is what determines chisel flags vs script args, not flag names
+        # Parse chisel flags if any exist
+        parsed_chisel = None
+        if chisel_args:
+            try:
+                parser = self._create_chisel_parser()
+                # Add dummy command for chisel-only args
+                parser.add_argument("dummy", nargs="*", help=argparse.SUPPRESS)
+                parsed_chisel = parser.parse_args(chisel_args + ["dummy"])
+            except SystemExit:
+                # If parsing fails, treat as pure interactive
+                parsed_chisel = None
+
+        # Validate python command format
+        if len(python_command) < 2:
+            print("❌ Missing script name after 'python'")
+            print("Usage: chisel python <script.py> [script-args...]")
+            return None
+
+        script_path = python_command[1]
+        script_args = python_command[2:] if len(python_command) > 2 else []
+
+        # Return configuration with any pre-filled values from chisel flags
         return {
             "script_path": script_path,
             "script_args": script_args,
-            "app_name": None,  # Will trigger interactive mode
-            "upload_dir": ".",
-            "requirements_file": "requirements.txt",
-            "gpu": self.gpu_map["1"],  # Default
-            "interactive": True,  # Force interactive
-            "preview": False,
+            "app_name": parsed_chisel.app_name if parsed_chisel else None,
+            "upload_dir": parsed_chisel.upload_dir if parsed_chisel else ".",
+            "requirements_file": parsed_chisel.requirements
+            if parsed_chisel
+            else "requirements.txt",
+            "gpu": self.gpu_map[parsed_chisel.gpu] if parsed_chisel else self.gpu_map["1"],
+            "interactive": True,  # Always trigger interactive mode for final confirmation
+            "preview": parsed_chisel.preview if parsed_chisel else False,
+            "has_prefilled_values": parsed_chisel is not None,  # Track if we have pre-filled values
         }
 
     def _create_chisel_parser(self):
@@ -1407,19 +1499,13 @@ Examples:
 
         # If no app_name provided via flags, we need interactive mode
         if not parsed_config["app_name"] or parsed_config["interactive"]:
-            # Get interactive inputs
-            interactive_inputs = self.get_user_inputs_interactive(parsed_config["script_path"])
+            # Get interactive inputs with any pre-filled values from command line flags
+            interactive_inputs = self.get_user_inputs_interactive(
+                parsed_config["script_path"], prefilled_config=parsed_config
+            )
 
-            # Merge with command line args (command line takes precedence)
-            final_config = {**interactive_inputs}
-            if parsed_config["app_name"]:
-                final_config["app_name"] = parsed_config["app_name"]
-            if parsed_config["gpu"]:
-                final_config["gpu"] = parsed_config["gpu"]
-            if parsed_config["upload_dir"]:
-                final_config["upload_dir"] = parsed_config["upload_dir"]
-            if parsed_config["requirements_file"]:
-                final_config["requirements_file"] = parsed_config["requirements_file"]
+            # Use interactive inputs as final config
+            final_config = interactive_inputs
         else:
             # Use command line configuration
             final_config = {
@@ -1530,6 +1616,9 @@ def main():
             cli.console.print(
                 "  [cyan]Interactive:[/cyan]      chisel python <script.py> [script-args]"
             )
+            cli.console.print(
+                "  [cyan]Pre-filled:[/cyan]       chisel [chisel-flags] python <script.py> [script-args]"
+            )
             cli.console.print("\n[bold]Chisel Flags:[/bold]")
             cli.console.print("  --app-name, -a     Job name for tracking")
             cli.console.print("  --gpu, -g          GPU count (1,2,4,8)")
@@ -1549,7 +1638,13 @@ def main():
             )
             cli.console.print("  chisel python train.py --model-size large --epochs 10")
             cli.console.print(
-                "\n💡 Tip: Use [bold cyan]--[/bold cyan] separator to specify chisel configuration upfront!"
+                "  [green]# Pre-filled mode (chisel flags pre-fill interactive prompts):[/green]"
+            )
+            cli.console.print(
+                "  chisel --app-name my-job --gpu 2 python train.py --model-size large"
+            )
+            cli.console.print(
+                "\n💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
             )
         else:
             print("Chisel CLI is installed and working!")
@@ -1557,6 +1652,7 @@ def main():
             print("Usage Formats:")
             print("  Separator format: chisel [chisel-flags] -- python <script.py> [script-args]")
             print("  Interactive:      chisel python <script.py> [script-args]")
+            print("  Pre-filled:       chisel [chisel-flags] python <script.py> [script-args]")
             print()
             print("Chisel Flags:")
             print("  --app-name, -a     Job name for tracking")
@@ -1573,8 +1669,12 @@ def main():
             print("  chisel --app-name my-job --gpu 2 -- python train.py --model-size large")
             print("  # Interactive mode (script args only, prompts for config):")
             print("  chisel python train.py --model-size large --epochs 10")
+            print("  # Pre-filled mode (chisel flags pre-fill interactive prompts):")
+            print("  chisel --app-name my-job --gpu 2 python train.py --model-size large")
             print()
-            print("💡 Tip: Use -- separator to specify chisel configuration upfront!")
+            print(
+                "💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
+            )
         return 0
 
     # Handle version flag
