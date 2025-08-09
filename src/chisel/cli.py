@@ -6,6 +6,7 @@ import tarfile
 import requests
 import argparse
 import json
+import webbrowser
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -1192,6 +1193,12 @@ Examples:
 
             endpoint = f"{backend_url.rstrip('/')}/api/v1/submit-cachy-job-new"
 
+            # Variables to store job result info (will be set in the response handling)
+            job_id = None
+            message = None
+            visit_url = None
+            full_url = None
+
             if RICH_AVAILABLE:
                 with Progress(
                     SpinnerColumn(),
@@ -1211,13 +1218,26 @@ Examples:
                         message = result.get("message", "Job submitted")
                         visit_url = result.get("visit_url", f"/jobs/{job_id}")
 
+                        # Construct full URL if visit_url is relative
+                        if visit_url.startswith("/"):
+                            full_url = f"{backend_url}{visit_url}"
+                        else:
+                            full_url = visit_url
+
                         progress.update(
                             task, description="Work uploaded successfully! Job submitted"
                         )
 
+                        # Automatically open the URL in the user's default browser
+                        try:
+                            webbrowser.open(full_url)
+                            browser_status = "✅ Browser opened successfully!"
+                        except Exception as e:
+                            browser_status = f"⚠️  Could not open browser automatically: {e}\n   Please manually visit: {full_url}"
+
                         # Create a success panel
                         success_panel = Panel(
-                            f"🔗 Job ID: {job_id}\n🌐 Visit: {visit_url}\n📊 Job is running in the background on cloud GPUs",
+                            f"🔗 Job ID: {job_id}\n🌐 Visit: {full_url}\n🌐 Opening in browser...\n{browser_status}\n📊 Job is running in the background on cloud GPUs",
                             title="✅ Job Submitted Successfully",
                             border_style="green",
                             box=box.ROUNDED,
@@ -1242,10 +1262,26 @@ Examples:
                     message = result.get("message", "Job submitted")
                     visit_url = result.get("visit_url", f"/jobs/{job_id}")
 
+                    # Construct full URL if visit_url is relative
+                    if visit_url.startswith("/"):
+                        full_url = f"{backend_url}{visit_url}"
+                    else:
+                        full_url = visit_url
+
                     upload_spinner.stop("Work uploaded successfully! Job submitted")
 
                     print(f"🔗 Job ID: {job_id}")
-                    print(f"🌐 Visit: {visit_url}")
+                    print(f"🌐 Visit: {full_url}")
+                    print("🌐 Opening in browser...")
+
+                    # Automatically open the URL in the user's default browser
+                    try:
+                        webbrowser.open(full_url)
+                        print("✅ Browser opened successfully!")
+                    except Exception as e:
+                        print(f"⚠️  Could not open browser automatically: {e}")
+                        print(f"   Please manually visit: {full_url}")
+
                     print("📊 Job is running in the background on cloud GPUs")
 
                 except Exception as e:
@@ -1257,7 +1293,7 @@ Examples:
                 "exit_code": 0,
                 "logs": [f"{message} (Job ID: {job_id})"],
                 "status": "submitted",
-                "visit_url": visit_url,
+                "visit_url": full_url,
             }
         except Exception as e:
             print(f"🔍 [submit_job] Error creating tar archive: {e}")

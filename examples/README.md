@@ -175,3 +175,21 @@ python test_upload_limits.py --cleanup
 ```
 
 See `UPLOAD_LIMITS_TEST.md` for detailed examples and migration guide.
+
+### Automatic Browser Opening
+
+**🌐 NEW:** Chisel now automatically opens your browser to the job dashboard when you submit a job!
+
+- ✅ **Automatic opening** - No need to manually copy/paste URLs
+- ✅ **Cross-platform** - Works on macOS, Windows, and Linux
+- ✅ **Fallback handling** - Shows manual URL if browser opening fails
+- ✅ **Rich console support** - Beautiful success messages with browser status
+
+**Test browser opening:**
+```bash
+chisel run test_browser_opening.py
+```
+
+After job submission, you'll see:
+- ✅ Browser opened successfully! (if automatic opening works)
+- ⚠️ Could not open browser automatically (with manual URL if it fails)
