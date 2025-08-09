@@ -810,60 +810,92 @@ class ChiselCLI:
             default_gpu = self.gpu_map["A100-80GB:1"]
 
         if RICH_AVAILABLE:
-            # Show available GPU options in a simple list
-            self.console.print("[bold cyan]Available GPU Configurations:[/bold cyan]")
-            for option, gpu_type, description in self.gpu_options:
-                # Highlight the default option
+            # Create a numbered table for easy selection
+            table = Table(
+                title="Available GPU Configurations",
+                box=box.ROUNDED,
+                border_style="green",
+                show_header=True,
+                header_style="bold cyan",
+            )
+            table.add_column("Option", style="cyan", no_wrap=True, width=8)
+            table.add_column("GPU Type", style="yellow", no_wrap=True, width=15)
+            table.add_column("Description", style="white")
+
+            # Create numbered mapping
+            numbered_options = {}
+            default_number = None
+
+            for i, (option, gpu_type, description) in enumerate(self.gpu_options, 1):
+                numbered_options[str(i)] = gpu_type
+
+                # Check if this is the default
                 if default_choice and option == default_choice:
-                    self.console.print(
-                        f"  [bold green]{option}*[/bold green] - {description} (default)"
+                    default_number = str(i)
+                    table.add_row(
+                        f"[bold green]{i}*[/bold green]",
+                        f"[bold green]{gpu_type}[/bold green]",
+                        f"[bold green]{description} (default)[/bold green]",
                     )
                 else:
-                    self.console.print(f"  [cyan]{option}[/cyan] - {description}")
+                    table.add_row(str(i), gpu_type, description)
+
+            self.console.print(table)
             self.console.print()
 
-            # Use a simple but effective selection method
+            # Use numbered selection
             while True:
                 choice = Prompt.ask(
-                    f"Select GPU configuration (default: {default_choice or 'A100-80GB:1'})",
-                    choices=[option for option, _, _ in self.gpu_options],
-                    default=default_choice or "A100-80GB:1",
+                    f"Select GPU configuration (1-{len(self.gpu_options)})",
+                    choices=[str(i) for i in range(1, len(self.gpu_options) + 1)],
+                    default=default_number or "5",  # A100-80GB:1 is option 5
                     console=self.console,
                     show_choices=False,
                 )
 
-                if choice in self.gpu_map:
-                    selected_gpu = self.gpu_map[choice]
+                if choice in numbered_options:
+                    selected_gpu = numbered_options[choice]
                     self.console.print(f"✅ Selected: [bold green]{selected_gpu}[/bold green]")
                     return selected_gpu
                 else:
                     self.console.print(
-                        "❌ Invalid choice. Please select 1, 2, 4, or 8.", style="red"
+                        f"❌ Invalid choice. Please select 1-{len(self.gpu_options)}.", style="red"
                     )
         else:
             print("Available GPU Configurations:")
-            for option, gpu_type, description in self.gpu_options:
+            print("-" * 80)
+            print(f"{'Option':<8} {'GPU Type':<15} {'Description'}")
+            print("-" * 80)
+
+            # Create numbered mapping
+            numbered_options = {}
+            default_number = None
+
+            for i, (option, gpu_type, description) in enumerate(self.gpu_options, 1):
+                numbered_options[str(i)] = gpu_type
+
+                # Check if this is the default
                 if default_choice and option == default_choice:
-                    print(f"  {option}* - {description} (default)")
+                    default_number = str(i)
+                    print(f"{i}*{'':<7} {gpu_type:<15} {description} (default)")
                 else:
-                    print(f"  {option} - {description}")
+                    print(f"{i}{'':<8} {gpu_type:<15} {description}")
+
+            print("-" * 80)
             print()
 
             while True:
-                valid_options = [option for option, _, _ in self.gpu_options]
-                prompt_text = (
-                    f"Select GPU configuration (default: {default_choice or 'A100-80GB:1'}): "
-                )
+                prompt_text = f"Select GPU configuration (1-{len(self.gpu_options)}, default: {default_number or '5'}): "
                 choice = input(prompt_text).strip()
                 if not choice:
-                    choice = default_choice or "A100-80GB:1"
+                    choice = default_number or "5"
 
-                if choice in self.gpu_map:
-                    selected_gpu = self.gpu_map[choice]
+                if choice in numbered_options:
+                    selected_gpu = numbered_options[choice]
                     print(f"✅ Selected: {selected_gpu}")
                     return selected_gpu
                 else:
-                    print(f"❌ Invalid choice. Please select one of: {', '.join(valid_options)}")
+                    print(f"❌ Invalid choice. Please select 1-{len(self.gpu_options)}.")
 
     def get_user_inputs_interactive(self, script_path: str = "<script.py>") -> Dict[str, Any]:
         """Interactive questionnaire to get job submission parameters.
