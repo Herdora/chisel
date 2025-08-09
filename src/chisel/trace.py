@@ -52,6 +52,8 @@ def capture_trace(
 
 def capture_model(
     model_name: Optional[str] = None,
+    record_shapes: bool = True,
+    profile_memory: bool = True,
     **profiler_kwargs: Any,
 ):
     """
@@ -90,9 +92,9 @@ def capture_model(
                     self,
                     super().forward,
                     self._model_name,
-                    record_shapes=True,
-                    profile_memory=True,
-                    with_stack=True,
+                    record_shapes,
+                    profile_memory,
+                    True,  # with_stack
                     *args,
                     **kwargs,
                 )
