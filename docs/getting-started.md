@@ -131,27 +131,22 @@ After your job completes:
 
 ## 🎮 Command Formats
 
-Chisel supports three flexible command formats:
+Chisel supports two simple command formats:
 
 ### 1. Interactive Format (Beginner-Friendly)
 ```bash
 chisel python my_model.py --epochs 10 --batch-size 32
 ```
-- Prompts you for job configuration (app name, GPU count, etc.)
+- Prompts you for all job configuration (app name, GPU count, etc.)
 - Great for getting started and one-off experiments
+- No chisel flags allowed - everything configured interactively
 
-### 2. Pre-filled Format (Convenient)
+### 2. Separator Format (Automation-Ready)
 ```bash
-chisel --app-name "my-experiment" --gpu 2 python my_model.py --epochs 10
+chisel --app-name "my-experiment" --gpu A100-80GB:2 -- python my_model.py --epochs 10
 ```
-- Pre-fills some values but still shows interactive confirmation
-- Perfect balance of convenience and safety
-
-### 3. Separator Format (Automation-Ready)
-```bash
-chisel --app-name "my-experiment" --gpu 2 -- python my_model.py --epochs 10
-```
-- Fully specified, no interactive prompts
+- Fully specified with `--` separator, no interactive prompts
+- All configuration via command line flags
 - Ideal for scripts and automation
 
 ---
@@ -159,16 +154,16 @@ chisel --app-name "my-experiment" --gpu 2 -- python my_model.py --epochs 10
 ## 🔧 Essential Configuration
 
 ### GPU Options
-| GPU Type  | Count | Memory    | Use Case                | Flag          |
-| --------- | ----- | --------- | ----------------------- | ------------- |
-| A100-40GB | 1-8   | 40GB each | Cost-effective training | `--gpu a1-a8` |
-| A100-80GB | 1-8   | 80GB each | High-memory models      | `--gpu 1-8`   |
-| H100      | 1-8   | 80GB each | Latest architecture     | `--gpu h1-h8` |
-| L4        | 1-8   | 24GB each | Efficient inference     | `--gpu l1-l8` |
+| GPU Type  | Count | Memory    | Use Case                | Example Flag        |
+| --------- | ----- | --------- | ----------------------- | ------------------- |
+| A100-40GB | 1-8   | 40GB each | Cost-effective training | `--gpu A100:4`      |
+| A100-80GB | 1-8   | 80GB each | High-memory models      | `--gpu A100-80GB:2` |
+| H100      | 1-8   | 80GB each | Latest architecture     | `--gpu H100:8`      |
+| L4        | 1-8   | 24GB each | Efficient inference     | `--gpu L4:1`        |
 
 ### Common Flags
 - `--app-name "my-job"` - Job name for tracking
-- `--gpu <option>` - GPU configuration (e.g., `1`, `h4`, `l8`, `a2`)
+- `--gpu <type>` - GPU configuration (e.g., `A100-80GB:1`, `H100:4`, `L4:2`)
 - `--upload-dir .` - Directory to upload (default: current)
 - `--requirements requirements.txt` - Python dependencies
 
@@ -232,7 +227,7 @@ chisel python my_model.py
 
 ### 3. Use Descriptive Job Names
 ```bash
-chisel --app-name "resnet50-imagenet-experiment" python train.py
+chisel --app-name "resnet50-imagenet-experiment" --gpu H100:2 python train.py
 ```
 
 ### 4. Organize Your Code
@@ -306,7 +301,7 @@ Congratulations! You've successfully run your first Chisel job. Here's what to e
 chisel python examples/vision_models/resnet_example.py
 
 # NLP with transformers
-chisel --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
+chisel --gpu A100-80GB:2 --requirements requirements_examples/nlp_requirements.txt -- python examples/nlp_models/pretrained_models.py
 
 # Generative models
 chisel python examples/generative_models/gan_example.py

@@ -721,26 +721,23 @@ class ChiselCLI:
     def __init__(self):
         self.console = Console() if RICH_AVAILABLE else None
         self.gpu_options = [
-            # A100 40GB options
-            ("a1", "A100:1", "A100-40GB Single GPU - Development, inference"),
-            ("a2", "A100:2", "A100-40GB 2x GPUs - Medium training"),
-            ("a4", "A100:4", "A100-40GB 4x GPUs - Large models"),
-            ("a8", "A100:8", "A100-40GB 8x GPUs - Massive models"),
-            # A100 80GB options
-            ("1", "A100-80GB:1", "A100-80GB Single GPU - Development, inference"),
-            ("2", "A100-80GB:2", "A100-80GB 2x GPUs - Medium training"),
-            ("4", "A100-80GB:4", "A100-80GB 4x GPUs - Large models"),
-            ("8", "A100-80GB:8", "A100-80GB 8x GPUs - Massive models"),
-            # H100 options
-            ("h1", "H100:1", "H100 Single GPU - Latest architecture"),
-            ("h2", "H100:2", "H100 2x GPUs - Advanced training"),
-            ("h4", "H100:4", "H100 4x GPUs - High-performance training"),
-            ("h8", "H100:8", "H100 8x GPUs - Maximum performance"),
-            # L4 options
-            ("l1", "L4:1", "L4 Single GPU - Cost-effective inference"),
-            ("l2", "L4:2", "L4 2x GPUs - Efficient training"),
-            ("l4", "L4:4", "L4 4x GPUs - Balanced performance"),
-            ("l8", "L4:8", "L4 8x GPUs - High throughput"),
+            # GPU types in alphabetical order
+            ("A100:1", "A100:1", "A100-40GB Single GPU - Development, inference"),
+            ("A100:2", "A100:2", "A100-40GB 2x GPUs - Medium training"),
+            ("A100:4", "A100:4", "A100-40GB 4x GPUs - Large models"),
+            ("A100:8", "A100:8", "A100-40GB 8x GPUs - Massive models"),
+            ("A100-80GB:1", "A100-80GB:1", "A100-80GB Single GPU - Development, inference"),
+            ("A100-80GB:2", "A100-80GB:2", "A100-80GB 2x GPUs - Medium training"),
+            ("A100-80GB:4", "A100-80GB:4", "A100-80GB 4x GPUs - Large models"),
+            ("A100-80GB:8", "A100-80GB:8", "A100-80GB 8x GPUs - Massive models"),
+            ("H100:1", "H100:1", "H100 Single GPU - Latest architecture"),
+            ("H100:2", "H100:2", "H100 2x GPUs - Advanced training"),
+            ("H100:4", "H100:4", "H100 4x GPUs - High-performance training"),
+            ("H100:8", "H100:8", "H100 8x GPUs - Maximum performance"),
+            ("L4:1", "L4:1", "L4 Single GPU - Cost-effective inference"),
+            ("L4:2", "L4:2", "L4 2x GPUs - Efficient training"),
+            ("L4:4", "L4:4", "L4 4x GPUs - Balanced performance"),
+            ("L4:8", "L4:8", "L4 8x GPUs - High throughput"),
         ]
         self.gpu_map = {option: gpu_type for option, gpu_type, _ in self.gpu_options}
 
@@ -809,45 +806,30 @@ class ChiselCLI:
                     default_choice = choice
                     break
         else:
-            default_choice = "1"
-            default_gpu = self.gpu_map["1"]
+            default_choice = "A100-80GB:1"
+            default_gpu = self.gpu_map["A100-80GB:1"]
 
         if RICH_AVAILABLE:
-            # Create a table for better presentation
-            table = Table(
-                title="Available GPU Configurations",
-                box=box.ROUNDED,
-                border_style="green",
-                show_header=True,
-                header_style="bold cyan",
-            )
-            table.add_column("Option", style="cyan", no_wrap=True, width=8)
-            table.add_column("GPU Type", style="yellow", no_wrap=True, width=15)
-            table.add_column("Description", style="white")
-
+            # Show available GPU options in a simple list
+            self.console.print("[bold cyan]Available GPU Configurations:[/bold cyan]")
             for option, gpu_type, description in self.gpu_options:
                 # Highlight the default option
                 if default_choice and option == default_choice:
-                    table.add_row(
-                        f"[bold green]{option}*[/bold green]",
-                        f"[bold green]{gpu_type}[/bold green]",
-                        f"[bold green]{description} (default)[/bold green]",
+                    self.console.print(
+                        f"  [bold green]{option}*[/bold green] - {description} (default)"
                     )
                 else:
-                    table.add_row(option, gpu_type, description)
-
-            self.console.print(table)
-            if default_choice:
-                self.console.print(f"[dim]* Pre-filled default: {default_gpu}[/dim]")
+                    self.console.print(f"  [cyan]{option}[/cyan] - {description}")
             self.console.print()
 
             # Use a simple but effective selection method
             while True:
                 choice = Prompt.ask(
-                    "Select GPU configuration",
+                    f"Select GPU configuration (default: {default_choice or 'A100-80GB:1'})",
                     choices=[option for option, _, _ in self.gpu_options],
-                    default=default_choice or "1",
+                    default=default_choice or "A100-80GB:1",
                     console=self.console,
+                    show_choices=False,
                 )
 
                 if choice in self.gpu_map:
@@ -859,21 +841,22 @@ class ChiselCLI:
                         "❌ Invalid choice. Please select 1, 2, 4, or 8.", style="red"
                     )
         else:
+            print("Available GPU Configurations:")
             for option, gpu_type, description in self.gpu_options:
                 if default_choice and option == default_choice:
-                    print(f"  {option}. {gpu_type} * (default)")
-                    print(f"     {description}")
+                    print(f"  {option}* - {description} (default)")
                 else:
-                    print(f"  {option}. {gpu_type}")
-                    print(f"     {description}")
-                print()
+                    print(f"  {option} - {description}")
+            print()
 
             while True:
                 valid_options = [option for option, _, _ in self.gpu_options]
-                prompt_text = f"Select GPU configuration ({'/'.join(valid_options)}, default: {default_choice or '1'}): "
+                prompt_text = (
+                    f"Select GPU configuration (default: {default_choice or 'A100-80GB:1'}): "
+                )
                 choice = input(prompt_text).strip()
                 if not choice:
-                    choice = default_choice or "1"
+                    choice = default_choice or "A100-80GB:1"
 
                 if choice in self.gpu_map:
                     selected_gpu = self.gpu_map[choice]
@@ -882,59 +865,38 @@ class ChiselCLI:
                 else:
                     print(f"❌ Invalid choice. Please select one of: {', '.join(valid_options)}")
 
-    def get_user_inputs_interactive(
-        self, script_path: str = "<script.py>", prefilled_config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    def get_user_inputs_interactive(self, script_path: str = "<script.py>") -> Dict[str, Any]:
         """Interactive questionnaire to get job submission parameters.
 
         Args:
             script_path: Path to the script being run
-            prefilled_config: Optional pre-filled values from command line flags
         """
-        prefilled = prefilled_config or {}
         self.print_header()
-
-        # Show pre-filled values if any exist
-        if prefilled.get("has_prefilled_values"):
-            if RICH_AVAILABLE:
-                self.console.print("✨ [bold cyan]Pre-filled values detected![/bold cyan]")
-                self.console.print("   Values from command line flags will be used as defaults.")
-                self.console.print("   Press Enter to accept, or type new values to override.\n")
-            else:
-                print("✨ Pre-filled values detected!")
-                print("   Values from command line flags will be used as defaults.")
-                print("   Press Enter to accept, or type new values to override.\n")
 
         # Define total steps for progress tracking
         total_steps = 5
 
         # Step 1: App name
         self.print_section_header("Job Configuration", step=1, total_steps=total_steps)
-        app_name_default = prefilled.get("app_name", "")
         app_name = self.get_input_with_default(
             "📝 App name (for job tracking)",
-            default=app_name_default,
-            required=not bool(app_name_default),
+            default="",
+            required=True,
         )
 
         # Step 2: Upload directory
         self.print_section_header("Upload Directory", step=2, total_steps=total_steps)
-        upload_dir_default = prefilled.get("upload_dir", ".")
-        upload_dir = self.get_input_with_default(
-            "📁 Upload directory", default=upload_dir_default, required=False
-        )
+        upload_dir = self.get_input_with_default("📁 Upload directory", default=".", required=False)
 
         # Step 3: Requirements file
         self.print_section_header("Dependencies", step=3, total_steps=total_steps)
-        requirements_default = prefilled.get("requirements_file", "requirements.txt")
         requirements_file = self.get_input_with_default(
-            "📋 Requirements file", default=requirements_default, required=False
+            "📋 Requirements file", default="requirements.txt", required=False
         )
 
         # Step 4: GPU selection
         self.print_section_header("GPU Configuration", step=4, total_steps=total_steps)
-        gpu_default = prefilled.get("gpu", self.gpu_map["1"])
-        gpu = self.select_gpu(default_gpu=gpu_default)
+        gpu = self.select_gpu(default_gpu=self.gpu_map["A100-80GB:1"])
 
         # Show equivalent command for copy/paste
         self.show_equivalent_command(app_name, upload_dir, requirements_file, gpu, script_path)
@@ -1022,16 +984,15 @@ class ChiselCLI:
     def parse_command_line_args(self, args: List[str]) -> Optional[Dict[str, Any]]:
         """Parse command line arguments and return configuration.
 
-        Supports three formats:
+        Supports two formats:
         1. chisel --chisel-flags -- python script.py --script-args (separator format)
         2. chisel python script.py --script-args (interactive format)
-        3. chisel --chisel-flags python script.py --script-args (mixed format - pre-fills interactive)
         """
         # Check if we have the -- separator format
         if "--" in args:
             return self._parse_with_separator(args)
         else:
-            return self._parse_mixed_or_interactive_format(args)
+            return self._parse_interactive_format(args)
 
     def _parse_with_separator(self, args: List[str]) -> Optional[Dict[str, Any]]:
         """Parse arguments with -- separator: chisel --chisel-flags -- python script.py --script-args"""
@@ -1073,12 +1034,11 @@ class ChiselCLI:
                 print("❌ Error parsing arguments with -- separator")
             return None
 
-    def _parse_mixed_or_interactive_format(self, args: List[str]) -> Optional[Dict[str, Any]]:
-        """Parse mixed format (chisel flags + python script) or pure interactive format.
+    def _parse_interactive_format(self, args: List[str]) -> Optional[Dict[str, Any]]:
+        """Parse interactive format: chisel python script.py --script-args
 
-        This handles:
-        1. chisel --chisel-flags python script.py --script-args (mixed - pre-fills interactive)
-        2. chisel python script.py --script-args (pure interactive)
+        This format does NOT accept chisel flags - all configuration must be done interactively.
+        If chisel flags are provided without the -- separator, it's an error.
         """
         # Try to find where 'python' starts
         python_index = None
@@ -1088,50 +1048,44 @@ class ChiselCLI:
                 break
 
         if python_index is None:
-            print("❌ Command must include 'python <script.py>'")
-            print("Usage: chisel python <script.py> [script-args...]")
-            print("   or: chisel --app-name my-job --gpu 2 python <script.py> [script-args...]")
-            print("   or: chisel --app-name my-job --gpu 2 -- python <script.py> [script-args...]")
+            print("❌ Error: 'python' command not found")
+            print("💡 Use: chisel python script.py --script-args")
+            print("💡 Or: chisel --chisel-flags -- python script.py --script-args")
             return None
 
-        # Split into chisel flags (before python) and python command (from python onwards)
-        chisel_args = args[:python_index]
-        python_command = args[python_index:]
+        # Check if there are any potential chisel flags before 'python'
+        potential_chisel_args = args[:python_index]
+        if potential_chisel_args:
+            print("❌ Error: Chisel flags are not allowed in interactive format")
+            print(f"   Found: {' '.join(potential_chisel_args)}")
+            print("💡 Use the separator format instead:")
+            print(
+                f"   chisel {' '.join(potential_chisel_args)} -- python {' '.join(args[python_index + 1 :])}"
+            )
+            return None
 
-        # Parse chisel flags if any exist
-        parsed_chisel = None
-        if chisel_args:
-            try:
-                parser = self._create_chisel_parser()
-                # Add dummy command for chisel-only args
-                parser.add_argument("dummy", nargs="*", help=argparse.SUPPRESS)
-                parsed_chisel = parser.parse_args(chisel_args + ["dummy"])
-            except SystemExit:
-                # If parsing fails, treat as pure interactive
-                parsed_chisel = None
+        # Extract python command
+        python_command = args[python_index:]
 
         # Validate python command format
         if len(python_command) < 2:
-            print("❌ Missing script name after 'python'")
-            print("Usage: chisel python <script.py> [script-args...]")
+            print("❌ Error: No script specified after 'python'")
             return None
 
         script_path = python_command[1]
         script_args = python_command[2:] if len(python_command) > 2 else []
 
-        # Return configuration with any pre-filled values from chisel flags
+        # Return configuration for pure interactive format
         return {
             "script_path": script_path,
             "script_args": script_args,
-            "app_name": parsed_chisel.app_name if parsed_chisel else None,
-            "upload_dir": parsed_chisel.upload_dir if parsed_chisel else ".",
-            "requirements_file": parsed_chisel.requirements
-            if parsed_chisel
-            else "requirements.txt",
-            "gpu": self.gpu_map[parsed_chisel.gpu] if parsed_chisel else self.gpu_map["1"],
-            "interactive": True,  # Always trigger interactive mode for final confirmation
-            "preview": parsed_chisel.preview if parsed_chisel else False,
-            "has_prefilled_values": parsed_chisel is not None,  # Track if we have pre-filled values
+            "app_name": None,
+            "upload_dir": ".",
+            "requirements_file": "requirements.txt",
+            "gpu": self.gpu_map["A100-80GB:1"],
+            "interactive": True,
+            "preview": False,
+            "has_prefilled_values": False,
         }
 
     def _create_chisel_parser(self):
@@ -1167,8 +1121,8 @@ Examples:
             "--gpu",
             "-g",
             choices=[option for option, _, _ in self.gpu_options],
-            default="1",
-            help="GPU configuration: a1/a2/a4/a8 (A100-40GB), 1/2/4/8 (A100-80GB), h1/h2/h4/h8 (H100), l1/l2/l4/l8 (L4) (default: 1)",
+            default="A100-80GB:1",
+            help="GPU configuration: A100:1-8, A100-80GB:1-8, H100:1-8, L4:1-8 (default: A100-80GB:1)",
         )
         parser.add_argument(
             "--interactive",
@@ -1516,10 +1470,8 @@ Examples:
 
         # If no app_name provided via flags, we need interactive mode
         if not parsed_config["app_name"] or parsed_config["interactive"]:
-            # Get interactive inputs with any pre-filled values from command line flags
-            interactive_inputs = self.get_user_inputs_interactive(
-                parsed_config["script_path"], prefilled_config=parsed_config
-            )
+            # Get interactive inputs
+            interactive_inputs = self.get_user_inputs_interactive(parsed_config["script_path"])
 
             # Use interactive inputs as final config
             final_config = interactive_inputs

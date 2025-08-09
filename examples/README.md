@@ -14,19 +14,19 @@ python basic_models/simple_cnn.py
 chisel python basic_models/simple_cnn.py
 
 # Run with specific GPU configuration
-chisel --gpu h4 python basic_models/simple_cnn.py  # 4x H100 GPUs
-chisel --gpu 2 python basic_models/simple_cnn.py   # 2x A100-80GB GPUs
-chisel --gpu l1 python basic_models/simple_cnn.py  # 1x L4 GPU
+chisel --gpu H100:4 python basic_models/simple_cnn.py      # 4x H100 GPUs
+chisel --gpu A100-80GB:2 python basic_models/simple_cnn.py # 2x A100-80GB GPUs
+chisel --gpu L4:1 python basic_models/simple_cnn.py        # 1x L4 GPU
 ```
 
 ## GPU Options
 
-| GPU Type  | Flag Options | Memory    | Best For                |
-| --------- | ------------ | --------- | ----------------------- |
-| A100-40GB | `a1-a8`      | 40GB each | Cost-effective training |
-| A100-80GB | `1-8`        | 80GB each | High-memory models      |
-| H100      | `h1-h8`      | 80GB each | Latest architecture     |
-| L4        | `l1-l8`      | 24GB each | Efficient inference     |
+| GPU Type  | Example Flags   | Memory    | Best For                |
+| --------- | --------------- | --------- | ----------------------- |
+| A100-40GB | `A100:1-8`      | 40GB each | Cost-effective training |
+| A100-80GB | `A100-80GB:1-8` | 80GB each | High-memory models      |
+| H100      | `H100:1-8`      | 80GB each | Latest architecture     |
+| L4        | `L4:1-8`        | 24GB each | Efficient inference     |
 
 ## Examples
 
@@ -92,7 +92,7 @@ chisel python edge_cases/basic_model_call.py
 chisel python edge_cases/model_with_args.py --model-size large --batch-size 16
 
 # Separator format
-chisel --app-name "args-test" --gpu h2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
+chisel --app-name "args-test" --gpu H100:2 -- python edge_cases/model_with_args.py --model-size large --batch-size 16
 ```
 
 **`edge_cases/long_running_demo.py`** - Long-running demo (~3 mins) with real-time streaming
@@ -104,7 +104,7 @@ chisel python edge_cases/long_running_demo.py --epochs 3 --num-batches 8
 chisel python edge_cases/long_running_demo.py --epochs 8 --validate --verbose
 
 # With custom config
-chisel --app-name "streaming-demo" --gpu h2 -- python edge_cases/long_running_demo.py --epochs 10 --validate
+chisel --app-name "streaming-demo" --gpu H100:2 -- python edge_cases/long_running_demo.py --epochs 10 --validate
 ```
 
 **`edge_cases/large_file_test.py`** - Large file caching test

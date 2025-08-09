@@ -47,12 +47,11 @@ class MyModel(nn.Module):
 - **L4 GPUs** (24GB) - Cost-effective option for efficient workloads
 - **Scale 1-8 GPUs** - From development to massive scale training
 
-### 🔧 **Smart Argument Handling**
+### 🔧 **Simple Command Formats**
 ```bash
-# Three flexible command formats:
-chisel python script.py --script-args                           # Interactive
-chisel --app-name job --gpu h4 python script.py --script-args   # Pre-filled  
-chisel --app-name job --gpu h4 -- python script.py --script-args # Separator
+# Two command formats:
+chisel python script.py --script-args                                  # Interactive
+chisel --app-name job --gpu H100:4 -- python script.py --script-args  # Separator
 ```
 
 ---
@@ -62,7 +61,7 @@ chisel --app-name job --gpu h4 -- python script.py --script-args # Separator
 ### 🧑‍🔬 **Machine Learning Researchers**
 - Quickly test models on powerful GPUs without infrastructure setup
 - Get detailed performance profiles to optimize model architectures
-- Scale experiments from 1 to 8 GPUs across A100, H100, and L4 options
+- Scale experiments from 1 to 8 GPUs seamlessly
 
 ### 🏢 **ML Engineers & Data Scientists**  
 - Accelerate training jobs without managing cloud infrastructure

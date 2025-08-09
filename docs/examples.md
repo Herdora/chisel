@@ -192,15 +192,12 @@ Specialized examples for testing Chisel's capabilities.
 # Interactive format
 chisel python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
 
-# Pre-filled format
-chisel --app-name "args-test" --gpu 2 python examples/edge_cases/model_with_args.py --model-size large
-
 # Separator format  
-chisel --app-name "args-test" --gpu 2 -- python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
+chisel --app-name "args-test" --gpu A100-80GB:2 -- python examples/edge_cases/model_with_args.py --model-size large --batch-size 16
 ```
 
 **What you'll learn:**
-- All three Chisel command formats
+- Both Chisel command formats (interactive and separator)
 - Script argument handling
 - Configuration flexibility
 
@@ -246,29 +243,29 @@ class LargeModel(nn.Module):
         
 # Commands for different scales:
 # Development: 1 GPU
-chisel --gpu 1 python train.py --debug
+chisel --gpu A100-80GB:1 python train.py --debug
 
 # Medium training: 2-4 GPUs  
-chisel --gpu 4 python train.py --full-dataset
+chisel --gpu A100-80GB:4 python train.py --full-dataset
 
 # Large scale: 8 GPUs
-chisel --gpu 8 python train.py --full-dataset --large-batch
+chisel --gpu H100:8 python train.py --full-dataset --large-batch
 ```
 
 ### Hyperparameter Sweeps
 ```bash
 # Systematic exploration
-chisel --app-name "sweep-lr-0001" python train.py --lr 0.001
-chisel --app-name "sweep-lr-0003" python train.py --lr 0.003
-chisel --app-name "sweep-lr-001" python train.py --lr 0.01
+chisel --app-name "sweep-lr-0001" --gpu A100-80GB:2 python train.py --lr 0.001
+chisel --app-name "sweep-lr-0003" --gpu A100-80GB:2 python train.py --lr 0.003
+chisel --app-name "sweep-lr-001" --gpu A100-80GB:2 python train.py --lr 0.01
 ```
 
 ### Model Comparison Pipeline
 ```bash
 # Compare different architectures
-chisel --app-name "resnet18-baseline" python compare_models.py --arch resnet18
-chisel --app-name "resnet50-comparison" python compare_models.py --arch resnet50
-chisel --app-name "efficientnet-test" python compare_models.py --arch efficientnet
+chisel --app-name "resnet18-baseline" --gpu A100-80GB:1 python compare_models.py --arch resnet18
+chisel --app-name "resnet50-comparison" --gpu A100-80GB:2 python compare_models.py --arch resnet50
+chisel --app-name "efficientnet-test" --gpu H100:1 python compare_models.py --arch efficientnet
 ```
 
 ---
@@ -303,9 +300,9 @@ class SlowModel(nn.Module):
 ### Batch Size Optimization
 ```bash
 # Test different batch sizes
-chisel python batch_size_test.py --batch-size 16   # Memory efficient
-chisel python batch_size_test.py --batch-size 64   # Balanced
-chisel python batch_size_test.py --batch-size 256  # Maximum throughput
+chisel --gpu L4:1 python batch_size_test.py --batch-size 16   # Memory efficient
+chisel --gpu A100-80GB:1 python batch_size_test.py --batch-size 64   # Balanced
+chisel --gpu H100:1 python batch_size_test.py --batch-size 256  # Maximum throughput
 ```
 
 ---
@@ -315,16 +312,16 @@ chisel python batch_size_test.py --batch-size 256  # Maximum throughput
 ### Research & Experimentation
 ```bash
 # Quick prototyping
-chisel --gpu 1 python prototype.py --quick-test
+chisel --gpu A100-80GB:1 python prototype.py --quick-test
 
 # Full experiment
-chisel --gpu 4 --app-name "paper-reproduction" python full_experiment.py
+chisel --gpu H100:4 --app-name "paper-reproduction" python full_experiment.py
 ```
 
 ### Model Debugging
 ```bash
 # Debug with detailed profiling
-chisel --gpu 1 python debug_model.py --verbose --profile-memory
+chisel --gpu A100-80GB:1 python debug_model.py --verbose --profile-memory
 ```
 
 ### Educational Examples
@@ -425,7 +422,7 @@ class TrackedModel(nn.Module):
 ### Distributed Training Patterns
 ```bash
 # Multi-node setup (coming soon)
-chisel --gpu 8 --nodes 2 python distributed_train.py
+chisel --gpu H100:8 --nodes 2 python distributed_train.py
 ```
 
 ---
