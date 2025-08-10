@@ -42,5 +42,5 @@ datasets/
 model_cache/  # HuggingFace model cache directory (includes CLIP, etc.)
 *.tar.gz
 *.zip
-*.bin  # Model weight files
 *.safetensors  # HuggingFace safetensors format
+*.bin

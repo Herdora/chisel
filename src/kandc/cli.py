@@ -17,11 +17,8 @@ from .constants import (
     GPUType,
 )
 from .spinner import SimpleSpinner
-from .cached_files import (
-    process_directory_for_cached_files,
-    scan_directory_for_large_files,
-    MAX_UPLOAD_FILE_SIZE,
-)
+
+MAX_UPLOAD_FILE_SIZE = 5 * 1024 * 1024 * 1024
 
 # Rich imports for beautiful CLI
 try:
@@ -1228,6 +1225,7 @@ Examples:
             # Return error response
             return {
                 "success": False,
+                "exit_code": 1,
                 "error": f"Files over 5GB limit detected. Please download large files within your script instead of uploading them.",
                 "oversized_files": [
                     {"name": fp.name, "size_gb": fs / (1024 * 1024 * 1024)}
@@ -1235,49 +1233,8 @@ Examples:
                 ],
             }
 
-        # Process directory for cached files
+        # Archive upload_dir directly
         processed_dir = upload_dir
-        cached_files_info = []
-
-        # Scan directory files (caching disabled)
-        all_files = scan_directory_for_large_files(upload_dir)
-        if all_files:
-            if RICH_AVAILABLE:
-                self.console.print(
-                    f"[green]Found {len(all_files)} file(s) to upload (caching disabled)[/green]"
-                )
-            else:
-                print(f"Found {len(all_files)} file(s) to upload (caching disabled)")
-
-            try:
-                # Create a temporary directory for processing
-                temp_processing_dir = Path(tempfile.mkdtemp())
-
-                # Process the directory (caching disabled - returns original directory)
-                print(f"Processing directory: {upload_dir}")
-                processed_dir, cached_files_info = process_directory_for_cached_files(
-                    upload_dir, api_key, temp_processing_dir
-                )
-
-                # Note: cached_files_info will always be empty since caching is disabled
-                if RICH_AVAILABLE:
-                    self.console.print(
-                        "[green]Directory processed successfully (caching disabled)[/green]"
-                    )
-                else:
-                    print("Directory processed successfully (caching disabled)")
-
-            except Exception as e:
-                if RICH_AVAILABLE:
-                    self.console.print(f"[yellow]Warning: Directory processing error: {e}[/yellow]")
-                    self.console.print("[yellow]Continuing with original directory...[/yellow]")
-                else:
-                    print(f"Warning: Directory processing error: {e}")
-                    print("Continuing with original directory...")
-
-                # Fallback to original directory if processing fails
-                processed_dir = upload_dir
-                cached_files_info = []
 
         # Load ignore patterns for tar filtering
         gitignore_patterns, kandcignore_patterns = load_ignore_patterns(Path(processed_dir))
@@ -1347,7 +1304,6 @@ Examples:
                 "pip_packages": ",".join(MINIMUM_PACKAGES),
                 "gpu": gpu,
                 "script_args": " ".join(script_args) if script_args else "",
-                "cached_files": json.dumps(cached_files_info) if cached_files_info else "",
                 "requirements_file": requirements_file,
             }
 
@@ -1595,8 +1551,10 @@ Examples:
                 requirements_file=final_config["requirements_file"],
                 api_key=api_key,
             )
-
-            return result["exit_code"]
+            # Gracefully handle failures that return structured error without exit_code
+            if isinstance(result, dict) and "exit_code" in result:
+                return result["exit_code"]
+            return 1
         except Exception as e:
             if RICH_AVAILABLE:
                 self.console.print(f"❌ Job submission failed: {e}", style="red")

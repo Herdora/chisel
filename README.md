@@ -52,7 +52,7 @@ class MyModel(nn.Module):
 ```bash
 # Two command formats:
 kandc python script.py --script-args                                  # Interactive
-chisel --app-name job --gpu H100:4 -- python script.py --script-args  # Separator
+kandc --app-name job --gpu H100:4 -- python script.py --script-args  # Separator
 ```
 
 ---
