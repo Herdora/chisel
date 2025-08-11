@@ -7,6 +7,7 @@ import requests
 import argparse
 import json
 import webbrowser
+import shlex
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -1781,27 +1782,86 @@ def main():
 
     # Capture subcommand
     if sys.argv[1] == "capture":
-        # Usage: kandc capture [--app-name NAME] [--no-open] -- <command> [args...]
+        # Usage A: kandc capture [--app-name NAME] [--no-open] -- <command> [args...]
+        # Usage B: kandc capture  (then prompt for app name and command)
         try:
-            if "--" not in sys.argv:
-                print("Usage: kandc capture [--app-name NAME] [--no-open] -- <command> [args...]")
-                return 1
-            sep_index = sys.argv.index("--")
-            flags = sys.argv[2:sep_index]
-            cmd = sys.argv[sep_index + 1 :]
-            app_name = None
+            app_name: Optional[str] = None
             open_browser = True
-            i = 0
-            while i < len(flags):
-                if flags[i] in ["--app-name", "-a"] and i + 1 < len(flags):
-                    app_name = flags[i + 1]
-                    i += 2
-                elif flags[i] == "--no-open":
-                    open_browser = False
-                    i += 1
+            cmd: List[str] = []
+
+            if "--" in sys.argv:
+                sep_index = sys.argv.index("--")
+                flags = sys.argv[2:sep_index]
+                cmd = sys.argv[sep_index + 1 :]
+                i = 0
+                while i < len(flags):
+                    if flags[i] in ["--app-name", "-a"] and i + 1 < len(flags):
+                        app_name = flags[i + 1]
+                        i += 2
+                    elif flags[i] == "--no-open":
+                        open_browser = False
+                        i += 1
+                    else:
+                        print(f"Unknown flag: {flags[i]}")
+                        return 1
+            else:
+                # Parse any flags provided (optional) and then treat remaining tokens as the command
+                tokens = sys.argv[2:]
+                i = 0
+                while i < len(tokens):
+                    if tokens[i] in ["--app-name", "-a"] and i + 1 < len(tokens):
+                        app_name = tokens[i + 1]
+                        i += 2
+                    elif tokens[i] == "--no-open":
+                        open_browser = False
+                        i += 1
+                    else:
+                        break
+
+                # Remaining tokens after flags are considered the command
+                if i < len(tokens):
+                    cmd = tokens[i:]
                 else:
-                    print(f"Unknown flag: {flags[i]}")
-                    return 1
+                    # No command supplied; prompt only for the command (app name may also be prompted)
+                    default_app = Path.cwd().name
+                    if RICH_AVAILABLE:
+                        if not app_name:
+                            app_name = Prompt.ask(
+                                "📝 App name (for job tracking)",
+                                default=default_app,
+                                console=cli.console,
+                            )
+                        command_text = Prompt.ask(
+                            "▶️  Command to run (example: python script.py --arg val)",
+                            console=cli.console,
+                        )
+                    else:
+                        if not app_name:
+                            app_name = (
+                                input(f"App name (default: {default_app}): ").strip() or default_app
+                            )
+                        command_text = input(
+                            "Command to run (e.g., python script.py --arg val): "
+                        ).strip()
+
+                    if not command_text:
+                        print("❌ No command provided")
+                        return 1
+                    try:
+                        cmd = shlex.split(command_text)
+                    except Exception:
+                        cmd = command_text.split()
+
+            # If app name still missing, prompt now
+            if not app_name:
+                default_app = Path.cwd().name
+                if RICH_AVAILABLE:
+                    app_name = Prompt.ask(
+                        "📝 App name (for job tracking)", default=default_app, console=cli.console
+                    )
+                else:
+                    app_name = input(f"App name (default: {default_app}): ").strip() or default_app
+
             return cli.capture(app_name=app_name, open_browser=open_browser, cmd=cmd)
         except Exception as e:
             print(f"❌ Error: {e}")
