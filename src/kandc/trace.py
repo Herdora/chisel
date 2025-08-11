@@ -6,6 +6,7 @@ from .constants import (
     KANDC_BACKEND_RUN_ENV_KEY,
     KANDC_JOB_ID_ENV_KEY,
     TRACE_DIR,
+    KANDC_TRACE_BASE_DIR_ENV_KEY,
 )
 
 
@@ -207,10 +208,9 @@ def _execute_with_trace(
         print("⚠️  No job ID found, skipping trace")
         return fn(*args, **kwargs)
 
-    volume_path = Path("/volume")
-    job_trace_dir = (
-        volume_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
-    )
+    base_path_env = os.environ.get(KANDC_TRACE_BASE_DIR_ENV_KEY)
+    base_path = Path(base_path_env) if base_path_env else Path("/volume")
+    job_trace_dir = base_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
     job_trace_dir.mkdir(parents=True, exist_ok=True)
 
     activities = [ProfilerActivity.CPU]
@@ -261,10 +261,9 @@ def _execute_model_forward(
     model._trace_counter += 1
     trace_name = f"{model_name}_forward_{model._trace_counter:03d}"
 
-    volume_path = Path("/volume")
-    job_trace_dir = (
-        volume_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
-    )
+    base_path_env = os.environ.get(KANDC_TRACE_BASE_DIR_ENV_KEY)
+    base_path = Path(base_path_env) if base_path_env else Path("/volume")
+    job_trace_dir = base_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
     job_trace_dir.mkdir(parents=True, exist_ok=True)
 
     activities = [ProfilerActivity.CPU]
