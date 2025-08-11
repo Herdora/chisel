@@ -7,6 +7,7 @@ import requests
 import argparse
 import json
 import webbrowser
+import shlex
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -14,7 +15,10 @@ from .constants import (
     KANDC_BACKEND_URL,
     KANDC_BACKEND_URL_ENV_KEY,
     MINIMUM_PACKAGES,
-    GPUType,
+    KANDC_BACKEND_RUN_ENV_KEY,
+    KANDC_BACKEND_APP_NAME_ENV_KEY,
+    KANDC_JOB_ID_ENV_KEY,
+    KANDC_TRACE_BASE_DIR_ENV_KEY,
 )
 from .spinner import SimpleSpinner
 
@@ -26,13 +30,9 @@ try:
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
-    from rich.prompt import Prompt, Confirm, IntPrompt
+    from rich.prompt import Prompt
     from rich.progress import Progress, SpinnerColumn, TextColumn
-    from rich.layout import Layout
-    from rich.columns import Columns
     from rich import box
-    from rich.live import Live
-    from rich.align import Align
 
     RICH_AVAILABLE = True
 except ImportError:
@@ -1562,6 +1562,142 @@ Examples:
                 print(f"❌ Job submission failed: {e}")
             return 1
 
+    def capture(self, app_name: Optional[str], open_browser: bool, cmd: List[str]) -> int:
+        """Run a local command with capture and upload results as a job."""
+        if not cmd:
+            print("❌ No command provided to run")
+            return 1
+
+        backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
+        api_key = _auth_service.authenticate(backend_url)
+        if not api_key:
+            print("❌ Authentication failed. Please try again.")
+            return 1
+
+        # Initialize job on backend
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        init_payload = {
+            "app_name": app_name or Path.cwd().name,
+            "script_cmd": cmd[0],
+            "script_args": cmd[1:],
+        }
+        try:
+            resp = requests.post(
+                f"{backend_url.rstrip('/')}/api/v1/jobs/local/init",
+                headers=headers,
+                data=json.dumps(init_payload),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            init_data = resp.json()
+            job_id = init_data.get("job_id")
+            visit_url = init_data.get("visit_url")
+            if not job_id:
+                print("❌ Failed to initialize job")
+                return 1
+        except Exception as e:
+            print(f"❌ Failed to initialize job: {e}")
+            return 1
+
+        # Prepare output dir
+        base_runs = Path.home() / ".kandc" / "runs"
+        base_runs.mkdir(parents=True, exist_ok=True)
+        app_dir_name = app_name or Path.cwd().name
+        run_dir = base_runs / app_dir_name / job_id
+        traces_dir = run_dir / "traces"
+        traces_dir.mkdir(parents=True, exist_ok=True)
+        stdout_path = run_dir / "stdout.txt"
+        stderr_path = run_dir / "stderr.txt"
+
+        # Prepare environment
+        env = os.environ.copy()
+        env[KANDC_BACKEND_RUN_ENV_KEY] = "1"
+        env[KANDC_BACKEND_APP_NAME_ENV_KEY] = app_dir_name
+        env[KANDC_JOB_ID_ENV_KEY] = job_id
+        env[KANDC_TRACE_BASE_DIR_ENV_KEY] = str(base_runs)
+
+        # Run subprocess streaming stdout/stderr and tee to files
+        try:
+            with open(stdout_path, "wb") as out_f, open(stderr_path, "wb") as err_f:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+                assert process.stdout and process.stderr
+                # Stream in real-time
+                while True:
+                    out_line = process.stdout.readline()
+                    err_line = process.stderr.readline()
+                    if out_line:
+                        sys.stdout.buffer.write(out_line)
+                        sys.stdout.flush()
+                        out_f.write(out_line)
+                    if err_line:
+                        sys.stderr.buffer.write(err_line)
+                        sys.stderr.flush()
+                        err_f.write(err_line)
+                    if not out_line and not err_line and process.poll() is not None:
+                        break
+                exit_code = process.poll() or 0
+        except Exception as e:
+            print(f"❌ Failed to run command: {e}")
+            exit_code = 1
+
+        # Create outputs tar.gz
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
+            tar_path = tmp_file.name
+        try:
+            with tarfile.open(tar_path, "w:gz") as tar:
+                tar.add(run_dir, arcname=".")
+        except Exception as e:
+            print(f"❌ Failed to archive outputs: {e}")
+            return 1
+
+        # Upload outputs
+        try:
+            files = {"file": ("outputs.tar.gz", open(tar_path, "rb"), "application/gzip")}
+            up_resp = requests.post(
+                f"{backend_url.rstrip('/')}/api/v1/jobs/{job_id}/local/upload",
+                headers={"Authorization": f"Bearer {api_key}"},
+                files=files,
+                timeout=300,
+            )
+            up_resp.raise_for_status()
+        except Exception as e:
+            print(f"❌ Failed to upload outputs: {e}")
+        finally:
+            try:
+                os.unlink(tar_path)
+            except Exception:
+                pass
+
+        # Complete job
+        try:
+            comp_payload = {"exit_code": exit_code}
+            comp_resp = requests.post(
+                f"{backend_url.rstrip('/')}/api/v1/jobs/{job_id}/local/complete",
+                headers=headers,
+                data=json.dumps(comp_payload),
+                timeout=30,
+            )
+            comp_resp.raise_for_status()
+        except Exception as e:
+            print(f"⚠️  Failed to finalize job: {e}")
+
+        # Open URL
+        if visit_url and open_browser:
+            try:
+                webbrowser.open(visit_url)
+            except Exception:
+                print(f"🔗 Visit: {visit_url}")
+
+        print(f"✅ Capture complete. Job: {job_id}")
+        if visit_url:
+            print(f"🔗 Visit: {visit_url}")
+        return exit_code
+
 
 def main():
     """Main CLI entry point."""
@@ -1572,10 +1708,10 @@ def main():
             cli.console.print("Keys & Caches CLI is installed and working!", style="bold green")
             cli.console.print("\n[bold]Usage Formats:[/bold]")
             cli.console.print(
-                "  [cyan]Separator format:[/cyan] kandc [kandc-flags] -- python <script.py> [script-args]"
+                "  [cyan]Separator format:[/cyan] kandc run [kandc-flags] -- python <script.py> [script-args]"
             )
             cli.console.print(
-                "  [cyan]Interactive:[/cyan]      kandc python <script.py> [script-args]"
+                "  [cyan]Interactive:[/cyan]      kandc run python <script.py> [script-args]"
             )
             cli.console.print("\n[bold]Keys & Caches Flags:[/bold]")
             cli.console.print("  --app-name, -a     Job name for tracking")
@@ -1589,12 +1725,12 @@ def main():
             cli.console.print("\n[bold]Examples:[/bold]")
             cli.console.print("  [green]# Separator format (kandc flags first, then --):[/green]")
             cli.console.print(
-                "  kandc --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
+                "  kandc run --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
             )
             cli.console.print(
                 "  [green]# Interactive mode (script args only, prompts for config):[/green]"
             )
-            cli.console.print("  kandc python train.py --model-size large --epochs 10")
+            cli.console.print("  kandc run python train.py --model-size large --epochs 10")
             cli.console.print(
                 "\n💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
             )
@@ -1602,8 +1738,8 @@ def main():
             print("Keys & Caches CLI is installed and working!")
             print()
             print("Usage Formats:")
-            print("  Separator format: kandc [kandc-flags] -- python <script.py> [script-args]")
-            print("  Interactive:      kandc python <script.py> [script-args]")
+            print("  Separator format: kandc run [kandc-flags] -- python <script.py> [script-args]")
+            print("  Interactive:      kandc run python <script.py> [script-args]")
             print()
             print("Keys & Caches Flags:")
             print("  --app-name, -a     Job name for tracking")
@@ -1618,10 +1754,10 @@ def main():
             print("Examples:")
             print("  # Separator format (kandc flags first, then --):")
             print(
-                "  kandc --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
+                "  kandc run --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
             )
             print("  # Interactive mode (script args only, prompts for config):")
-            print("  kandc python train.py --model-size large --epochs 10")
+            print("  kandc run python train.py --model-size large --epochs 10")
             print()
             print(
                 "💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
@@ -1644,6 +1780,106 @@ def main():
             print("ℹ️  No active authentication found")
         return 0
 
-    # Run kandc command
-    command = sys.argv[1:]
-    return cli.run_kandc_command(command)
+    # Capture subcommand
+    if sys.argv[1] == "capture":
+        # Usage A: kandc capture [--app-name NAME] [--no-open] -- <command> [args...]
+        # Usage B: kandc capture  (then prompt for app name and command)
+        try:
+            app_name: Optional[str] = None
+            open_browser = True
+            cmd: List[str] = []
+
+            if "--" in sys.argv:
+                sep_index = sys.argv.index("--")
+                flags = sys.argv[2:sep_index]
+                cmd = sys.argv[sep_index + 1 :]
+                i = 0
+                while i < len(flags):
+                    if flags[i] in ["--app-name", "-a"] and i + 1 < len(flags):
+                        app_name = flags[i + 1]
+                        i += 2
+                    elif flags[i] == "--no-open":
+                        open_browser = False
+                        i += 1
+                    else:
+                        print(f"Unknown flag: {flags[i]}")
+                        return 1
+            else:
+                # Parse any flags provided (optional) and then treat remaining tokens as the command
+                tokens = sys.argv[2:]
+                i = 0
+                while i < len(tokens):
+                    if tokens[i] in ["--app-name", "-a"] and i + 1 < len(tokens):
+                        app_name = tokens[i + 1]
+                        i += 2
+                    elif tokens[i] == "--no-open":
+                        open_browser = False
+                        i += 1
+                    else:
+                        break
+
+                # Remaining tokens after flags are considered the command
+                if i < len(tokens):
+                    cmd = tokens[i:]
+                else:
+                    # No command supplied; prompt only for the command (app name may also be prompted)
+                    default_app = Path.cwd().name
+                    if RICH_AVAILABLE:
+                        if not app_name:
+                            app_name = Prompt.ask(
+                                "📝 App name (for job tracking)",
+                                default=default_app,
+                                console=cli.console,
+                            )
+                        command_text = Prompt.ask(
+                            "▶️  Command to run (example: python script.py --arg val)",
+                            console=cli.console,
+                        )
+                    else:
+                        if not app_name:
+                            app_name = (
+                                input(f"App name (default: {default_app}): ").strip() or default_app
+                            )
+                        command_text = input(
+                            "Command to run (e.g., python script.py --arg val): "
+                        ).strip()
+
+                    if not command_text:
+                        print("❌ No command provided")
+                        return 1
+                    try:
+                        cmd = shlex.split(command_text)
+                    except Exception:
+                        cmd = command_text.split()
+
+            # If app name still missing, prompt now
+            if not app_name:
+                default_app = Path.cwd().name
+                if RICH_AVAILABLE:
+                    app_name = Prompt.ask(
+                        "📝 App name (for job tracking)", default=default_app, console=cli.console
+                    )
+                else:
+                    app_name = input(f"App name (default: {default_app}): ").strip() or default_app
+
+            return cli.capture(app_name=app_name, open_browser=open_browser, cmd=cmd)
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            return 1
+
+    # Run subcommand (cloud submission)
+    if sys.argv[1] == "run":
+        command = sys.argv[2:]
+        return cli.run_kandc_command(command)
+
+    # Friendly guidance for common mistakes
+    if sys.argv[1] == "python" or sys.argv[1].endswith(".py"):
+        print("❌ Unknown command. Did you mean: kandc run python <script.py> [args] ?")
+        return 1
+
+    # Unknown subcommand
+    print("❌ Unknown subcommand.")
+    print("Usage:")
+    print("  kandc run [kandc-flags] -- python <script.py> [script-args]")
+    print("  kandc capture [--app-name NAME] [--no-open] -- <command> [args...]")
+    return 1

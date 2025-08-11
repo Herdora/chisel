@@ -30,7 +30,10 @@ Keys & Caches is a command-line tool that makes it effortless to run PyTorch mod
 
 ```bash
 # Run any PyTorch script on cloud GPUs
-kandc python infer.py --model-size large --epochs 100
+kandc run python infer.py --model-size large --epochs 100
+
+# Or capture locally with profiling
+kandc capture python infer.py --model-size large --epochs 100
 ```
 
 ---
@@ -50,9 +53,13 @@ class MyModel(nn.Module):
 ### 🔧 Simple Command Formats
 
 ```bash
-# Two command formats:
-kandc python script.py --script-args                                  # Interactive
-kandc --app-name job --gpu H100:4 -- python script.py --script-args  # Separator
+# Cloud GPU execution:
+kandc run python script.py --script-args                                  # Interactive
+kandc run --app-name job --gpu H100:4 -- python script.py --script-args  # Separator
+
+# Local execution with capture:
+kandc capture python script.py --script-args                              # Interactive
+kandc capture --app-name test -- python script.py --script-args           # Direct
 ```
 
 ---
@@ -129,7 +136,42 @@ output = model(x)  # This gets automatically profiled!
 
 ```bash
 # Run on cloud GPUs with one command
-kandc python your_model.py
+kandc run python your_model.py
+
+# Or run locally with profiling and upload results
+kandc capture python your_model.py
 ```
 
 That’s it! Your model runs on high-performance GPUs with automatic profiling. 🎉
+
+
+# 📦 Publishing to PyPI
+
+## 🚀 Publish Stable Release (`kandc`)
+
+1. **Bump the version** in `pyproject.toml` (e.g., `0.0.4`).
+
+2. **Run the following commands:**
+   ```bash
+   rm -rf dist build *.egg-info
+   python -m pip install --upgrade build twine
+   python -m build
+   export TWINE_USERNAME=__token__
+   twine upload dist/*
+   ```
+
+## 🧪 Publish Dev Release (`kandc-dev`)
+
+1. **Bump the dev version** in `pyproject.dev.toml` (e.g., `0.0.4.dev1`).
+
+2. **Run the following commands:**
+   ```bash
+   rm -rf dist build *.egg-info
+   cp pyproject.dev.toml pyproject.toml
+   python -m pip install --upgrade build twine
+   python -m build
+   export TWINE_USERNAME=__token__
+   twine upload dist/*
+   git checkout -- pyproject.toml   # Restore the original pyproject.toml after publishing (undo the cp above)
+   ```
+   ```
