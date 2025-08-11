@@ -32,6 +32,7 @@ Keys & Caches is a command-line tool that makes it effortless to run PyTorch mod
 cd examples
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 
 # Run any PyTorch script on cloud GPUs
 kandc run python basic_models/simple_cnn.py
