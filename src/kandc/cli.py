@@ -1708,10 +1708,10 @@ def main():
             cli.console.print("Keys & Caches CLI is installed and working!", style="bold green")
             cli.console.print("\n[bold]Usage Formats:[/bold]")
             cli.console.print(
-                "  [cyan]Separator format:[/cyan] kandc [kandc-flags] -- python <script.py> [script-args]"
+                "  [cyan]Separator format:[/cyan] kandc run [kandc-flags] -- python <script.py> [script-args]"
             )
             cli.console.print(
-                "  [cyan]Interactive:[/cyan]      kandc python <script.py> [script-args]"
+                "  [cyan]Interactive:[/cyan]      kandc run python <script.py> [script-args]"
             )
             cli.console.print("\n[bold]Keys & Caches Flags:[/bold]")
             cli.console.print("  --app-name, -a     Job name for tracking")
@@ -1725,12 +1725,12 @@ def main():
             cli.console.print("\n[bold]Examples:[/bold]")
             cli.console.print("  [green]# Separator format (kandc flags first, then --):[/green]")
             cli.console.print(
-                "  kandc --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
+                "  kandc run --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
             )
             cli.console.print(
                 "  [green]# Interactive mode (script args only, prompts for config):[/green]"
             )
-            cli.console.print("  kandc python train.py --model-size large --epochs 10")
+            cli.console.print("  kandc run python train.py --model-size large --epochs 10")
             cli.console.print(
                 "\n💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
             )
@@ -1738,8 +1738,8 @@ def main():
             print("Keys & Caches CLI is installed and working!")
             print()
             print("Usage Formats:")
-            print("  Separator format: kandc [kandc-flags] -- python <script.py> [script-args]")
-            print("  Interactive:      kandc python <script.py> [script-args]")
+            print("  Separator format: kandc run [kandc-flags] -- python <script.py> [script-args]")
+            print("  Interactive:      kandc run python <script.py> [script-args]")
             print()
             print("Keys & Caches Flags:")
             print("  --app-name, -a     Job name for tracking")
@@ -1754,10 +1754,10 @@ def main():
             print("Examples:")
             print("  # Separator format (kandc flags first, then --):")
             print(
-                "  kandc --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
+                "  kandc run --app-name my-job --gpu A100-80GB:2 -- python train.py --model-size large"
             )
             print("  # Interactive mode (script args only, prompts for config):")
-            print("  kandc python train.py --model-size large --epochs 10")
+            print("  kandc run python train.py --model-size large --epochs 10")
             print()
             print(
                 "💡 Tip: Pre-filled mode lets you specify some flags while still confirming interactively!"
@@ -1867,6 +1867,19 @@ def main():
             print(f"❌ Error: {e}")
             return 1
 
-    # Default: run submission flow
-    command = sys.argv[1:]
-    return cli.run_kandc_command(command)
+    # Run subcommand (cloud submission)
+    if sys.argv[1] == "run":
+        command = sys.argv[2:]
+        return cli.run_kandc_command(command)
+
+    # Friendly guidance for common mistakes
+    if sys.argv[1] == "python" or sys.argv[1].endswith(".py"):
+        print("❌ Unknown command. Did you mean: kandc run python <script.py> [args] ?")
+        return 1
+
+    # Unknown subcommand
+    print("❌ Unknown subcommand.")
+    print("Usage:")
+    print("  kandc run [kandc-flags] -- python <script.py> [script-args]")
+    print("  kandc capture [--app-name NAME] [--no-open] -- <command> [args...]")
+    return 1
