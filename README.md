@@ -143,3 +143,40 @@ kandc capture python your_model.py
 ```
 
 That’s it! Your model runs on high-performance GPUs with automatic profiling. 🎉
+
+
+# 📦 Publishing to PyPI
+
+## 🚀 Publish Stable Release (`kandc`)
+
+1. **Bump the version** in `pyproject.toml` (e.g., `0.0.4`).
+
+2. **Run the following commands:**
+   ```bash
+   rm -rf dist build *.egg-info
+   python -m pip install --upgrade build twine
+   python -m build
+   export TWINE_USERNAME=__token__
+   twine upload dist/*
+   pip install -U kandc
+   ```
+
+## 🧪 Publish Dev Release (`kandc-dev`)
+
+1. **Bump the dev version** in `pyproject.dev.toml` (e.g., `0.0.4.dev1`).
+
+2. **Run the following commands:**
+   ```bash
+   rm -rf dist build *.egg-info
+   cp pyproject.dev.toml pyproject.toml
+   python -m pip install --upgrade build twine
+   python -m build
+   export TWINE_USERNAME=__token__
+   twine upload dist/*
+   git checkout -- pyproject.toml   # Restore the original pyproject.toml after publishing (undo the cp above)
+   pip install -U kandc-dev
+   # If you gave dev its own CLI:
+   kandc-dev --help
+   # Otherwise, it’s the same `kandc` entry point.
+   ```
+   ```
