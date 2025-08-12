@@ -556,7 +556,9 @@ def display_submission_summary(
                 print("Please enter 'y' for yes or 'n' for no.")
 
 
-def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, console=None):
+def display_upload_preview(
+    preview_data: Dict[str, Any], upload_dir: str, console=None, show_patterns: bool = True
+):
     """
     Display a formatted preview of what will be uploaded.
 
@@ -620,31 +622,32 @@ def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, consol
 
         # Show excluded files if any (first 10)
         if preview_data["excluded_files"]:
-            console.print(f"\n[bold red]🚫 Excluded Files/Patterns (showing first 10):[/bold red]")
+            console.print(f"\n[bold red]🚫 Excluded Files (showing first 10):[/bold red]")
             for i, excluded in enumerate(preview_data["excluded_files"][:10]):
                 console.print(f"  • {excluded}")
 
             if len(preview_data["excluded_files"]) > 10:
                 console.print(f"  ... and {len(preview_data['excluded_files']) - 10} more excluded")
 
-        # Show exclusion patterns
-        console.print(f"\n[bold dim]📋 Current Exclusion Patterns:[/bold dim]")
-        for pattern in sorted(EXCLUDE_PATTERNS):
-            console.print(f"  • {pattern}", style="dim")
-
-        # Show gitignore patterns if any were found
-        gitignore_patterns = preview_data.get("gitignore_patterns", set())
-        if gitignore_patterns:
-            console.print(f"\n[bold dim]📋 .gitignore Patterns:[/bold dim]")
-            for pattern in sorted(gitignore_patterns):
+        if show_patterns:
+            # Show exclusion patterns
+            console.print(f"\n[bold dim]📋 Current Exclusion Patterns:[/bold dim]")
+            for pattern in sorted(EXCLUDE_PATTERNS):
                 console.print(f"  • {pattern}", style="dim")
 
-        # Show kandcignore patterns if any were found
-        kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
-        if kandcignore_patterns:
-            console.print(f"\n[bold dim]📋 .kandcignore Patterns:[/bold dim]")
-            for pattern in sorted(kandcignore_patterns):
-                console.print(f"  • {pattern}", style="dim")
+            # Show gitignore patterns if any were found
+            gitignore_patterns = preview_data.get("gitignore_patterns", set())
+            if gitignore_patterns:
+                console.print(f"\n[bold dim]📋 .gitignore Patterns:[/bold dim]")
+                for pattern in sorted(gitignore_patterns):
+                    console.print(f"  • {pattern}", style="dim")
+
+            # Show kandcignore patterns if any were found
+            kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
+            if kandcignore_patterns:
+                console.print(f"\n[bold dim]📋 .kandcignore Patterns:[/bold dim]")
+                for pattern in sorted(kandcignore_patterns):
+                    console.print(f"  • {pattern}", style="dim")
 
     else:
         # Plain text output
@@ -689,31 +692,32 @@ def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, consol
 
         # Show excluded files if any
         if preview_data["excluded_files"]:
-            print(f"\n🚫 Excluded Files/Patterns (showing first 10):")
+            print(f"\n🚫 Excluded Files (showing first 10):")
             for i, excluded in enumerate(preview_data["excluded_files"][:10]):
                 print(f"  • {excluded}")
 
             if len(preview_data["excluded_files"]) > 10:
                 print(f"  ... and {len(preview_data['excluded_files']) - 10} more excluded")
 
-        # Show exclusion patterns
-        print(f"\n📋 Current Exclusion Patterns:")
-        for pattern in sorted(EXCLUDE_PATTERNS):
-            print(f"  • {pattern}")
-
-        # Show gitignore patterns if any were found
-        gitignore_patterns = preview_data.get("gitignore_patterns", set())
-        if gitignore_patterns:
-            print(f"\n📋 .gitignore Patterns:")
-            for pattern in sorted(gitignore_patterns):
+        if show_patterns:
+            # Show exclusion patterns
+            print(f"\n📋 Current Exclusion Patterns:")
+            for pattern in sorted(EXCLUDE_PATTERNS):
                 print(f"  • {pattern}")
 
-        # Show kandcignore patterns if any were found
-        kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
-        if kandcignore_patterns:
-            print(f"\n📋 .kandcignore Patterns:")
-            for pattern in sorted(kandcignore_patterns):
-                print(f"  • {pattern}")
+            # Show gitignore patterns if any were found
+            gitignore_patterns = preview_data.get("gitignore_patterns", set())
+            if gitignore_patterns:
+                print(f"\n📋 .gitignore Patterns:")
+                for pattern in sorted(gitignore_patterns):
+                    print(f"  • {pattern}")
+
+            # Show kandcignore patterns if any were found
+            kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
+            if kandcignore_patterns:
+                print(f"\n📋 .kandcignore Patterns:")
+                for pattern in sorted(kandcignore_patterns):
+                    print(f"  • {pattern}")
 
 
 def validate_app_name(app_name: str) -> tuple[bool, str]:
@@ -1333,7 +1337,9 @@ Examples:
 
         return parser
 
-    def create_code_snapshot(self, upload_dir: Path) -> Optional[str]:
+    def create_code_snapshot(
+        self, upload_dir: Path, use_kandcignore_only: bool = False
+    ) -> Optional[str]:
         """
         Create a code snapshot archive of the upload directory.
         Returns the path to the created archive, or None if creation failed.
@@ -1349,28 +1355,64 @@ Examples:
             # Load ignore patterns for this upload_dir
             gitignore_patterns, kandcignore_patterns = load_ignore_patterns(upload_dir)
 
+            def _matches_patterns(path_obj: Path, patterns: set[str]) -> bool:
+                if not patterns:
+                    return False
+                path_str = str(path_obj)
+                path_parts = path_obj.parts
+                for pattern in patterns:
+                    if path_str == pattern or path_str.startswith(pattern + "/"):
+                        return True
+                    if pattern in path_parts:
+                        return True
+                    if "*" in pattern:
+                        import fnmatch
+
+                        if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(
+                            path_obj.name, pattern
+                        ):
+                            return True
+                return False
+
             with tarfile.open(snapshot_path, "w:gz") as tar:
                 for root, dirs, files in os.walk(upload_dir):
                     root_path = Path(root)
 
                     # Filter directories to avoid traversing excluded ones
-                    dirs[:] = [
-                        d
-                        for d in dirs
-                        if not should_exclude(
-                            str((root_path / d).relative_to(upload_dir)),
-                            gitignore_patterns,
-                            kandcignore_patterns,
-                        )
-                    ]
+                    if use_kandcignore_only:
+                        dirs[:] = [
+                            d
+                            for d in dirs
+                            if not _matches_patterns(
+                                (root_path / d).relative_to(upload_dir), kandcignore_patterns
+                            )
+                        ]
+                    else:
+                        dirs[:] = [
+                            d
+                            for d in dirs
+                            if not should_exclude(
+                                str((root_path / d).relative_to(upload_dir)),
+                                gitignore_patterns,
+                                kandcignore_patterns,
+                            )
+                        ]
 
                     for file in files:
                         file_path = root_path / file
 
-                        if not should_exclude(
-                            str(file_path.relative_to(upload_dir)),
-                            gitignore_patterns,
-                            kandcignore_patterns,
+                        if (
+                            not use_kandcignore_only
+                            and not should_exclude(
+                                str(file_path.relative_to(upload_dir)),
+                                gitignore_patterns,
+                                kandcignore_patterns,
+                            )
+                        ) or (
+                            use_kandcignore_only
+                            and not _matches_patterns(
+                                file_path.relative_to(upload_dir), kandcignore_patterns
+                            )
                         ):
                             try:
                                 # Add file to archive with relative path
@@ -1539,11 +1581,12 @@ Examples:
         # Archive upload_dir directly
         processed_dir = upload_dir
 
-        # Load ignore patterns for tar filtering
+        # Load ignore patterns for tar filtering (capture should honor kandcignore primarily)
         gitignore_patterns, kandcignore_patterns = load_ignore_patterns(Path(processed_dir))
 
         # Create a wrapper function for tar filter with ignore patterns
         def tar_filter_with_ignore_patterns(tarinfo):
+            # For run: keep both patterns; for capture we already previewed; continue using kandcignore + gitignore for safety
             return tar_filter(tarinfo, gitignore_patterns, kandcignore_patterns)
 
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
@@ -1919,6 +1962,78 @@ Examples:
             print("❌ No command provided to run")
             return 1
 
+        # Pre-submit confirmation: show what will be uploaded and get consent
+        try:
+            display_cmd = " ".join(shlex.quote(part) for part in cmd)
+        except Exception:
+            display_cmd = " ".join(cmd)
+
+        if include_code_snapshot:
+            upload_dir_path = Path(code_snapshot_dir).resolve()
+            if not upload_dir_path.exists():
+                print(f"❌ Code snapshot directory does not exist: {upload_dir_path}")
+                return 1
+
+            # Build and display upload preview (like run)
+            # Recompute preview using kandcignore-only exclusion for clarity
+            preview_data = preview_upload_directory(upload_dir_path, self.console)
+            # Strip out pattern listings from display (only show included/excluded files)
+            if self.console and RICH_AVAILABLE:
+                from rich.panel import Panel
+
+                self.console.print(
+                    Panel.fit(
+                        f"📦 Capture job\n📝 App name: {app_name or Path.cwd().name}\n▶️  Command: {display_cmd}\n📁 Upload dir: {upload_dir_path}",
+                        title="Submission Preview",
+                        border_style="cyan",
+                    )
+                )
+                display_upload_preview(
+                    preview_data, str(upload_dir_path), self.console, show_patterns=False
+                )
+                from rich.prompt import Confirm
+
+                proceed = Confirm.ask(
+                    "\n🚀 Submit this capture?", default=True, console=self.console
+                )
+            else:
+                print("\n📦 Capture job")
+                print(f"📝 App name: {app_name or Path.cwd().name}")
+                print(f"▶️  Command: {display_cmd}")
+                print(f"📁 Upload dir: {upload_dir_path}")
+                display_upload_preview(
+                    preview_data, str(upload_dir_path), None, show_patterns=False
+                )
+                resp = input("\n🚀 Submit this capture? (Y/n): ").strip().lower()
+                proceed = (not resp) or (resp in ["y", "yes"])
+
+            if not proceed:
+                if self.console and RICH_AVAILABLE:
+                    self.console.print("[yellow]❌ Submission cancelled by user.[/yellow]")
+                else:
+                    print("❌ Submission cancelled by user.")
+                return 0
+        else:
+            # No code snapshot; still confirm running the command
+            if self.console and RICH_AVAILABLE:
+                from rich.prompt import Confirm
+
+                proceed = Confirm.ask(
+                    f"Run capture without uploading code?\n▶️  {display_cmd}",
+                    default=True,
+                    console=self.console,
+                )
+            else:
+                resp = (
+                    input(f"Run capture without uploading code? (Y/n)\n▶️  {display_cmd}\n> ")
+                    .strip()
+                    .lower()
+                )
+                proceed = (not resp) or (resp in ["y", "yes"])
+            if not proceed:
+                print("❌ Submission cancelled by user.")
+                return 0
+
         backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
         api_key = _auth_service.authenticate(backend_url)
         if not api_key:
@@ -1970,10 +2085,6 @@ Examples:
         env["PYTHONUNBUFFERED"] = "1"
 
         # Show start information
-        try:
-            display_cmd = " ".join(shlex.quote(part) for part in cmd)
-        except Exception:
-            display_cmd = " ".join(cmd)
         print(
             f"▶️  Starting: {display_cmd}\n"
             f"📂 CWD: {os.getcwd()}\n"
@@ -2263,19 +2374,12 @@ def main():
                                 "📝 App name (for job tracking)",
                                 default=default_app,
                             )
-                        command_text = Prompt.ask(
-                            "▶️  Command to run (example: python script.py --arg val)",
-                            console=cli.console,
-                        )
-
-                        # Ask about code snapshot
+                        # Ask whether to upload repo and which directory
                         include_code_snapshot = cli.get_yes_no_input(
                             "📸 Include code snapshot for debugging?",
                             default=True,
                             help_text="Uploads a snapshot of your code for viewing in the web interface",
                         )
-
-                        # Ask about code snapshot directory if enabled
                         code_snapshot_dir = "."
                         if include_code_snapshot:
                             code_snapshot_dir = cli.get_input_with_default(
@@ -2283,6 +2387,10 @@ def main():
                                 default=".",
                                 required=False,
                             )
+                        command_text = Prompt.ask(
+                            "▶️  Command to run (example: python script.py --arg val)",
+                            console=cli.console,
+                        )
                     else:
                         if not app_name:
                             while True:
@@ -2308,11 +2416,7 @@ def main():
                                 print(
                                     "💡 Valid names: alphanumeric, dashes, periods, underscores only (no spaces)"
                                 )
-                        command_text = input(
-                            "Command to run (e.g., python script.py --arg val): "
-                        ).strip()
-
-                        # Ask about code snapshot
+                        # Ask upload preferences before command (plain text)
                         while True:
                             response = (
                                 input("Include code snapshot for debugging? (Y/n): ")
@@ -2328,12 +2432,15 @@ def main():
                             else:
                                 print("Please enter 'y' for yes or 'n' for no.")
 
-                        # Ask about code snapshot directory if enabled
                         code_snapshot_dir = "."
                         if include_code_snapshot:
                             code_snapshot_dir = (
                                 input("Code snapshot directory (default: .): ").strip() or "."
                             )
+
+                        command_text = input(
+                            "Command to run (e.g., python script.py --arg val): "
+                        ).strip()
 
                     if not command_text:
                         print("❌ No command provided")
