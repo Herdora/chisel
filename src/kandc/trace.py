@@ -10,6 +10,17 @@ from .constants import (
 )
 
 
+# Methods we attempt to profile in addition to forward(), when present
+DEFAULT_FALLBACK_METHODS: tuple[str, ...] = (
+    "generate",
+    "sample",
+    "predict",
+    "encode",
+    "decode",
+    "__call__",
+)
+
+
 def capture_trace(
     trace_name: Optional[str] = None,
     record_shapes: bool = False,
@@ -94,6 +105,12 @@ def capture_model_instance(
     original_forward = model_instance.forward
     trace_counter = 0
 
+    # Initialize per-method counters and re-entrancy guard
+    if not hasattr(model_instance, "_trace_counters"):
+        model_instance._trace_counters = {}
+    if not hasattr(model_instance, "_kandc_profiling_active"):
+        model_instance._kandc_profiling_active = False
+
     def profiled_forward(*args, **kwargs):
         nonlocal trace_counter
         trace_counter += 1
@@ -116,6 +133,17 @@ def capture_model_instance(
     model_instance.forward = profiled_forward
     model_instance._trace_counter = trace_counter
     model_instance._model_name = model_name or model_instance.__class__.__name__
+
+    # Attempt to wrap additional common methods if present on the instance
+    try:
+        _install_fallback_method_wrappers(
+            model_instance,
+            model_instance._model_name,
+            record_shapes,
+            profile_memory,
+        )
+    except Exception as _wrap_err:
+        print(f"⚠️  Failed to install fallback method wrappers: {_wrap_err}")
 
     return model_instance
 
@@ -166,6 +194,9 @@ def capture_model_class(
                 super().__init__(*args, **kwargs)
                 self._trace_counter = 0
                 self._model_name = model_name or model.__name__
+                # Initialize per-method counters and re-entrancy guard
+                self._trace_counters = {}
+                self._kandc_profiling_active = False
 
             def forward(self, *args, **kwargs):
                 return _execute_model_forward(
@@ -178,6 +209,23 @@ def capture_model_class(
                     *args,
                     **kwargs,
                 )
+
+        # Attach fallback wrappers after class definition by monkey-patching in __init__
+        orig_init = ProfiledModel.__init__
+
+        def __init_with_wrappers(self, *args, **kwargs):
+            orig_init(self, *args, **kwargs)
+            try:
+                _install_fallback_method_wrappers(
+                    self,
+                    self._model_name,
+                    record_shapes,
+                    profile_memory,
+                )
+            except Exception as _wrap_err:
+                print(f"⚠️  Failed to install fallback method wrappers on class: {_wrap_err}")
+
+        ProfiledModel.__init__ = __init_with_wrappers  # type: ignore[method-assign]
 
         return ProfiledModel
 
@@ -270,6 +318,9 @@ def _execute_model_forward(
     if torch.cuda.is_available():
         activities.append(ProfilerActivity.CUDA)
 
+    # Capture inputs summary BEFORE profiling to avoid polluting the trace
+    _inputs_summary = _summarize_inputs_outputs(original_forward, args, kwargs)
+
     with profile(
         activities=activities,
         record_shapes=record_shapes,
@@ -281,11 +332,323 @@ def _execute_model_forward(
     trace_file = job_trace_dir / f"{trace_name}.json"
     prof.export_chrome_trace(str(trace_file))
 
+    # Capture outputs summary AFTER profiling to avoid polluting the trace
+    _outputs_summary = _summarize_value(result)
+
+    # Inject IO summary into the trace so the frontend can display without DB changes
+    try:
+        _inject_kandc_io_into_trace(
+            str(trace_file),
+            kandc_io={"inputs": _inputs_summary, "outputs": _outputs_summary},
+        )
+    except Exception as _inject_err:
+        print(f"⚠️  Failed to inject kandc_io into trace: {_inject_err}")
+
     print(
         f"💾 [capture_model] {model_name} forward pass #{model._trace_counter} → {trace_name}.json"
     )
 
     return result
+
+
+def _execute_model_method(
+    model,
+    original_method: Callable,
+    model_name: str,
+    method_name: str,
+    record_shapes: bool,
+    profile_memory: bool,
+    with_stack: bool,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Execute any model method under PyTorch profiler and save trace.
+
+    Also injects kandc_io with summarized inputs/outputs into the trace.
+    """
+    assert os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) == "1", (
+        "Keys & Caches is not running on backend"
+    )
+
+    import torch
+    from torch.profiler import profile, ProfilerActivity
+    from pathlib import Path
+
+    job_id = os.environ.get(KANDC_JOB_ID_ENV_KEY)
+    if not job_id:
+        return original_method(*args, **kwargs)
+
+    # Per-method counter on the instance
+    counters: Dict[str, int] = getattr(model, "_trace_counters", {})
+    current = counters.get(method_name, 0) + 1
+    counters[method_name] = current
+    model._trace_counters = counters
+
+    trace_name = f"{model_name}_{method_name}_{current:03d}"
+
+    base_path_env = os.environ.get(KANDC_TRACE_BASE_DIR_ENV_KEY)
+    base_path = Path(base_path_env) if base_path_env else Path("/volume")
+    job_trace_dir = base_path / os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY) / job_id / TRACE_DIR
+    job_trace_dir.mkdir(parents=True, exist_ok=True)
+
+    activities = [ProfilerActivity.CPU]
+    if torch.cuda.is_available():
+        activities.append(ProfilerActivity.CUDA)
+
+    # Inputs summary before profiling to avoid polluting the trace
+    _inputs_summary = _summarize_inputs_outputs(original_method, args, kwargs)
+
+    with profile(
+        activities=activities,
+        record_shapes=record_shapes,
+        profile_memory=profile_memory,
+        with_stack=with_stack,
+    ) as prof:
+        result = original_method(*args, **kwargs)
+
+    trace_file = job_trace_dir / f"{trace_name}.json"
+    prof.export_chrome_trace(str(trace_file))
+
+    # Outputs summary after profiling
+    _outputs_summary = _summarize_value(result)
+
+    try:
+        _inject_kandc_io_into_trace(
+            str(trace_file),
+            kandc_io={"inputs": _inputs_summary, "outputs": _outputs_summary},
+        )
+    except Exception as _inject_err:
+        print(f"⚠️  Failed to inject kandc_io into trace: {_inject_err}")
+
+    print(f"💾 [capture_model] {model_name}.{method_name} #{current} → {trace_name}.json")
+    return result
+
+
+def _install_fallback_method_wrappers(
+    model_instance: Any,
+    model_name: str,
+    record_shapes: bool,
+    profile_memory: bool,
+    fallback_methods: Optional[List[str]] = None,
+) -> None:
+    """Wrap a set of common non-forward methods if they exist on the instance.
+
+    Avoid wrapping __call__ for torch.nn.Module, since it typically dispatches to forward().
+    """
+    methods = tuple(fallback_methods) if fallback_methods else DEFAULT_FALLBACK_METHODS
+
+    # Avoid wrapping __call__ for torch.nn.Module to prevent double-profiling
+    try:
+        import torch
+
+        is_torch_module = isinstance(model_instance, torch.nn.Module)
+    except Exception:
+        is_torch_module = False
+
+    for method_name in methods:
+        if method_name == "__call__" and is_torch_module:
+            continue
+        _wrap_method_on_instance(
+            model_instance,
+            method_name,
+            model_name,
+            record_shapes,
+            profile_memory,
+        )
+
+
+def _wrap_method_on_instance(
+    model_instance: Any,
+    method_name: str,
+    model_name: str,
+    record_shapes: bool,
+    profile_memory: bool,
+) -> None:
+    original = getattr(model_instance, method_name, None)
+    if not callable(original):
+        return
+
+    # Prevent double-wrapping
+    flag_name = f"_kandc_wrapped_{method_name}"
+    if getattr(model_instance, flag_name, False):
+        return
+
+    def wrapper(*args: Any, **kwargs: Any):
+        # Re-entrancy guard: if profiling already active (e.g., method calls into another wrapped method)
+        if getattr(model_instance, "_kandc_profiling_active", False):
+            return original(*args, **kwargs)
+        try:
+            model_instance._kandc_profiling_active = True
+            if method_name == "forward":
+                return _execute_model_forward(
+                    model_instance,
+                    original,
+                    model_name,
+                    record_shapes,
+                    profile_memory,
+                    True,
+                    *args,
+                    **kwargs,
+                )
+            return _execute_model_method(
+                model_instance,
+                original,
+                model_name,
+                method_name,
+                record_shapes,
+                profile_memory,
+                True,
+                *args,
+                **kwargs,
+            )
+        finally:
+            model_instance._kandc_profiling_active = False
+
+    setattr(model_instance, method_name, wrapper)
+    setattr(model_instance, flag_name, True)
+
+
+def _summarize_value(val, max_elems: int = 16):
+    """Summarize a Python value/tensor into a small JSON-serializable structure."""
+    try:
+        import torch  # type: ignore
+    except Exception:
+        torch = None
+
+    # Torch tensor summary
+    if torch is not None and isinstance(val, torch.Tensor):  # type: ignore[attr-defined]
+        try:
+            with torch.no_grad():
+                cpu = val.detach().to("cpu")
+                flat = cpu.reshape(-1)
+                numel = int(flat.numel())
+                sample = flat[:max_elems].tolist()
+                stats = None
+                try:
+                    stats = {
+                        "min": float(flat.min().item()),
+                        "max": float(flat.max().item()),
+                        "mean": float(flat.float().mean().item()),
+                    }
+                except Exception:
+                    stats = None
+                return {
+                    "type": "tensor",
+                    "dtype": str(cpu.dtype).replace("torch.", ""),
+                    "shape": list(cpu.shape),
+                    "strides": list(cpu.stride()),
+                    "numel": numel,
+                    "sample": sample,
+                    "stats": stats,
+                }
+        except Exception:
+            return {"type": "tensor", "repr": repr(val)}
+
+    # Simple scalars
+    if isinstance(val, (int, float, str, bool)):
+        return {"type": "scalar", "value": val}
+
+    # Sequences
+    if isinstance(val, (list, tuple)):
+        return {"type": "list", "items": [_summarize_value(v, max_elems) for v in val]}
+
+    # Dicts
+    if isinstance(val, dict):
+        return {
+            "type": "dict",
+            "items": {str(k): _summarize_value(v, max_elems) for k, v in val.items()},
+        }
+
+    # Fallback
+    return {"type": "unknown", "repr": repr(val)}
+
+
+def _summarize_inputs_outputs(original_forward: Callable, args: tuple, kwargs: dict):
+    """Summarize positional/keyword inputs to model.forward with parameter names when available."""
+    import inspect
+
+    sig = None
+    try:
+        sig = inspect.signature(original_forward)
+    except Exception:
+        pass
+
+    # Map positional args to names (skip 'self')
+    param_names = []
+    if sig:
+        for i, (name, _p) in enumerate(sig.parameters.items()):
+            if i == 0 and name == "self":
+                continue
+            param_names.append(name)
+
+    inputs = []
+    for idx, v in enumerate(args):
+        name = param_names[idx] if idx < len(param_names) else f"arg{idx}"
+        inputs.append({"name": name, "value": _summarize_value(v)})
+
+    for k, v in kwargs.items():
+        inputs.append({"name": str(k), "value": _summarize_value(v)})
+
+    return inputs
+
+
+def _inject_kandc_io_into_trace(trace_path: str, kandc_io: dict) -> None:
+    """Attach kandc_io to the model forward event in a chrome trace file.
+
+    If a forward event is not found, append a small synthetic kandc_io event so
+    the frontend can still discover and render it.
+    """
+    try:
+        with open(trace_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Support both array format and object with traceEvents
+        events = data if isinstance(data, list) else data.get("traceEvents", [])
+        if not isinstance(events, list):
+            events = []
+
+        # Find model forward event (python_function with 'forward' but not _execute_model_forward)
+        candidates = [
+            e
+            for e in events
+            if isinstance(e, dict)
+            and e.get("ph") == "X"
+            and e.get("cat") == "python_function"
+            and "forward" in str(e.get("name", "")).lower()
+            and "_execute_model_forward" not in str(e.get("name", ""))
+        ]
+        target = None
+        if candidates:
+            target = max(candidates, key=lambda e: (e.get("dur") or 0))
+
+        if target is not None:
+            target.setdefault("args", {})
+            target["args"]["kandc_io"] = kandc_io
+        else:
+            ts0 = 0
+            try:
+                if events:
+                    ts0 = int(events[0].get("ts", 0))
+            except Exception:
+                ts0 = 0
+            io_event = {
+                "ph": "X",
+                "cat": "kandc_io",
+                "name": "kandc.model_forward_io",
+                "ts": ts0,
+                "dur": 0,
+                "args": {"kandc_io": kandc_io},
+            }
+            events.append(io_event)
+            if not isinstance(data, list):
+                data["traceEvents"] = events
+            else:
+                data = events
+
+        with open(trace_path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"⚠️  Failed to inject kandc_io into trace {trace_path}: {e}")
 
 
 def _analyze_model_trace(trace_file: str, model_name: str) -> Optional[Dict]:
