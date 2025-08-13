@@ -10,6 +10,8 @@ import webbrowser
 import shlex
 import re
 import select
+import threading
+import queue
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -2496,6 +2498,179 @@ def main():
         command = sys.argv[2:]
         return cli.run_kandc_command(command)
 
+    # Sweep subcommand (local capture or cloud run across a folder of configs)
+    if sys.argv[1] == "sweep":
+        args = sys.argv[2:]
+        if not args:
+            print("❌ Usage: kandc sweep {capture|run} [options] -- [script-args...]")
+            return 1
+
+        mode = args[0]
+        if mode not in ("capture", "run"):
+            print("❌ Usage: kandc sweep {capture|run} [options] -- [script-args...]")
+            return 1
+
+        # Split flags from script args
+        if "--" in args:
+            sep = args.index("--")
+            sweep_flags = args[1:sep]
+            script_args = args[sep + 1 :]
+        else:
+            sweep_flags = args[1:]
+            script_args = []
+
+        # Parse sweep flags
+        parser = argparse.ArgumentParser(prog=f"kandc sweep {mode}")
+        parser.add_argument("--configs-dir", "-c", required=True)
+        parser.add_argument("--script", "-s", required=True)
+        parser.add_argument("--app-name", "-a", required=True, help="Shared app name for all runs")
+
+        if mode == "capture":
+            parser.add_argument("--gpus", default="0", help="Comma-separated GPU ids, e.g. 0,1,2")
+            parser.add_argument("--per-run-gpus", type=int, default=1, help="GPUs per run")
+            parser.add_argument("--no-open", action="store_true")
+            parser.add_argument("--no-code-snapshot", action="store_true")
+        else:
+            parser.add_argument("--gpu-type", default="A100-80GB:1")
+            parser.add_argument("--upload-dir", default=".")
+            parser.add_argument("--requirements", default="requirements.txt")
+
+        ns = parser.parse_args(sweep_flags)
+        configs_dir = Path(ns.configs_dir)
+        script_path = Path(ns.script)
+        shared_app = ns.app_name
+
+        def _list_cfgs(d: Path) -> List[Path]:
+            exts = {".yaml", ".yml", ".json"}
+            return sorted(p for p in d.glob("**/*") if p.suffix.lower() in exts)
+
+        cfgs = _list_cfgs(configs_dir)
+        if not cfgs:
+            print(f"❌ No configs found in {configs_dir}")
+            return 1
+
+        if mode == "capture":
+            # Local capture: schedule runs across GPUs using CUDA_VISIBLE_DEVICES
+            try:
+                gpu_ids = [int(x.strip()) for x in str(ns.gpus).split(",") if x.strip() != ""]
+            except ValueError:
+                print("❌ --gpus must be a comma-separated list of integers, e.g. 0,1,2")
+                return 1
+            per = max(1, int(ns.per_run_gpus))
+            if per > len(gpu_ids):
+                print("❌ --per-run-gpus cannot exceed number of provided GPUs")
+                return 1
+
+            class _GpuPool:
+                def __init__(self, ids: List[int], per_run: int):
+                    self._pool = ids[:]
+                    self._per = per_run
+                    self._cv = threading.Condition()
+
+                def acquire(self) -> List[int]:
+                    with self._cv:
+                        while len(self._pool) < self._per:
+                            self._cv.wait()
+                        out = [self._pool.pop(0) for _ in range(self._per)]
+                        return out
+
+                def release(self, ids: List[int]):
+                    with self._cv:
+                        self._pool.extend(ids)
+                        self._cv.notify_all()
+
+            pool = _GpuPool(gpu_ids, per)
+            q: "queue.Queue[Path | None]" = queue.Queue()
+            for c in cfgs:
+                q.put(c)
+
+            def _worker():
+                while True:
+                    item = q.get()
+                    if item is None:
+                        break
+                    cfg = item
+                    g = pool.acquire()
+                    try:
+                        env = os.environ.copy()
+                        env["CUDA_VISIBLE_DEVICES"] = ",".join(str(x) for x in g)
+                        cmd = [
+                            "kandc",
+                            "capture",
+                            "--app-name",
+                            shared_app,
+                        ]
+                        if ns.no_open:
+                            cmd.append("--no-open")
+                        if ns.no_code_snapshot:
+                            cmd.append("--no-code-snapshot")
+                        cmd += ["--", "python", str(script_path), "--config", str(cfg)]
+                        if script_args:
+                            cmd += script_args
+                        try:
+                            rc = subprocess.call(cmd, env=env)
+                        except Exception:
+                            rc = 1
+                        status = "ok" if rc == 0 else f"fail({rc})"
+                        print(f"[sweep] {cfg.name} on GPUs {g} → {status}")
+                    finally:
+                        pool.release(g)
+                        q.task_done()
+
+            # Start workers based on available capacity
+            max_workers = max(1, len(gpu_ids) // per)
+            threads: List[threading.Thread] = []
+            for _ in range(max_workers):
+                t = threading.Thread(target=_worker, daemon=True)
+                t.start()
+                threads.append(t)
+
+            q.join()
+            for _ in threads:
+                q.put(None)
+            for t in threads:
+                t.join()
+            return 0
+
+        # mode == "run": cloud submissions
+        upload_dir = Path(ns.upload_dir).resolve()
+        script_abs = script_path.resolve()
+        try:
+            script_rel = str(script_abs.relative_to(upload_dir))
+        except ValueError:
+            print(f"❌ Script {script_abs} is not inside upload_dir {upload_dir}")
+            return 1
+
+        failures = 0
+        for cfg in cfgs:
+            cmd = [
+                "kandc",
+                "run",
+                "--app-name",
+                shared_app,
+                "--gpu",
+                ns.gpu_type,
+                "--upload-dir",
+                str(upload_dir),
+                "--requirements",
+                str(ns.requirements),
+                "--",
+                "python",
+                script_rel,
+                "--config",
+                str(cfg),
+            ]
+            if script_args:
+                cmd += script_args
+            try:
+                rc = subprocess.call(cmd, env=os.environ.copy())
+            except Exception:
+                rc = 1
+            if rc != 0:
+                failures += 1
+        print(f"[sweep] run complete. failures={failures}, total={len(cfgs)}")
+        return 0 if failures == 0 else 1
+
     # Friendly guidance for common mistakes
     if sys.argv[1] == "python" or sys.argv[1].endswith(".py"):
         print("❌ Unknown command. Did you mean: kandc run python <script.py> [args] ?")
@@ -2508,4 +2683,5 @@ def main():
     print(
         "  kandc capture [--app-name NAME] [--no-open] [--no-code-snapshot] -- <command> [args...]"
     )
+    print("  kandc sweep {capture|run} [options] -- [script-args...]")
     return 1
