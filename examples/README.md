@@ -124,3 +124,15 @@ cd cpp_gpu_check && make
 python3 check_gpu.py
 kandc capture -- python3 check_gpu.py
 ```
+
+### Sweep Inference
+```bash
+kandc sweep capture \
+  --app-name my-shared-infer \
+  --configs-dir sweep_configs \
+  --script sweep_inference.py \
+  --gpus 0,1,2,3 --per-run-gpus 1 \
+  --code-snapshot-dir . \
+  --auto-confirm \
+  --tmux
+```

@@ -7,9 +7,10 @@ from typing import List, Tuple
 
 import torch
 import torch.nn as nn
+from kandc import capture_model_instance, timed, timed_call
 
 
-def _time_it(fn, warmup: int, repeats: int) -> List[float]:
+def _time_it(fn, warmup: int, repeats: int, event_name: str | None = None) -> List[float]:
     # Warmup
     for _ in range(max(0, warmup)):
         fn()
@@ -18,7 +19,10 @@ def _time_it(fn, warmup: int, repeats: int) -> List[float]:
     latencies_ms: List[float] = []
     for _ in range(max(1, repeats)):
         t0 = time.perf_counter_ns()
-        fn()
+        if event_name:
+            timed_call(event_name, fn)
+        else:
+            fn()
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t1 = time.perf_counter_ns()
@@ -62,9 +66,13 @@ def _run_mlp(
         .to(device)
         .eval()
     )
+    # Capture only this singular nn.Module in the sweep
+    model = capture_model_instance(
+        model, model_name="SweepMLP", record_shapes=True, profile_memory=True
+    )
     x = torch.randn(batch_size, input_dim, device=device)
     with torch.no_grad():
-        lat = _time_it(lambda: model(x), warmup, repeats)
+        lat = _time_it(lambda: model(x), warmup, repeats, event_name="MLP_infer")
     _print_stats("MLP", lat, batch_size)
 
 
@@ -95,7 +103,7 @@ def _run_cnn(
     )
     x = torch.randn(batch_size, channels, height, width, device=device)
     with torch.no_grad():
-        lat = _time_it(lambda: model(x), warmup, repeats)
+        lat = _time_it(lambda: model(x), warmup, repeats, event_name="CNN_infer")
     _print_stats("CNN", lat, batch_size)
 
 
@@ -105,7 +113,7 @@ def _run_matmul(
     a = torch.randn(batch_size, m, k, device=device)
     b = torch.randn(batch_size, k, n, device=device)
     with torch.no_grad():
-        lat = _time_it(lambda: torch.matmul(a, b), warmup, repeats)
+        lat = _time_it(lambda: torch.matmul(a, b), warmup, repeats, event_name="BatchedMatmul")
     _print_stats("BatchedMatmul", lat, batch_size)
 
 
@@ -134,8 +142,18 @@ def main() -> None:
     tasks: List[str] = cfg.get("tasks", ["mlp", "cnn", "matmul"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Clear, prominent banner with script and config names
+    try:
+        script_name = __file__
+    except NameError:
+        script_name = "<unknown>"
+    print("\n" + "=" * 70)
+    print("SWEEP INFERENCE START")
+    print("=" * 70)
+    print(f"script: {script_name}")
+    print(f"config: {args.config}")
     print(
-        f"[sweep_inference] device={device} model_size={model_size} batch={batch_size} warmup={warmup} repeats={repeats}"
+        f"device={device} model_size={model_size} batch={batch_size} warmup={warmup} repeats={repeats}"
     )
     print(f"[sweep_inference] tasks={tasks}")
 

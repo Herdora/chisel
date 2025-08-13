@@ -1,0 +1,10 @@
+{
+    "model_size": "medium",
+    "batch_size": 32,
+    "warmup": 3,
+    "repeats": 20,
+    "tasks": [
+        "mlp",
+        "cnn"
+    ]
+}
