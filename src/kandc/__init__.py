@@ -1,6 +1,7 @@
 __version__ = "0.1.0"
 
 from .constants import GPUType
+from .timing import timed, timed_call
 
 # Import capture_trace, capture_model_instance, and capture_model_class from trace module
 try:
@@ -50,6 +51,8 @@ __all__ = [
     "capture_model_class",
     "parse_model_trace",
     "capture_trace_fallback",
+    "timed",
+    "timed_call",
     "GPUType",
     "__version__",
 ]

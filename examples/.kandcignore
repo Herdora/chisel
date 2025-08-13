@@ -12,6 +12,11 @@ training_loss.png
 *.json  # Trace files
 *.pt    # PyTorch model files
 *.pth   # PyTorch checkpoint files
+*.so
+*.dylib
+*.o
+*.a
+build/
 
 # Exclude logs and temporary files
 *.log

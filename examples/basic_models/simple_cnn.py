@@ -4,10 +4,28 @@ Simple CNN example using capture_model decorator.
 This demonstrates basic convolutional neural network profiling.
 """
 
+import time
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from kandc import capture_model_class
+from kandc import capture_model_class, timed, timed_call
+
+
+@timed(name="my_function_2")
+def my_function_2():
+    print("Hello, world!")
+    # sleep a random amount of time
+    time.sleep(random.random() * 10)
+    return 42
+
+
+@timed(name="my_function")
+def my_function():
+    print("Hello, world!")
+    # sleep a random amount of time
+    time.sleep(random.random() * 10)
+    return 42
 
 
 @capture_model_class(model_name="SimpleCNN")
@@ -43,6 +61,15 @@ class SimpleCNN(nn.Module):
         return x
 
 
+def another_function(a, b, c=3, d=4):
+    print("Hello, world!")
+    # sleep a random amount of time
+    print(f"a: {a}, b: {b}, c: {c}, d: {d}")
+    adding = (a + b + c + d) / 1000
+    time.sleep(random.random() + adding)
+    return 42
+
+
 def main():
     """Test the CNN model with profiling."""
     print("🚀 Testing Simple CNN Model")
@@ -76,6 +103,11 @@ def main():
         for i in range(3):
             output = model(sample_input)
             print(f"  Pass {i + 2}: Output shape {output.shape}")
+
+    for i in range(3):
+        my_function()
+        my_function_2()
+        timed_call("another_function", another_function, 1, 2, d=10)
 
     print("\n✅ Simple CNN example completed!")
 

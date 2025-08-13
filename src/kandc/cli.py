@@ -8,6 +8,8 @@ import argparse
 import json
 import webbrowser
 import shlex
+import re
+import select
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -554,7 +556,9 @@ def display_submission_summary(
                 print("Please enter 'y' for yes or 'n' for no.")
 
 
-def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, console=None):
+def display_upload_preview(
+    preview_data: Dict[str, Any], upload_dir: str, console=None, show_patterns: bool = True
+):
     """
     Display a formatted preview of what will be uploaded.
 
@@ -618,31 +622,32 @@ def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, consol
 
         # Show excluded files if any (first 10)
         if preview_data["excluded_files"]:
-            console.print(f"\n[bold red]🚫 Excluded Files/Patterns (showing first 10):[/bold red]")
+            console.print(f"\n[bold red]🚫 Excluded Files (showing first 10):[/bold red]")
             for i, excluded in enumerate(preview_data["excluded_files"][:10]):
                 console.print(f"  • {excluded}")
 
             if len(preview_data["excluded_files"]) > 10:
                 console.print(f"  ... and {len(preview_data['excluded_files']) - 10} more excluded")
 
-        # Show exclusion patterns
-        console.print(f"\n[bold dim]📋 Current Exclusion Patterns:[/bold dim]")
-        for pattern in sorted(EXCLUDE_PATTERNS):
-            console.print(f"  • {pattern}", style="dim")
-
-        # Show gitignore patterns if any were found
-        gitignore_patterns = preview_data.get("gitignore_patterns", set())
-        if gitignore_patterns:
-            console.print(f"\n[bold dim]📋 .gitignore Patterns:[/bold dim]")
-            for pattern in sorted(gitignore_patterns):
+        if show_patterns:
+            # Show exclusion patterns
+            console.print(f"\n[bold dim]📋 Current Exclusion Patterns:[/bold dim]")
+            for pattern in sorted(EXCLUDE_PATTERNS):
                 console.print(f"  • {pattern}", style="dim")
 
-        # Show kandcignore patterns if any were found
-        kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
-        if kandcignore_patterns:
-            console.print(f"\n[bold dim]📋 .kandcignore Patterns:[/bold dim]")
-            for pattern in sorted(kandcignore_patterns):
-                console.print(f"  • {pattern}", style="dim")
+            # Show gitignore patterns if any were found
+            gitignore_patterns = preview_data.get("gitignore_patterns", set())
+            if gitignore_patterns:
+                console.print(f"\n[bold dim]📋 .gitignore Patterns:[/bold dim]")
+                for pattern in sorted(gitignore_patterns):
+                    console.print(f"  • {pattern}", style="dim")
+
+            # Show kandcignore patterns if any were found
+            kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
+            if kandcignore_patterns:
+                console.print(f"\n[bold dim]📋 .kandcignore Patterns:[/bold dim]")
+                for pattern in sorted(kandcignore_patterns):
+                    console.print(f"  • {pattern}", style="dim")
 
     else:
         # Plain text output
@@ -687,31 +692,77 @@ def display_upload_preview(preview_data: Dict[str, Any], upload_dir: str, consol
 
         # Show excluded files if any
         if preview_data["excluded_files"]:
-            print(f"\n🚫 Excluded Files/Patterns (showing first 10):")
+            print(f"\n🚫 Excluded Files (showing first 10):")
             for i, excluded in enumerate(preview_data["excluded_files"][:10]):
                 print(f"  • {excluded}")
 
             if len(preview_data["excluded_files"]) > 10:
                 print(f"  ... and {len(preview_data['excluded_files']) - 10} more excluded")
 
-        # Show exclusion patterns
-        print(f"\n📋 Current Exclusion Patterns:")
-        for pattern in sorted(EXCLUDE_PATTERNS):
-            print(f"  • {pattern}")
-
-        # Show gitignore patterns if any were found
-        gitignore_patterns = preview_data.get("gitignore_patterns", set())
-        if gitignore_patterns:
-            print(f"\n📋 .gitignore Patterns:")
-            for pattern in sorted(gitignore_patterns):
+        if show_patterns:
+            # Show exclusion patterns
+            print(f"\n📋 Current Exclusion Patterns:")
+            for pattern in sorted(EXCLUDE_PATTERNS):
                 print(f"  • {pattern}")
 
-        # Show kandcignore patterns if any were found
-        kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
-        if kandcignore_patterns:
-            print(f"\n📋 .kandcignore Patterns:")
-            for pattern in sorted(kandcignore_patterns):
-                print(f"  • {pattern}")
+            # Show gitignore patterns if any were found
+            gitignore_patterns = preview_data.get("gitignore_patterns", set())
+            if gitignore_patterns:
+                print(f"\n📋 .gitignore Patterns:")
+                for pattern in sorted(gitignore_patterns):
+                    print(f"  • {pattern}")
+
+            # Show kandcignore patterns if any were found
+            kandcignore_patterns = preview_data.get("kandcignore_patterns", set())
+            if kandcignore_patterns:
+                print(f"\n📋 .kandcignore Patterns:")
+                for pattern in sorted(kandcignore_patterns):
+                    print(f"  • {pattern}")
+
+
+def validate_app_name(app_name: str) -> tuple[bool, str]:
+    """
+    Validate app name according to Modal's requirements.
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not app_name:
+        return False, "App name cannot be empty"
+
+    if len(app_name) >= 64:
+        return False, "App name must be shorter than 64 characters"
+
+    # Check for valid characters: alphanumeric, dashes, periods, underscores
+    if not re.match(r"^[a-zA-Z0-9._-]+$", app_name):
+        return (
+            False,
+            "App name may only contain alphanumeric characters, dashes, periods, and underscores",
+        )
+
+    # Check for spaces (common mistake)
+    if " " in app_name:
+        return False, "App name cannot contain spaces (use dashes or underscores instead)"
+
+    return True, ""
+
+
+def suggest_valid_app_name(invalid_name: str) -> str:
+    """Suggest a valid app name based on an invalid one."""
+    # Replace spaces with dashes
+    suggested = invalid_name.replace(" ", "-")
+
+    # Remove invalid characters
+    suggested = re.sub(r"[^a-zA-Z0-9._-]", "", suggested)
+
+    # Truncate if too long
+    if len(suggested) >= 64:
+        suggested = suggested[:63]
+
+    # Remove trailing special characters
+    suggested = suggested.rstrip("._-")
+
+    return suggested or "my-app"
 
 
 class KandcCLI:
@@ -788,6 +839,99 @@ class KandcCLI:
                     if user_input or not required:
                         return user_input
                     print("❌ This field is required!")
+
+    def get_valid_app_name(self, prompt: str, default: str = "") -> str:
+        """Get a valid app name from user with validation."""
+        while True:
+            if RICH_AVAILABLE:
+                if default:
+                    app_name = Prompt.ask(f"{prompt}", default=default, console=self.console)
+                else:
+                    app_name = Prompt.ask(f"{prompt}", console=self.console)
+            else:
+                if default:
+                    app_name = input(f"{prompt} (default: {default}): ").strip()
+                    app_name = app_name if app_name else default
+                else:
+                    app_name = input(f"{prompt}: ").strip()
+
+            # Validate the app name
+            is_valid, error_message = validate_app_name(app_name)
+
+            if is_valid:
+                return app_name
+
+            # Show error and suggestion
+            if RICH_AVAILABLE:
+                self.console.print(f"❌ Invalid app name: {error_message}", style="red")
+                suggested = suggest_valid_app_name(app_name)
+                if suggested != app_name:
+                    self.console.print(f"💡 Suggested: '{suggested}'", style="yellow")
+                self.console.print(
+                    "💡 Valid names: alphanumeric, dashes, periods, underscores only (no spaces)",
+                    style="dim",
+                )
+            else:
+                print(f"❌ Invalid app name: {error_message}")
+                suggested = suggest_valid_app_name(app_name)
+                if suggested != app_name:
+                    print(f"💡 Suggested: '{suggested}'")
+                print("💡 Valid names: alphanumeric, dashes, periods, underscores only (no spaces)")
+
+            # Ask if they want to use the suggestion
+            if suggested != app_name:
+                if RICH_AVAILABLE:
+                    use_suggestion = Prompt.ask(
+                        f"Use suggested name '{suggested}'? (y/n)",
+                        choices=["y", "n"],
+                        default="y",
+                        console=self.console,
+                    )
+                else:
+                    use_suggestion = (
+                        input(f"Use suggested name '{suggested}'? (Y/n): ").strip().lower()
+                    )
+                    use_suggestion = (
+                        "y" if not use_suggestion or use_suggestion in ["y", "yes"] else "n"
+                    )
+
+                if use_suggestion == "y":
+                    return suggested
+
+    def get_yes_no_input(self, prompt: str, default: bool = True, help_text: str = None) -> bool:
+        """Get yes/no input from user with default value."""
+        if RICH_AVAILABLE:
+            default_str = "Y/n" if default else "y/N"
+            full_prompt = f"{prompt} ({default_str})"
+            if help_text:
+                self.console.print(f"💡 {help_text}", style="dim")
+
+            while True:
+                response = Prompt.ask(full_prompt, console=self.console, default="").strip().lower()
+                if not response:
+                    return default
+                elif response in ["y", "yes", "true", "1"]:
+                    return True
+                elif response in ["n", "no", "false", "0"]:
+                    return False
+                else:
+                    self.console.print("❌ Please enter 'y' for yes or 'n' for no", style="red")
+        else:
+            default_str = "Y/n" if default else "y/N"
+            full_prompt = f"{prompt} ({default_str}): "
+            if help_text:
+                print(f"💡 {help_text}")
+
+            while True:
+                response = input(full_prompt).strip().lower()
+                if not response:
+                    return default
+                elif response in ["y", "yes", "true", "1"]:
+                    return True
+                elif response in ["n", "no", "false", "0"]:
+                    return False
+                else:
+                    print("❌ Please enter 'y' for yes or 'n' for no")
 
     def select_gpu(self, default_gpu: str = None) -> str:
         """Interactive GPU selection with navigation.
@@ -903,15 +1047,11 @@ class KandcCLI:
         self.print_header()
 
         # Define total steps for progress tracking
-        total_steps = 5
+        total_steps = 6
 
         # Step 1: App name
         self.print_section_header("Job Configuration", step=1, total_steps=total_steps)
-        app_name = self.get_input_with_default(
-            "📝 App name (for job tracking)",
-            default="",
-            required=True,
-        )
+        app_name = self.get_valid_app_name("📝 App name (for job tracking)")
 
         # Step 2: Upload directory
         self.print_section_header("Upload Directory", step=2, total_steps=total_steps)
@@ -927,18 +1067,35 @@ class KandcCLI:
         self.print_section_header("GPU Configuration", step=4, total_steps=total_steps)
         gpu = self.select_gpu(default_gpu=self.gpu_map["A100-80GB:1"])
 
+        # Step 5: Code snapshot option
+        self.print_section_header("Code Snapshot", step=5, total_steps=total_steps)
+        include_code_snapshot = self.get_yes_no_input(
+            "📸 Include code snapshot for debugging?",
+            default=True,
+            help_text="Uploads a snapshot of your code for viewing in the web interface",
+        )
+
         # Show equivalent command for copy/paste
-        self.show_equivalent_command(app_name, upload_dir, requirements_file, gpu, script_path)
+        self.show_equivalent_command(
+            app_name, upload_dir, requirements_file, gpu, script_path, include_code_snapshot
+        )
 
         return {
             "app_name": app_name,
             "upload_dir": upload_dir,
             "requirements_file": requirements_file,
             "gpu": gpu,
+            "include_code_snapshot": include_code_snapshot,
         }
 
     def show_equivalent_command(
-        self, app_name: str, upload_dir: str, requirements_file: str, gpu: str, script_path: str
+        self,
+        app_name: str,
+        upload_dir: str,
+        requirements_file: str,
+        gpu: str,
+        script_path: str,
+        include_code_snapshot: bool = True,
     ):
         """Show the equivalent command-line command for copy/paste."""
         if RICH_AVAILABLE:
@@ -959,6 +1116,9 @@ class KandcCLI:
                 # Convert GPU type back to option key
                 gpu_option = {v: k for k, v in self.gpu_map.items()}[gpu]
                 kandc_parts.append(f"--gpu {gpu_option}")
+
+            if not include_code_snapshot:
+                kandc_parts.append("--no-code-snapshot")
 
             # Add separator and python command
             kandc_parts.append("--")
@@ -999,6 +1159,9 @@ class KandcCLI:
                 # Convert GPU type back to option key
                 gpu_option = {v: k for k, v in self.gpu_map.items()}[gpu]
                 kandc_parts.append(f"--gpu {gpu_option}")
+
+            if not include_code_snapshot:
+                kandc_parts.append("--no-code-snapshot")
 
             # Add separator and python command
             kandc_parts.append("--")
@@ -1057,6 +1220,7 @@ class KandcCLI:
                 "gpu": self.gpu_map[parsed_kandc.gpu],
                 "interactive": parsed_kandc.interactive,
                 "preview": parsed_kandc.preview,
+                "no_code_snapshot": parsed_kandc.no_code_snapshot,
             }
         except (ValueError, SystemExit) as e:
             if isinstance(e, ValueError):
@@ -1165,8 +1329,188 @@ Examples:
             action="store_true",
             help="Preview upload contents without submitting job",
         )
+        parser.add_argument(
+            "--no-code-snapshot",
+            action="store_true",
+            help="Skip uploading code snapshot for debugging (default: include code snapshot)",
+        )
 
         return parser
+
+    def create_code_snapshot(
+        self, upload_dir: Path, use_kandcignore_only: bool = False
+    ) -> Optional[str]:
+        """
+        Create a code snapshot archive of the upload directory.
+        Returns the path to the created archive, or None if creation failed.
+        """
+        try:
+            # Create temporary file for code snapshot
+            snapshot_fd, snapshot_path = tempfile.mkstemp(suffix="-code-snapshot.tar.gz")
+            os.close(snapshot_fd)
+
+            files_included = 0
+            total_size = 0
+
+            # Load ignore patterns for this upload_dir
+            gitignore_patterns, kandcignore_patterns = load_ignore_patterns(upload_dir)
+
+            def _matches_patterns(path_obj: Path, patterns: set[str]) -> bool:
+                if not patterns:
+                    return False
+                path_str = str(path_obj)
+                path_parts = path_obj.parts
+                for pattern in patterns:
+                    if path_str == pattern or path_str.startswith(pattern + "/"):
+                        return True
+                    if pattern in path_parts:
+                        return True
+                    if "*" in pattern:
+                        import fnmatch
+
+                        if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(
+                            path_obj.name, pattern
+                        ):
+                            return True
+                return False
+
+            with tarfile.open(snapshot_path, "w:gz") as tar:
+                for root, dirs, files in os.walk(upload_dir):
+                    root_path = Path(root)
+
+                    # Filter directories to avoid traversing excluded ones
+                    if use_kandcignore_only:
+                        dirs[:] = [
+                            d
+                            for d in dirs
+                            if not _matches_patterns(
+                                (root_path / d).relative_to(upload_dir), kandcignore_patterns
+                            )
+                        ]
+                    else:
+                        dirs[:] = [
+                            d
+                            for d in dirs
+                            if not should_exclude(
+                                str((root_path / d).relative_to(upload_dir)),
+                                gitignore_patterns,
+                                kandcignore_patterns,
+                            )
+                        ]
+
+                    for file in files:
+                        file_path = root_path / file
+
+                        if (
+                            not use_kandcignore_only
+                            and not should_exclude(
+                                str(file_path.relative_to(upload_dir)),
+                                gitignore_patterns,
+                                kandcignore_patterns,
+                            )
+                        ) or (
+                            use_kandcignore_only
+                            and not _matches_patterns(
+                                file_path.relative_to(upload_dir), kandcignore_patterns
+                            )
+                        ):
+                            try:
+                                # Add file to archive with relative path
+                                relative_path = file_path.relative_to(upload_dir)
+                                tar.add(file_path, arcname=str(relative_path))
+                                files_included += 1
+                                total_size += file_path.stat().st_size
+                            except (OSError, PermissionError):
+                                # Skip files we can't read
+                                continue
+
+            if files_included == 0:
+                os.unlink(snapshot_path)
+                return None
+
+            # Check final archive size
+            archive_size = os.path.getsize(snapshot_path)
+            if archive_size > 50 * 1024 * 1024:  # 50MB limit for code snapshots
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        f"⚠️  Code snapshot too large ({archive_size / (1024 * 1024):.1f}MB), skipping",
+                        style="yellow",
+                    )
+                else:
+                    print(
+                        f"⚠️  Code snapshot too large ({archive_size / (1024 * 1024):.1f}MB), skipping"
+                    )
+                os.unlink(snapshot_path)
+                return None
+
+            if RICH_AVAILABLE:
+                self.console.print(
+                    f"📸 Code snapshot created: {files_included} files, {archive_size / (1024 * 1024):.1f}MB",
+                    style="green",
+                )
+            else:
+                print(
+                    f"📸 Code snapshot created: {files_included} files, {archive_size / (1024 * 1024):.1f}MB"
+                )
+
+            return snapshot_path
+
+        except Exception as e:
+            if RICH_AVAILABLE:
+                self.console.print(f"⚠️  Failed to create code snapshot: {e}", style="yellow")
+            else:
+                print(f"⚠️  Failed to create code snapshot: {e}")
+            return None
+
+    def upload_code_snapshot(self, job_id: str, snapshot_path: str, api_key: str) -> bool:
+        """
+        Upload code snapshot for a job.
+        Returns True if successful, False otherwise.
+        """
+        try:
+            backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
+            endpoint = f"{backend_url.rstrip('/')}/api/v1/jobs/{job_id}/code-snapshot"
+
+            headers = {"Authorization": f"Bearer {api_key}"}
+
+            with open(snapshot_path, "rb") as f:
+                files = {"file": ("code-snapshot.tar.gz", f, "application/gzip")}
+
+                if RICH_AVAILABLE:
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        console=self.console,
+                    ) as progress:
+                        task = progress.add_task("Uploading code snapshot...", total=None)
+                        response = requests.post(
+                            endpoint, files=files, headers=headers, timeout=300
+                        )
+                else:
+                    print("📤 Uploading code snapshot...")
+                    response = requests.post(endpoint, files=files, headers=headers, timeout=300)
+
+            if response.status_code == 200:
+                if RICH_AVAILABLE:
+                    self.console.print("✅ Code snapshot uploaded successfully", style="green")
+                else:
+                    print("✅ Code snapshot uploaded successfully")
+                return True
+            else:
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        f"⚠️  Code snapshot upload failed: {response.status_code}", style="yellow"
+                    )
+                else:
+                    print(f"⚠️  Code snapshot upload failed: {response.status_code}")
+                return False
+
+        except Exception as e:
+            if RICH_AVAILABLE:
+                self.console.print(f"⚠️  Code snapshot upload error: {e}", style="yellow")
+            else:
+                print(f"⚠️  Code snapshot upload error: {e}")
+            return False
 
     def submit_job(
         self,
@@ -1177,6 +1521,7 @@ Examples:
         requirements_file: str,
         script_args: List[str],
         api_key: str,
+        include_code_snapshot: bool = True,
     ) -> Dict[str, Any]:
         """Submit job to backend."""
         backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
@@ -1236,11 +1581,12 @@ Examples:
         # Archive upload_dir directly
         processed_dir = upload_dir
 
-        # Load ignore patterns for tar filtering
+        # Load ignore patterns for tar filtering (capture should honor kandcignore primarily)
         gitignore_patterns, kandcignore_patterns = load_ignore_patterns(Path(processed_dir))
 
         # Create a wrapper function for tar filter with ignore patterns
         def tar_filter_with_ignore_patterns(tarinfo):
+            # For run: keep both patterns; for capture we already previewed; continue using kandcignore + gitignore for safety
             return tar_filter(tarinfo, gitignore_patterns, kandcignore_patterns)
 
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
@@ -1360,6 +1706,25 @@ Examples:
                         )
                         self.console.print(success_panel)
 
+                        # Upload code snapshot if enabled
+                        if include_code_snapshot and job_id:
+                            try:
+                                snapshot_path = self.create_code_snapshot(upload_dir)
+                                if snapshot_path:
+                                    success = self.upload_code_snapshot(
+                                        job_id, snapshot_path, api_key
+                                    )
+                                    # Clean up snapshot file
+                                    try:
+                                        os.unlink(snapshot_path)
+                                    except OSError:
+                                        pass
+                            except Exception as e:
+                                self.console.print(
+                                    f"⚠️  Code snapshot failed (job still running): {e}",
+                                    style="yellow",
+                                )
+
                     except Exception as e:
                         progress.update(task, description="Upload failed")
                         raise e
@@ -1399,6 +1764,26 @@ Examples:
                         print(f"   Please manually visit: {full_url}")
 
                     print("📊 Job is running in the background on cloud GPUs")
+
+                    # Upload code snapshot if enabled
+                    if include_code_snapshot and job_id:
+                        try:
+                            snapshot_path = self.create_code_snapshot(upload_dir)
+                            if snapshot_path:
+                                success = self.upload_code_snapshot(job_id, snapshot_path, api_key)
+                                # Clean up snapshot file
+                                try:
+                                    os.unlink(snapshot_path)
+                                except OSError:
+                                    pass
+                        except Exception as e:
+                            if RICH_AVAILABLE:
+                                self.console.print(
+                                    f"⚠️  Code snapshot failed (job still running): {e}",
+                                    style="yellow",
+                                )
+                            else:
+                                print(f"⚠️  Code snapshot failed (job still running): {e}")
 
                 except Exception as e:
                     upload_spinner.stop("Upload failed")
@@ -1472,6 +1857,7 @@ Examples:
                 "upload_dir": parsed_config["upload_dir"],
                 "requirements_file": parsed_config["requirements_file"],
                 "gpu": parsed_config["gpu"],
+                "include_code_snapshot": not parsed_config.get("no_code_snapshot", False),
             }
 
         # Get script information
@@ -1550,6 +1936,7 @@ Examples:
                 script_args=script_args,
                 requirements_file=final_config["requirements_file"],
                 api_key=api_key,
+                include_code_snapshot=final_config.get("include_code_snapshot", True),
             )
             # Gracefully handle failures that return structured error without exit_code
             if isinstance(result, dict) and "exit_code" in result:
@@ -1562,11 +1949,90 @@ Examples:
                 print(f"❌ Job submission failed: {e}")
             return 1
 
-    def capture(self, app_name: Optional[str], open_browser: bool, cmd: List[str]) -> int:
+    def capture(
+        self,
+        app_name: Optional[str],
+        open_browser: bool,
+        cmd: List[str],
+        include_code_snapshot: bool = True,
+        code_snapshot_dir: str = ".",
+    ) -> int:
         """Run a local command with capture and upload results as a job."""
         if not cmd:
             print("❌ No command provided to run")
             return 1
+
+        # Pre-submit confirmation: show what will be uploaded and get consent
+        try:
+            display_cmd = " ".join(shlex.quote(part) for part in cmd)
+        except Exception:
+            display_cmd = " ".join(cmd)
+
+        if include_code_snapshot:
+            upload_dir_path = Path(code_snapshot_dir).resolve()
+            if not upload_dir_path.exists():
+                print(f"❌ Code snapshot directory does not exist: {upload_dir_path}")
+                return 1
+
+            # Build and display upload preview (like run)
+            # Recompute preview using kandcignore-only exclusion for clarity
+            preview_data = preview_upload_directory(upload_dir_path, self.console)
+            # Strip out pattern listings from display (only show included/excluded files)
+            if self.console and RICH_AVAILABLE:
+                from rich.panel import Panel
+
+                self.console.print(
+                    Panel.fit(
+                        f"📦 Capture job\n📝 App name: {app_name or Path.cwd().name}\n▶️  Command: {display_cmd}\n📁 Upload dir: {upload_dir_path}",
+                        title="Submission Preview",
+                        border_style="cyan",
+                    )
+                )
+                display_upload_preview(
+                    preview_data, str(upload_dir_path), self.console, show_patterns=False
+                )
+                from rich.prompt import Confirm
+
+                proceed = Confirm.ask(
+                    "\n🚀 Submit this capture?", default=True, console=self.console
+                )
+            else:
+                print("\n📦 Capture job")
+                print(f"📝 App name: {app_name or Path.cwd().name}")
+                print(f"▶️  Command: {display_cmd}")
+                print(f"📁 Upload dir: {upload_dir_path}")
+                display_upload_preview(
+                    preview_data, str(upload_dir_path), None, show_patterns=False
+                )
+                resp = input("\n🚀 Submit this capture? (Y/n): ").strip().lower()
+                proceed = (not resp) or (resp in ["y", "yes"])
+
+            if not proceed:
+                if self.console and RICH_AVAILABLE:
+                    self.console.print("[yellow]❌ Submission cancelled by user.[/yellow]")
+                else:
+                    print("❌ Submission cancelled by user.")
+                return 0
+        else:
+            # No code snapshot; still confirm running the command
+            if self.console and RICH_AVAILABLE:
+                from rich.prompt import Confirm
+
+                proceed = Confirm.ask(
+                    f"Run capture without uploading code?\n▶️  {display_cmd}",
+                    default=True,
+                    console=self.console,
+                )
+            else:
+                resp = (
+                    input(f"Run capture without uploading code? (Y/n)\n▶️  {display_cmd}\n> ")
+                    .strip()
+                    .lower()
+                )
+                proceed = (not resp) or (resp in ["y", "yes"])
+            if not proceed:
+                print("❌ Submission cancelled by user.")
+                return 0
 
         backend_url = os.environ.get(KANDC_BACKEND_URL_ENV_KEY) or KANDC_BACKEND_URL
         api_key = _auth_service.authenticate(backend_url)
@@ -1615,6 +2081,29 @@ Examples:
         env[KANDC_BACKEND_APP_NAME_ENV_KEY] = app_dir_name
         env[KANDC_JOB_ID_ENV_KEY] = job_id
         env[KANDC_TRACE_BASE_DIR_ENV_KEY] = str(base_runs)
+        # Ensure Python subprocesses flush output immediately for real-time streaming
+        env["PYTHONUNBUFFERED"] = "1"
+
+        # Show start information
+        print(
+            f"▶️  Starting: {display_cmd}\n"
+            f"📂 CWD: {os.getcwd()}\n"
+            f"🧾 Job ID: {job_id}\n"
+            f"🗂️  Run dir: {run_dir}\n"
+            f"📝 Stdout: {stdout_path}\n"
+            f"🛠️  Stderr: {stderr_path}"
+        )
+        if visit_url:
+            print(f"🔗 Live view: {visit_url}")
+
+        # If invoking python directly, force unbuffered with -u
+        try:
+            exe_name = Path(cmd[0]).name.lower()
+            if re.match(r"^python(\d+(\.\d+)?)?$", exe_name):
+                if "-u" not in cmd[1:3]:
+                    cmd = [cmd[0], "-u"] + cmd[1:]
+        except Exception:
+            pass
 
         # Run subprocess streaming stdout/stderr and tee to files
         try:
@@ -1626,20 +2115,47 @@ Examples:
                     env=env,
                 )
                 assert process.stdout and process.stderr
-                # Stream in real-time
-                while True:
-                    out_line = process.stdout.readline()
-                    err_line = process.stderr.readline()
-                    if out_line:
-                        sys.stdout.buffer.write(out_line)
-                        sys.stdout.flush()
-                        out_f.write(out_line)
-                    if err_line:
-                        sys.stderr.buffer.write(err_line)
-                        sys.stderr.flush()
-                        err_f.write(err_line)
-                    if not out_line and not err_line and process.poll() is not None:
-                        break
+
+                out_fd = process.stdout.fileno()
+                err_fd = process.stderr.fileno()
+                fds_open = {out_fd: (sys.stdout.buffer, out_f), err_fd: (sys.stderr.buffer, err_f)}
+
+                # Read available data from either stream as it arrives
+                while fds_open:
+                    readable, _, _ = select.select(list(fds_open.keys()), [], [], 0.1)
+                    if not readable:
+                        # Check for process exit to avoid busy wait
+                        if process.poll() is not None and not readable:
+                            # Drain any remaining data
+                            readable = list(fds_open.keys())
+                        else:
+                            continue
+                    for fd in list(readable):
+                        try:
+                            chunk = os.read(fd, 8192)
+                        except Exception:
+                            chunk = b""
+                        if chunk:
+                            stream, file_handle = fds_open[fd]
+                            try:
+                                stream.write(chunk)
+                                stream.flush()
+                            except Exception:
+                                # Fallback to text write if needed
+                                try:
+                                    stream.write(chunk.decode(errors="replace"))
+                                    stream.flush()
+                                except Exception:
+                                    pass
+                            try:
+                                file_handle.write(chunk)
+                                file_handle.flush()
+                            except Exception:
+                                pass
+                        else:
+                            # EOF on this fd
+                            fds_open.pop(fd, None)
+
                 exit_code = process.poll() or 0
         except Exception as e:
             print(f"❌ Failed to run command: {e}")
@@ -1685,6 +2201,26 @@ Examples:
             comp_resp.raise_for_status()
         except Exception as e:
             print(f"⚠️  Failed to finalize job: {e}")
+
+        # Upload code snapshot if enabled
+        if include_code_snapshot and job_id:
+            try:
+                snapshot_path = self.create_code_snapshot(Path(code_snapshot_dir))
+                if snapshot_path:
+                    success = self.upload_code_snapshot(job_id, snapshot_path, api_key)
+                    # Clean up snapshot file
+                    try:
+                        os.unlink(snapshot_path)
+                    except OSError:
+                        pass
+            except Exception as e:
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        f"⚠️  Code snapshot failed (job still running): {e}",
+                        style="yellow",
+                    )
+                else:
+                    print(f"⚠️  Code snapshot failed (job still running): {e}")
 
         # Open URL
         if visit_url and open_browser:
@@ -1782,11 +2318,13 @@ def main():
 
     # Capture subcommand
     if sys.argv[1] == "capture":
-        # Usage A: kandc capture [--app-name NAME] [--no-open] -- <command> [args...]
+        # Usage A: kandc capture [--app-name NAME] [--no-open] [--no-code-snapshot] -- <command> [args...]
         # Usage B: kandc capture  (then prompt for app name and command)
         try:
             app_name: Optional[str] = None
             open_browser = True
+            include_code_snapshot = True
+            code_snapshot_dir = "."
             cmd: List[str] = []
 
             if "--" in sys.argv:
@@ -1800,6 +2338,9 @@ def main():
                         i += 2
                     elif flags[i] == "--no-open":
                         open_browser = False
+                        i += 1
+                    elif flags[i] == "--no-code-snapshot":
+                        include_code_snapshot = False
                         i += 1
                     else:
                         print(f"Unknown flag: {flags[i]}")
@@ -1815,6 +2356,9 @@ def main():
                     elif tokens[i] == "--no-open":
                         open_browser = False
                         i += 1
+                    elif tokens[i] == "--no-code-snapshot":
+                        include_code_snapshot = False
+                        i += 1
                     else:
                         break
 
@@ -1822,14 +2366,26 @@ def main():
                 if i < len(tokens):
                     cmd = tokens[i:]
                 else:
-                    # No command supplied; prompt only for the command (app name may also be prompted)
+                    # No command supplied; prompt for command and code snapshot option
                     default_app = Path.cwd().name
                     if RICH_AVAILABLE:
                         if not app_name:
-                            app_name = Prompt.ask(
+                            app_name = cli.get_valid_app_name(
                                 "📝 App name (for job tracking)",
                                 default=default_app,
-                                console=cli.console,
+                            )
+                        # Ask whether to upload repo and which directory
+                        include_code_snapshot = cli.get_yes_no_input(
+                            "📸 Include code snapshot for debugging?",
+                            default=True,
+                            help_text="Uploads a snapshot of your code for viewing in the web interface",
+                        )
+                        code_snapshot_dir = "."
+                        if include_code_snapshot:
+                            code_snapshot_dir = cli.get_input_with_default(
+                                "📁 Code snapshot directory",
+                                default=".",
+                                required=False,
                             )
                         command_text = Prompt.ask(
                             "▶️  Command to run (example: python script.py --arg val)",
@@ -1837,9 +2393,51 @@ def main():
                         )
                     else:
                         if not app_name:
-                            app_name = (
-                                input(f"App name (default: {default_app}): ").strip() or default_app
+                            while True:
+                                user_input = input(f"App name (default: {default_app}): ").strip()
+                                app_name = user_input if user_input else default_app
+
+                                is_valid, error_message = validate_app_name(app_name)
+                                if is_valid:
+                                    break
+
+                                print(f"❌ Invalid app name: {error_message}")
+                                suggested = suggest_valid_app_name(app_name)
+                                if suggested != app_name:
+                                    print(f"💡 Suggested: '{suggested}'")
+                                    use_suggestion = (
+                                        input(f"Use suggested name '{suggested}'? (Y/n): ")
+                                        .strip()
+                                        .lower()
+                                    )
+                                    if not use_suggestion or use_suggestion in ["y", "yes"]:
+                                        app_name = suggested
+                                        break
+                                print(
+                                    "💡 Valid names: alphanumeric, dashes, periods, underscores only (no spaces)"
+                                )
+                        # Ask upload preferences before command (plain text)
+                        while True:
+                            response = (
+                                input("Include code snapshot for debugging? (Y/n): ")
+                                .strip()
+                                .lower()
                             )
+                            if not response or response in ["y", "yes"]:
+                                include_code_snapshot = True
+                                break
+                            elif response in ["n", "no"]:
+                                include_code_snapshot = False
+                                break
+                            else:
+                                print("Please enter 'y' for yes or 'n' for no.")
+
+                        code_snapshot_dir = "."
+                        if include_code_snapshot:
+                            code_snapshot_dir = (
+                                input("Code snapshot directory (default: .): ").strip() or "."
+                            )
+
                         command_text = input(
                             "Command to run (e.g., python script.py --arg val): "
                         ).strip()
@@ -1856,13 +2454,39 @@ def main():
             if not app_name:
                 default_app = Path.cwd().name
                 if RICH_AVAILABLE:
-                    app_name = Prompt.ask(
-                        "📝 App name (for job tracking)", default=default_app, console=cli.console
+                    app_name = cli.get_valid_app_name(
+                        "📝 App name (for job tracking)", default=default_app
                     )
                 else:
-                    app_name = input(f"App name (default: {default_app}): ").strip() or default_app
+                    while True:
+                        user_input = input(f"App name (default: {default_app}): ").strip()
+                        app_name = user_input if user_input else default_app
 
-            return cli.capture(app_name=app_name, open_browser=open_browser, cmd=cmd)
+                        is_valid, error_message = validate_app_name(app_name)
+                        if is_valid:
+                            break
+
+                        print(f"❌ Invalid app name: {error_message}")
+                        suggested = suggest_valid_app_name(app_name)
+                        if suggested != app_name:
+                            print(f"💡 Suggested: '{suggested}'")
+                            use_suggestion = (
+                                input(f"Use suggested name '{suggested}'? (Y/n): ").strip().lower()
+                            )
+                            if not use_suggestion or use_suggestion in ["y", "yes"]:
+                                app_name = suggested
+                                break
+                        print(
+                            "💡 Valid names: alphanumeric, dashes, periods, underscores only (no spaces)"
+                        )
+
+            return cli.capture(
+                app_name=app_name,
+                open_browser=open_browser,
+                cmd=cmd,
+                include_code_snapshot=include_code_snapshot,
+                code_snapshot_dir=code_snapshot_dir,
+            )
         except Exception as e:
             print(f"❌ Error: {e}")
             return 1
@@ -1881,5 +2505,7 @@ def main():
     print("❌ Unknown subcommand.")
     print("Usage:")
     print("  kandc run [kandc-flags] -- python <script.py> [script-args]")
-    print("  kandc capture [--app-name NAME] [--no-open] -- <command> [args...]")
+    print(
+        "  kandc capture [--app-name NAME] [--no-open] [--no-code-snapshot] -- <command> [args...]"
+    )
     return 1

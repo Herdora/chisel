@@ -116,3 +116,11 @@ kandc run python nested_directory/deep/deeper/deepest_model.py
 ```bash
 kandc run --requirements requirements_examples/scientific_requirements.txt -- python requirements_examples/model_with_custom_requirements.py
 ```
+
+### C++ Integration
+**`cpp_gpu_check/`** - C++ GPU availability checker with Python `ctypes`
+```bash
+cd cpp_gpu_check && make
+python3 check_gpu.py
+kandc capture -- python3 check_gpu.py
+```
