@@ -2,7 +2,6 @@ __version__ = "0.1.0"
 
 from .constants import GPUType
 from .timing import timed, timed_call
-from .assets import ArtifactDir
 
 # Import capture_trace, capture_model_instance, and capture_model_class from trace module
 try:
@@ -56,7 +55,6 @@ __all__ = [
     "timed_call",
     "GPUType",
     "__version__",
-    "ArtifactDir",
 ]
 
 
