@@ -136,3 +136,17 @@ kandc sweep capture \
   --auto-confirm \
   --tmux
 ```
+
+```bash
+export TRANSFORMERS_NO_TF=1
+
+
+kandc sweep capture \
+  --app-name sd-sweep \
+  --configs-dir /home/ubuntu/yyy/kandc/examples/diffusion_configs \
+  --script /home/ubuntu/yyy/kandc/examples/diffusion_models/text2img_inference.py \
+  --gpus 0,1,2,3,4,5,6,7 --per-run-gpus 1 \
+  --code-snapshot-dir /home/ubuntu/yyy/kandc \
+  --auto-confirm \
+  --tmux
+```
