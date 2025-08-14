@@ -11,18 +11,18 @@ import importlib.util
 from pathlib import Path
 
 
-def test_import(file_path):
-    """Test if a Python file can be imported successfully."""
-    try:
-        spec = importlib.util.spec_from_file_location("test_module", file_path)
-        if spec is None:
-            return False, "Could not create module spec"
+# def test_import(file_path):
+#     """Test if a Python file can be imported successfully."""
+#     try:
+#         spec = importlib.util.spec_from_file_location("test_module", file_path)
+#         if spec is None:
+#             return False, "Could not create module spec"
 
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return True, "Import successful"
-    except Exception as e:
-        return False, str(e)
+#         module = importlib.util.module_from_spec(spec)
+#         spec.loader.exec_module(module)
+#         return True, "Import successful"
+#     except Exception as e:
+#         return False, str(e)
 
 
 def find_python_files(directory):

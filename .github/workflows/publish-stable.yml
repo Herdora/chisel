@@ -1,0 +1,104 @@
+name: Publish kandc (Stable)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v0.0.13, v1.0.0, etc.
+
+jobs:
+  test-before-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.11", "3.12"]  # Test key versions
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install pytest ruff
+
+    - name: Lint check
+      run: |
+        ruff check . --select=E9,F63,F7,F82 --show-source
+
+    - name: Run critical tests
+      run: |
+        pytest tests/ -v -x  # Stop on first failure
+
+    - name: Test package installation
+      run: |
+        python -c "import kandc; print('kandc imported successfully')"
+
+  publish:
+    needs: test-before-publish
+    runs-on: ubuntu-latest
+    environment: pypi-stable  # GitHub environment for protection
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip build twine
+
+    - name: Extract version from tag
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Extracted version: $VERSION"
+
+    - name: Update version in pyproject.toml
+      run: |
+        sed -i 's/^version = .*/version = "${{ steps.get_version.outputs.VERSION }}"/' pyproject.toml
+        echo "Updated pyproject.toml version:"
+        grep '^version = ' pyproject.toml
+
+    - name: Build package
+      run: |
+        python -m build
+
+    - name: Check package
+      run: |
+        twine check dist/*
+
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        twine upload dist/*
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*
+        generate_release_notes: true
+        body: |
+          ## kandc v${{ steps.get_version.outputs.VERSION }}
+          
+          This release was automatically published from tag `v${{ steps.get_version.outputs.VERSION }}`.
+          
+          ### Installation
+          ```bash
+          pip install kandc==${{ steps.get_version.outputs.VERSION }}
+          ```
+          
+          ### What's Changed
+          See the commit history and pull requests for detailed changes.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kandc-dev"                 # <-- only change
-version = "0.0.11.dev0"             # use PEP 440 pre/dev versions for clarity
+version = "0.0.12.dev0"             # use PEP 440 pre/dev versions for clarity
 description = "Keys & Caches CLI (DEV)"
 readme = "README.md"
 license = {text = "MIT"}

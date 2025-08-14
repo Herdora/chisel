@@ -1,0 +1,144 @@
+name: Publish kandc-dev (Development)
+
+on:
+  push:
+    branches:
+      - dev
+      - testing
+    paths:
+      - 'src/**'
+      - 'pyproject.dev.toml'
+      - 'pyproject.toml'
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      version_suffix:
+        description: 'Version suffix (e.g., dev1, dev2, rc1)'
+        required: false
+        default: 'dev0'
+        type: string
+
+jobs:
+  test-before-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install pytest ruff
+
+    - name: Lint check
+      run: |
+        ruff check . --select=E9,F63,F7,F82 --show-source
+
+    - name: Run critical tests
+      run: |
+        pytest tests/ -v -x
+
+    - name: Test package installation
+      run: |
+        python -c "import kandc; print('kandc imported successfully')"
+
+  publish:
+    needs: test-before-publish
+    runs-on: ubuntu-latest
+    environment: pypi-dev  # GitHub environment for protection
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip build twine
+
+    - name: Generate dev version
+      id: dev_version
+      run: |
+        # Get current date/time for unique dev versions
+        TIMESTAMP=$(date +"%Y%m%d%H%M")
+        COMMIT_SHORT=$(git rev-parse --short HEAD)
+        
+        # Get base version from pyproject.dev.toml
+        BASE_VERSION=$(grep '^version = ' pyproject.dev.toml | sed 's/version = "\(.*\)"/\1/' | sed 's/\.dev[0-9]*//')
+        
+        # Create new dev version
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          NEW_VERSION="${BASE_VERSION}.${{ github.event.inputs.version_suffix }}"
+        else
+          NEW_VERSION="${BASE_VERSION}.dev${TIMESTAMP}"
+        fi
+        
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "Generated dev version: $NEW_VERSION"
+
+    - name: Update dev version
+      run: |
+        sed -i 's/^version = .*/version = "${{ steps.dev_version.outputs.NEW_VERSION }}"/' pyproject.dev.toml
+        echo "Updated pyproject.dev.toml version:"
+        grep '^version = ' pyproject.dev.toml
+
+    - name: Build dev package
+      run: |
+        cp pyproject.dev.toml pyproject.toml
+        python -m build
+
+    - name: Check package
+      run: |
+        twine check dist/*
+
+    - name: Publish to PyPI (dev)
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_DEV_API_TOKEN }}
+      run: |
+        twine upload dist/*
+
+    - name: Restore pyproject.toml
+      run: |
+        git checkout -- pyproject.toml
+
+    - name: Comment on commit (if push event)
+      if: github.event_name == 'push'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { data: commit } = await github.rest.repos.getCommit({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: context.sha
+          });
+          
+          await github.rest.repos.createCommitComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            commit_sha: context.sha,
+            body: `🚀 **kandc-dev published!**\n\n` +
+                  `Version: \`${{ steps.dev_version.outputs.NEW_VERSION }}\`\n` +
+                  `Install: \`pip install kandc-dev==${{ steps.dev_version.outputs.NEW_VERSION }}\`\n` +
+                  `PyPI: https://pypi.org/project/kandc-dev/${{ steps.dev_version.outputs.NEW_VERSION }}/`
+          });
+
+    - name: Update pyproject.dev.toml with new base version
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add pyproject.dev.toml
+        git commit -m "Bump dev version to ${{ steps.dev_version.outputs.NEW_VERSION }}" || exit 0
+        git push || exit 0

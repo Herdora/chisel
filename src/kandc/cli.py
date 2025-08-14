@@ -2197,8 +2197,13 @@ Examples:
             exit_code = 1
 
         # Create outputs tar.gz
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
-            tar_path = tmp_file.name
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp_file:
+                tar_path = tmp_file.name
+        except Exception as e:
+            print(f"❌ Failed to create temporary file: {e}")
+            return 1
+
         try:
             with tarfile.open(tar_path, "w:gz") as tar:
                 tar.add(run_dir, arcname=".")
@@ -2222,7 +2227,7 @@ Examples:
             try:
                 os.unlink(tar_path)
             except Exception:
-                pass
+                print(f"❌ Failed to delete temporary file: {tar_path}")
 
         # Complete job
         try:
