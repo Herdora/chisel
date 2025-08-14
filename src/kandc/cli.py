@@ -10,6 +10,8 @@ import webbrowser
 import shlex
 import re
 import select
+import threading
+import queue
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from .auth import _auth_service
@@ -1956,6 +1958,7 @@ Examples:
         cmd: List[str],
         include_code_snapshot: bool = True,
         code_snapshot_dir: str = ".",
+        auto_confirm: bool = False,
     ) -> int:
         """Run a local command with capture and upload results as a job."""
         if not cmd:
@@ -1991,11 +1994,14 @@ Examples:
                 display_upload_preview(
                     preview_data, str(upload_dir_path), self.console, show_patterns=False
                 )
-                from rich.prompt import Confirm
+                if auto_confirm:
+                    proceed = True
+                else:
+                    from rich.prompt import Confirm
 
-                proceed = Confirm.ask(
-                    "\n🚀 Submit this capture?", default=True, console=self.console
-                )
+                    proceed = Confirm.ask(
+                        "\n🚀 Submit this capture?", default=True, console=self.console
+                    )
             else:
                 print("\n📦 Capture job")
                 print(f"📝 App name: {app_name or Path.cwd().name}")
@@ -2004,8 +2010,11 @@ Examples:
                 display_upload_preview(
                     preview_data, str(upload_dir_path), None, show_patterns=False
                 )
-                resp = input("\n🚀 Submit this capture? (Y/n): ").strip().lower()
-                proceed = (not resp) or (resp in ["y", "yes"])
+                if auto_confirm:
+                    proceed = True
+                else:
+                    resp = input("\n🚀 Submit this capture? (Y/n): ").strip().lower()
+                    proceed = (not resp) or (resp in ["y", "yes"])
 
             if not proceed:
                 if self.console and RICH_AVAILABLE:
@@ -2018,18 +2027,24 @@ Examples:
             if self.console and RICH_AVAILABLE:
                 from rich.prompt import Confirm
 
-                proceed = Confirm.ask(
-                    f"Run capture without uploading code?\n▶️  {display_cmd}",
-                    default=True,
-                    console=self.console,
-                )
+                if auto_confirm:
+                    proceed = True
+                else:
+                    proceed = Confirm.ask(
+                        f"Run capture without uploading code?\n▶️  {display_cmd}",
+                        default=True,
+                        console=self.console,
+                    )
             else:
-                resp = (
-                    input(f"Run capture without uploading code? (Y/n)\n▶️  {display_cmd}\n> ")
-                    .strip()
-                    .lower()
-                )
-                proceed = (not resp) or (resp in ["y", "yes"])
+                if auto_confirm:
+                    proceed = True
+                else:
+                    resp = (
+                        input(f"Run capture without uploading code? (Y/n)\n▶️  {display_cmd}\n> ")
+                        .strip()
+                        .lower()
+                    )
+                    proceed = (not resp) or (resp in ["y", "yes"])
             if not proceed:
                 print("❌ Submission cancelled by user.")
                 return 0
@@ -2325,6 +2340,7 @@ def main():
             open_browser = True
             include_code_snapshot = True
             code_snapshot_dir = "."
+            auto_confirm = False
             cmd: List[str] = []
 
             if "--" in sys.argv:
@@ -2342,6 +2358,13 @@ def main():
                     elif flags[i] == "--no-code-snapshot":
                         include_code_snapshot = False
                         i += 1
+                    elif flags[i] in ["--code-snapshot-dir", "-d"] and i + 1 < len(flags):
+                        code_snapshot_dir = flags[i + 1]
+                        include_code_snapshot = True
+                        i += 2
+                    elif flags[i] == "--auto-confirm":
+                        auto_confirm = True
+                        i += 1
                     else:
                         print(f"Unknown flag: {flags[i]}")
                         return 1
@@ -2358,6 +2381,13 @@ def main():
                         i += 1
                     elif tokens[i] == "--no-code-snapshot":
                         include_code_snapshot = False
+                        i += 1
+                    elif tokens[i] in ["--code-snapshot-dir", "-d"] and i + 1 < len(tokens):
+                        code_snapshot_dir = tokens[i + 1]
+                        include_code_snapshot = True
+                        i += 2
+                    elif tokens[i] == "--auto-confirm":
+                        auto_confirm = True
                         i += 1
                     else:
                         break
@@ -2486,6 +2516,7 @@ def main():
                 cmd=cmd,
                 include_code_snapshot=include_code_snapshot,
                 code_snapshot_dir=code_snapshot_dir,
+                auto_confirm=auto_confirm,
             )
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -2495,6 +2526,324 @@ def main():
     if sys.argv[1] == "run":
         command = sys.argv[2:]
         return cli.run_kandc_command(command)
+
+    # Sweep subcommand (local capture or cloud run across a folder of configs)
+    if sys.argv[1] == "sweep":
+        args = sys.argv[2:]
+        if not args:
+            print("❌ Usage: kandc sweep {capture|run} [options] -- [script-args...]")
+            return 1
+
+        mode = args[0]
+        if mode not in ("capture", "run"):
+            print("❌ Usage: kandc sweep {capture|run} [options] -- [script-args...]")
+            return 1
+
+        # Split flags from script args
+        if "--" in args:
+            sep = args.index("--")
+            sweep_flags = args[1:sep]
+            script_args = args[sep + 1 :]
+        else:
+            sweep_flags = args[1:]
+            script_args = []
+
+        # Parse sweep flags
+        parser = argparse.ArgumentParser(prog=f"kandc sweep {mode}")
+        parser.add_argument("--configs-dir", "-c", required=True)
+        parser.add_argument("--script", "-s", required=True)
+        parser.add_argument("--app-name", "-a", required=True, help="Shared app name for all runs")
+
+        if mode == "capture":
+            parser.add_argument("--gpus", default="0", help="Comma-separated GPU ids, e.g. 0,1,2")
+            parser.add_argument("--per-run-gpus", type=int, default=1, help="GPUs per run")
+            parser.add_argument("--no-open", action="store_true")
+            parser.add_argument("--no-code-snapshot", action="store_true")
+            parser.add_argument("--code-snapshot-dir", default=".", help="Directory to snapshot for upload")
+            parser.add_argument("--auto-confirm", action="store_true", help="Skip all interactive confirmations")
+            parser.add_argument("--tmux", action="store_true", help="Launch each job in a tmux window and auto-close when all finish")
+        else:
+            parser.add_argument("--gpu-type", default="A100-80GB:1")
+            parser.add_argument("--upload-dir", default=".")
+            parser.add_argument("--requirements", default="requirements.txt")
+
+        ns = parser.parse_args(sweep_flags)
+        configs_dir = Path(ns.configs_dir)
+        script_path = Path(ns.script)
+        shared_app = ns.app_name
+
+        def _list_cfgs(d: Path) -> List[Path]:
+            exts = {".yaml", ".yml", ".json"}
+            return sorted(p for p in d.glob("**/*") if p.suffix.lower() in exts)
+
+        cfgs = _list_cfgs(configs_dir)
+        if not cfgs:
+            print(f"❌ No configs found in {configs_dir}")
+            return 1
+
+        if mode == "capture":
+            # Local capture: schedule runs across GPUs using CUDA_VISIBLE_DEVICES
+            try:
+                gpu_ids = [int(x.strip()) for x in str(ns.gpus).split(",") if x.strip() != ""]
+            except ValueError:
+                print("❌ --gpus must be a comma-separated list of integers, e.g. 0,1,2")
+                return 1
+            per = max(1, int(ns.per_run_gpus))
+            if per > len(gpu_ids):
+                print("❌ --per-run-gpus cannot exceed number of provided GPUs")
+                return 1
+
+            # Optional tmux mode: one window per job, auto-attach and auto-close when all finish
+            if getattr(ns, "tmux", False):
+                import shutil, time, shlex
+
+                if shutil.which("tmux") is None:
+                    print("❌ tmux is not installed or not in PATH")
+                    return 1
+
+                # Build commands per config, assign GPUs round-robin
+                commands: List[str] = []
+                for idx, cfg in enumerate(cfgs):
+                    start = (idx * per) % len(gpu_ids)
+                    assigned = [str(gpu_ids[(start + j) % len(gpu_ids)]) for j in range(per)]
+                    reqs = ",".join(assigned)
+
+                    cmd_list: List[str] = [
+                        "kandc",
+                        "capture",
+                        "--app-name",
+                        shared_app,
+                    ]
+                    if ns.no_open:
+                        cmd_list.append("--no-open")
+                    if ns.no_code_snapshot:
+                        cmd_list.append("--no-code-snapshot")
+                    else:
+                        cmd_list += ["--code-snapshot-dir", ns.code_snapshot_dir]
+                    if ns.auto_confirm:
+                        cmd_list += ["--auto-confirm"]
+                    cmd_list += ["--", "python", str(script_path), "--config", str(cfg)]
+                    if script_args:
+                        cmd_list += script_args
+
+                    job_cmd = " ".join(shlex.quote(p) for p in cmd_list)
+                    # Wrapper that waits for GPU locks, prints waiting messages, sets CUDA_VISIBLE_DEVICES, then execs the job
+                    wrapper = (
+                        "bash -lc "
+                        + shlex.quote(
+                            "LOCK_DIR=\"$HOME/.kandc/gpu_locks\"; "
+                            "mkdir -p \"$LOCK_DIR\"; "
+                            f"REQS=\"{reqs}\"; "
+                            "IFS=',' read -r -a IDS <<< \"$REQS\"; "
+                            "acquired=(); "
+                            "while :; do "
+                            "ok=1; acquired=(); "
+                            "for id in \"${IDS[@]}\"; do lf=\"$LOCK_DIR/gpu_${id}.lock\"; if ln -s \"$$\" \"$lf\" 2>/dev/null; then acquired+=(\"$lf\"); else ok=0; fi; done; "
+                            "if [ \"$ok\" -eq 1 ]; then break; fi; "
+                            "for lf in \"${acquired[@]}\"; do rm -f \"$lf\"; done; "
+                            "echo '⏳ waiting for GPUs ['\"$REQS\"'] ...'; sleep 2; "
+                            "done; "
+                            "trap 'for lf in \"${acquired[@]}\"; do rm -f \"$lf\"; done' EXIT; "
+                            "export CUDA_VISIBLE_DEVICES=\"$REQS\"; "
+                            + job_cmd
+                        )
+                    )
+                    commands.append(wrapper)
+
+                # Create session name
+                import re
+                base_name = f"kandc-sweep-{shared_app}"
+                session_name = re.sub(r"[^A-Za-z0-9_-]", "-", base_name)[:60]
+
+                # If a previous session exists, kill it to avoid stale layouts
+                try:
+                    rc = subprocess.call(["tmux", "has-session", "-t", session_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if rc == 0:
+                        subprocess.call(["tmux", "kill-session", "-t", session_name])
+                except Exception:
+                    pass
+
+                # Create tmux session with first command in window 0, pane 0
+                first = commands[0]
+                try:
+                    rc = subprocess.call(["tmux", "new-session", "-d", "-s", session_name, first])
+                    if rc != 0:
+                        print("❌ Failed to create tmux session")
+                        return 1
+                except Exception as e:
+                    print(f"❌ tmux error: {e}")
+                    return 1
+
+                # Create split panes so all jobs are visible simultaneously in a single window
+                num_configs = len(commands)
+                if num_configs > 1:
+                    print(f"🎬 Creating tmux session '{session_name}' with {num_configs} jobs in a tiled pane layout")
+                    print("   All jobs will be visible simultaneously side-by-side!")
+
+                    for idx in range(1, num_configs):
+                        cmd_str = commands[idx]
+                        # Split the current window and start the command in the new pane
+                        # Target window 0 to keep all panes in the same window
+                        # Alternate split direction for better initial placement
+                        split_flag = "-h" if (idx % 2 == 1) else "-v"
+                        subprocess.call(["tmux", "split-window", split_flag, "-t", f"{session_name}:0", cmd_str])
+                        # After each split, re-tile to keep panes evenly arranged
+                        subprocess.call(["tmux", "select-layout", "-t", f"{session_name}:0", "tiled"])
+
+                    # Final layout pass
+                    subprocess.call(["tmux", "select-layout", "-t", f"{session_name}:0", "tiled"])
+                    print(f"✅ Tiled layout created with {num_configs} panes in one window")
+                else:
+                    print(f"🎬 Created tmux session '{session_name}' with 1 job")
+
+                # Background monitor to kill session when all panes are dead
+                def _monitor_tmux():
+                    while True:
+                        try:
+                            # Check if all panes in the session are dead
+                            out = subprocess.check_output(
+                                ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_dead}"],
+                                stderr=subprocess.DEVNULL,
+                            ).decode().strip().splitlines()
+                            
+                            if out and all(x.strip() == "1" for x in out):
+                                try:
+                                    subprocess.call(["tmux", "kill-session", "-t", session_name])
+                                    print(f"✅ All jobs completed, tmux session '{session_name}' closed")
+                                except Exception:
+                                    pass
+                                break
+                        except Exception:
+                            break
+                        time.sleep(1.0)
+
+                t = threading.Thread(target=_monitor_tmux, daemon=True)
+                t.start()
+
+                # Attach to the session
+                try:
+                    print(f"🔗 Attaching to tmux session '{session_name}'...")
+                    print("   All jobs are now visible simultaneously in split panes!")
+                    print("   Session will auto-close when all jobs finish")
+                    subprocess.call(["tmux", "attach-session", "-t", session_name])
+                except Exception as e:
+                    print(f"⚠️  tmux attach failed: {e}")
+                return 0
+
+            class _GpuPool:
+                def __init__(self, ids: List[int], per_run: int):
+                    self._pool = ids[:]
+                    self._per = per_run
+                    self._cv = threading.Condition()
+
+                def acquire(self) -> List[int]:
+                    with self._cv:
+                        while len(self._pool) < self._per:
+                            self._cv.wait()
+                        out = [self._pool.pop(0) for _ in range(self._per)]
+                        return out
+
+                def release(self, ids: List[int]):
+                    with self._cv:
+                        self._pool.extend(ids)
+                        self._cv.notify_all()
+
+            pool = _GpuPool(gpu_ids, per)
+            q: "queue.Queue[Path | None]" = queue.Queue()
+            for c in cfgs:
+                q.put(c)
+
+            def _worker():
+                while True:
+                    item = q.get()
+                    if item is None:
+                        break
+                    cfg = item
+                    g = pool.acquire()
+                    try:
+                        env = os.environ.copy()
+                        env["CUDA_VISIBLE_DEVICES"] = ",".join(str(x) for x in g)
+                        cmd = [
+                            "kandc",
+                            "capture",
+                            "--app-name",
+                            shared_app,
+                        ]
+                        if ns.no_open:
+                            cmd.append("--no-open")
+                        if ns.no_code_snapshot:
+                            cmd.append("--no-code-snapshot")
+                        else:
+                            # pass snapshot dir through when uploading code
+                            cmd += ["--code-snapshot-dir", ns.code_snapshot_dir]
+                        if ns.auto_confirm:
+                            cmd += ["--auto-confirm"]
+                        cmd += ["--", "python", str(script_path), "--config", str(cfg)]
+                        if script_args:
+                            cmd += script_args
+                        try:
+                            rc = subprocess.call(cmd, env=env)
+                        except Exception:
+                            rc = 1
+                        status = "ok" if rc == 0 else f"fail({rc})"
+                        print(f"[sweep] {cfg.name} on GPUs {g} → {status}")
+                    finally:
+                        pool.release(g)
+                        q.task_done()
+
+            # Start workers based on available capacity
+            max_workers = max(1, len(gpu_ids) // per)
+            threads: List[threading.Thread] = []
+            for _ in range(max_workers):
+                t = threading.Thread(target=_worker, daemon=True)
+                t.start()
+                threads.append(t)
+
+            q.join()
+            for _ in threads:
+                q.put(None)
+            for t in threads:
+                t.join()
+            return 0
+
+        # mode == "run": cloud submissions
+        upload_dir = Path(ns.upload_dir).resolve()
+        script_abs = script_path.resolve()
+        try:
+            script_rel = str(script_abs.relative_to(upload_dir))
+        except ValueError:
+            print(f"❌ Script {script_abs} is not inside upload_dir {upload_dir}")
+            return 1
+
+        failures = 0
+        for cfg in cfgs:
+            cmd = [
+                "kandc",
+                "run",
+                "--app-name",
+                shared_app,
+                "--gpu",
+                ns.gpu_type,
+                "--upload-dir",
+                str(upload_dir),
+                "--requirements",
+                str(ns.requirements),
+                "--",
+                "python",
+                script_rel,
+                "--config",
+                str(cfg),
+            ]
+            if script_args:
+                cmd += script_args
+            try:
+                rc = subprocess.call(cmd, env=os.environ.copy())
+            except Exception:
+                rc = 1
+            if rc != 0:
+                failures += 1
+        print(f"[sweep] run complete. failures={failures}, total={len(cfgs)}")
+        return 0 if failures == 0 else 1
 
     # Friendly guidance for common mistakes
     if sys.argv[1] == "python" or sys.argv[1].endswith(".py"):
@@ -2508,4 +2857,5 @@ def main():
     print(
         "  kandc capture [--app-name NAME] [--no-open] [--no-code-snapshot] -- <command> [args...]"
     )
+    print("  kandc sweep {capture|run} [options] -- [script-args...]")
     return 1

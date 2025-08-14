@@ -17,7 +17,7 @@ training_loss.png
 *.o
 *.a
 build/
-
+ka
 # Exclude logs and temporary files
 *.log
 *.tmp

@@ -1,0 +1,10 @@
+{
+    "model_size": "large",
+    "batch_size": 128,
+    "warmup": 10,
+    "repeats": 50,
+    "tasks": [
+        "cnn",
+        "matmul"
+    ]
+}
