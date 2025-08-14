@@ -1647,6 +1647,7 @@ Examples:
             headers = {"Authorization": f"Bearer {api_key}"}
             files = {"file": ("src.tar.gz", open(tar_path, "rb"), "application/gzip")}
             data = {
+                "kandc_version": __version__,  # noqa: F821
                 "script_path": script_path,
                 "app_name": app_name,
                 "pip_packages": ",".join(MINIMUM_PACKAGES),
@@ -2022,6 +2023,7 @@ Examples:
                 else:
                     print("❌ Submission cancelled by user.")
                 return 0
+            # Code snapshot upload will happen after job initialization
         else:
             # No code snapshot; still confirm running the command
             if self.console and RICH_AVAILABLE:
@@ -2141,60 +2143,7 @@ Examples:
             pass
 
         # Run subprocess streaming stdout/stderr and tee to files
-        try:
-            with open(stdout_path, "wb") as out_f, open(stderr_path, "wb") as err_f:
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=env,
-                )
-                assert process.stdout and process.stderr
-
-                out_fd = process.stdout.fileno()
-                err_fd = process.stderr.fileno()
-                fds_open = {out_fd: (sys.stdout.buffer, out_f), err_fd: (sys.stderr.buffer, err_f)}
-
-                # Read available data from either stream as it arrives
-                while fds_open:
-                    readable, _, _ = select.select(list(fds_open.keys()), [], [], 0.1)
-                    if not readable:
-                        # Check for process exit to avoid busy wait
-                        if process.poll() is not None and not readable:
-                            # Drain any remaining data
-                            readable = list(fds_open.keys())
-                        else:
-                            continue
-                    for fd in list(readable):
-                        try:
-                            chunk = os.read(fd, 8192)
-                        except Exception:
-                            chunk = b""
-                        if chunk:
-                            stream, file_handle = fds_open[fd]
-                            try:
-                                stream.write(chunk)
-                                stream.flush()
-                            except Exception:
-                                # Fallback to text write if needed
-                                try:
-                                    stream.write(chunk.decode(errors="replace"))
-                                    stream.flush()
-                                except Exception:
-                                    pass
-                            try:
-                                file_handle.write(chunk)
-                                file_handle.flush()
-                            except Exception:
-                                pass
-                        else:
-                            # EOF on this fd
-                            fds_open.pop(fd, None)
-
-                exit_code = process.poll() or 0
-        except Exception as e:
-            print(f"❌ Failed to run command: {e}")
-            exit_code = 1
+        exit_code = self.run_command_safely(cmd, env, stdout_path, stderr_path)
 
         # Create outputs tar.gz
         try:
@@ -2253,6 +2202,79 @@ Examples:
         if visit_url:
             print(f"🔗 Visit: {visit_url}")
         return exit_code
+
+    def run_command_safely(self, cmd, env, stdout_path, stderr_path):
+        """Safe subprocess execution with proper stream handling"""
+        try:
+            with open(stdout_path, "wb") as out_f, open(stderr_path, "wb") as err_f:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    bufsize=0,  # Unbuffered
+                )
+
+                # Use the pipe objects directly instead of file descriptors
+                pipes = {
+                    process.stdout: (sys.stdout.buffer, out_f),
+                    process.stderr: (sys.stderr.buffer, err_f),
+                }
+
+                # Read from pipes safely
+                while pipes and process.poll() is None:
+                    readable, _, _ = select.select(list(pipes.keys()), [], [], 0.1)
+
+                    for pipe in readable:
+                        try:
+                            chunk = pipe.read(8192)
+                            if chunk:
+                                stream, file_handle = pipes[pipe]
+                                try:
+                                    stream.write(chunk)
+                                    stream.flush()
+                                except (OSError, IOError):
+                                    pass
+                                try:
+                                    file_handle.write(chunk)
+                                    file_handle.flush()
+                                except (OSError, IOError):
+                                    pass
+                            else:
+                                # EOF on this pipe
+                                pipes.pop(pipe, None)
+                        except (OSError, IOError, ValueError):
+                            # Pipe closed or invalid
+                            pipes.pop(pipe, None)
+
+                # Drain any remaining output
+                for pipe in list(pipes.keys()):
+                    try:
+                        while True:
+                            chunk = pipe.read(8192)
+                            if not chunk:
+                                break
+                            stream, file_handle = pipes[pipe]
+                            try:
+                                stream.write(chunk)
+                                stream.flush()
+                            except (OSError, IOError):
+                                pass
+                            try:
+                                file_handle.write(chunk)
+                                file_handle.flush()
+                            except (OSError, IOError):
+                                pass
+                    except (OSError, IOError, ValueError):
+                        pass
+
+                # Wait for process to complete
+                exit_code = process.wait()
+                return exit_code
+
+        except Exception as e:
+            print(f"❌ Failed to run command: {e}")
+            return 1
 
 
 def main():
