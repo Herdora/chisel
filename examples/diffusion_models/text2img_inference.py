@@ -22,7 +22,7 @@ from typing import Dict
 
 import torch
 from PIL import Image
-from kandc import timed_call, ArtifactDir
+from kandc import timed_call
 
 
 def _build_scheduler(scheduler_name: str, pipeline):
@@ -122,21 +122,7 @@ def run_from_config(cfg: Dict):
     generator = generator.manual_seed(seed)
 
     images = []
-    # Prepare asset uploads (if running under kandc capture/run, this will write to assets/)
-    artifacts = ArtifactDir()
-    remote_base = f"diffusion/{run_name}"
-
-    def _assets_write_png(local_path: str) -> None:
-        try:
-            with open(local_path, "rb") as f:
-                artifacts.write_bytes(
-                    f"{remote_base}/{os.path.basename(local_path)}",
-                    f.read(),
-                    content_type="image/png",
-                )
-        except Exception as e:
-            # Skip silently if not in a kandc job environment
-            print(f"[assets] skip uploading {local_path}: {e}")
+    # Assets upload removed; files are saved locally only
 
     for i in range(num_images):
         t0 = time.perf_counter()
@@ -156,31 +142,22 @@ def run_from_config(cfg: Dict):
         img = out.images[0]
         images.append(img)
         path = save_image(img, out_dir, stem="sample", idx=i)
-        _assets_write_png(path)
         print(f"saved: {path} ({dt * 1000:.1f} ms)")
 
-    # Save the resolved config used (locally and to assets if available)
+    # Save the resolved config used (locally)
     config_local_path = os.path.join(out_dir, "config_used.json")
     with open(config_local_path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
-    try:
-        artifacts.save_json(f"{remote_base}/config_used.json", cfg)
-    except Exception as e:
-        print(f"[assets] skip uploading config_used.json: {e}")
 
-    # Save a simple manifest for the Assets tab
-    try:
-        manifest = {
-            "run_name": run_name,
-            "model_id": model_id,
-            "num_images": len(images),
-            "images": sorted([fn for fn in os.listdir(out_dir) if fn.lower().endswith(".png")]),
-        }
-        with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=2)
-        artifacts.save_json(f"{remote_base}/manifest.json", manifest)
-    except Exception as e:
-        print(f"[assets] skip uploading manifest.json: {e}")
+    # Save a simple manifest locally
+    manifest = {
+        "run_name": run_name,
+        "model_id": model_id,
+        "num_images": len(images),
+        "images": sorted([fn for fn in os.listdir(out_dir) if fn.lower().endswith(".png")]),
+    }
+    with open(os.path.join(out_dir, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
 
     print("✅ Done.")
     print(f"🖼️  Wrote {len(images)} images to: {out_dir}")
