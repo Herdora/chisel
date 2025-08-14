@@ -122,7 +122,6 @@ def run_from_config(cfg: Dict):
     generator = generator.manual_seed(seed)
 
     images = []
-    # Assets upload removed; files are saved locally only
 
     for i in range(num_images):
         t0 = time.perf_counter()

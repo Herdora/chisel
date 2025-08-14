@@ -1,0 +1,14 @@
+{
+  "run_name": "sd15_kdpm2a_18_g13_640",
+  "model_id": "runwayml/stable-diffusion-v1-5",
+  "prompt": "A serene alpine lake at sunrise, ultra realistic, 35mm, high detail, golden hour",
+  "negative_prompt": "blurry, low quality, deformed, watermark",
+  "scheduler": "k-dpm2-a",
+  "num_inference_steps": 60,
+  "guidance_scale": 14.0,
+  "width": 512,
+  "height": 512,
+  "num_images": 4,
+  "seed": 12345,
+  "output_dir": "outputs/diffusion"
+}

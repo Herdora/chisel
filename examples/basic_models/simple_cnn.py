@@ -9,6 +9,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from kandc import capture_model_class, timed, timed_call
 
 
@@ -41,18 +42,14 @@ class SimpleCNN(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.dropout = nn.Dropout(0.5)
 
-        # Calculate the size for the first linear layer
-        # For 32x32 input: after 3 pooling operations -> 4x4x128
         self.fc1 = nn.Linear(128 * 4 * 4, 512)
         self.fc2 = nn.Linear(512, num_classes)
 
     def forward(self, x):
-        # Convolutional layers with ReLU and pooling
         x = self.pool(F.relu(self.conv1(x)))  # 32x32 -> 16x16
         x = self.pool(F.relu(self.conv2(x)))  # 16x16 -> 8x8
         x = self.pool(F.relu(self.conv3(x)))  # 8x8 -> 4x4
 
-        # Flatten for fully connected layers
         x = x.view(-1, 128 * 4 * 4)
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
@@ -63,7 +60,6 @@ class SimpleCNN(nn.Module):
 
 def another_function(a, b, c=3, d=4):
     print("Hello, world!")
-    # sleep a random amount of time
     print(f"a: {a}, b: {b}, c: {c}, d: {d}")
     adding = (a + b + c + d) / 1000
     time.sleep(random.random() + adding)

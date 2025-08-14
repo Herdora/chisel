@@ -2651,7 +2651,7 @@ def main():
                     commands.append(wrapper)
 
                 # Create session name
-                import re, os
+                import re
                 base_name = f"kandc-sweep-{shared_app}"
                 session_name = re.sub(r"[^A-Za-z0-9_-]", "-", base_name)[:60]
 

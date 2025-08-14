@@ -1,0 +1,14 @@
+{
+  "run_name": "sd15_heun_36_g8_768",
+  "model_id": "runwayml/stable-diffusion-v1-5",
+  "prompt": "A serene alpine lake at sunrise, ultra realistic, 35mm, high detail, golden hour",
+  "negative_prompt": "blurry, low quality, deformed, watermark",
+  "scheduler": "heun",
+  "num_inference_steps": 24,
+  "guidance_scale": 7.5,
+  "width": 512,
+  "height": 512,
+  "num_images": 4,
+  "seed": 12345,
+  "output_dir": "outputs/diffusion"
+}
