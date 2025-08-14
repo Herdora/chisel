@@ -2099,6 +2099,26 @@ Examples:
         # Ensure Python subprocesses flush output immediately for real-time streaming
         env["PYTHONUNBUFFERED"] = "1"
 
+        # Upload code snapshot if enabled
+        if include_code_snapshot and job_id:
+            try:
+                snapshot_path = self.create_code_snapshot(Path(code_snapshot_dir))
+                if snapshot_path:
+                    success = self.upload_code_snapshot(job_id, snapshot_path, api_key)
+                    # Clean up snapshot file
+                    try:
+                        os.unlink(snapshot_path)
+                    except OSError:
+                        pass
+            except Exception as e:
+                if RICH_AVAILABLE:
+                    self.console.print(
+                        f"⚠️  Code snapshot failed (job still running): {e}",
+                        style="yellow",
+                    )
+                else:
+                    print(f"⚠️  Code snapshot failed (job still running): {e}")
+
         # Show start information
         print(
             f"▶️  Starting: {display_cmd}\n"
@@ -2216,26 +2236,6 @@ Examples:
             comp_resp.raise_for_status()
         except Exception as e:
             print(f"⚠️  Failed to finalize job: {e}")
-
-        # Upload code snapshot if enabled
-        if include_code_snapshot and job_id:
-            try:
-                snapshot_path = self.create_code_snapshot(Path(code_snapshot_dir))
-                if snapshot_path:
-                    success = self.upload_code_snapshot(job_id, snapshot_path, api_key)
-                    # Clean up snapshot file
-                    try:
-                        os.unlink(snapshot_path)
-                    except OSError:
-                        pass
-            except Exception as e:
-                if RICH_AVAILABLE:
-                    self.console.print(
-                        f"⚠️  Code snapshot failed (job still running): {e}",
-                        style="yellow",
-                    )
-                else:
-                    print(f"⚠️  Code snapshot failed (job still running): {e}")
 
         # Open URL
         if visit_url and open_browser:
@@ -2559,9 +2559,17 @@ def main():
             parser.add_argument("--per-run-gpus", type=int, default=1, help="GPUs per run")
             parser.add_argument("--no-open", action="store_true")
             parser.add_argument("--no-code-snapshot", action="store_true")
-            parser.add_argument("--code-snapshot-dir", default=".", help="Directory to snapshot for upload")
-            parser.add_argument("--auto-confirm", action="store_true", help="Skip all interactive confirmations")
-            parser.add_argument("--tmux", action="store_true", help="Launch each job in a tmux window and auto-close when all finish")
+            parser.add_argument(
+                "--code-snapshot-dir", default=".", help="Directory to snapshot for upload"
+            )
+            parser.add_argument(
+                "--auto-confirm", action="store_true", help="Skip all interactive confirmations"
+            )
+            parser.add_argument(
+                "--tmux",
+                action="store_true",
+                help="Launch each job in a tmux window and auto-close when all finish",
+            )
         else:
             parser.add_argument("--gpu-type", default="A100-80GB:1")
             parser.add_argument("--upload-dir", default=".")
@@ -2628,36 +2636,37 @@ def main():
 
                     job_cmd = " ".join(shlex.quote(p) for p in cmd_list)
                     # Wrapper that waits for GPU locks, prints waiting messages, sets CUDA_VISIBLE_DEVICES, then execs the job
-                    wrapper = (
-                        "bash -lc "
-                        + shlex.quote(
-                            "LOCK_DIR=\"$HOME/.kandc/gpu_locks\"; "
-                            "mkdir -p \"$LOCK_DIR\"; "
-                            f"REQS=\"{reqs}\"; "
-                            "IFS=',' read -r -a IDS <<< \"$REQS\"; "
-                            "acquired=(); "
-                            "while :; do "
-                            "ok=1; acquired=(); "
-                            "for id in \"${IDS[@]}\"; do lf=\"$LOCK_DIR/gpu_${id}.lock\"; if ln -s \"$$\" \"$lf\" 2>/dev/null; then acquired+=(\"$lf\"); else ok=0; fi; done; "
-                            "if [ \"$ok\" -eq 1 ]; then break; fi; "
-                            "for lf in \"${acquired[@]}\"; do rm -f \"$lf\"; done; "
-                            "echo '⏳ waiting for GPUs ['\"$REQS\"'] ...'; sleep 2; "
-                            "done; "
-                            "trap 'for lf in \"${acquired[@]}\"; do rm -f \"$lf\"; done' EXIT; "
-                            "export CUDA_VISIBLE_DEVICES=\"$REQS\"; "
-                            + job_cmd
-                        )
+                    wrapper = "bash -lc " + shlex.quote(
+                        'LOCK_DIR="$HOME/.kandc/gpu_locks"; '
+                        'mkdir -p "$LOCK_DIR"; '
+                        f'REQS="{reqs}"; '
+                        "IFS=',' read -r -a IDS <<< \"$REQS\"; "
+                        "acquired=(); "
+                        "while :; do "
+                        "ok=1; acquired=(); "
+                        'for id in "${IDS[@]}"; do lf="$LOCK_DIR/gpu_${id}.lock"; if ln -s "$$" "$lf" 2>/dev/null; then acquired+=("$lf"); else ok=0; fi; done; '
+                        'if [ "$ok" -eq 1 ]; then break; fi; '
+                        'for lf in "${acquired[@]}"; do rm -f "$lf"; done; '
+                        "echo '⏳ waiting for GPUs ['\"$REQS\"'] ...'; sleep 2; "
+                        "done; "
+                        'trap \'for lf in "${acquired[@]}"; do rm -f "$lf"; done\' EXIT; '
+                        'export CUDA_VISIBLE_DEVICES="$REQS"; ' + job_cmd
                     )
                     commands.append(wrapper)
 
                 # Create session name
                 import re
+
                 base_name = f"kandc-sweep-{shared_app}"
                 session_name = re.sub(r"[^A-Za-z0-9_-]", "-", base_name)[:60]
 
                 # If a previous session exists, kill it to avoid stale layouts
                 try:
-                    rc = subprocess.call(["tmux", "has-session", "-t", session_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    rc = subprocess.call(
+                        ["tmux", "has-session", "-t", session_name],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                     if rc == 0:
                         subprocess.call(["tmux", "kill-session", "-t", session_name])
                 except Exception:
@@ -2677,7 +2686,9 @@ def main():
                 # Create split panes so all jobs are visible simultaneously in a single window
                 num_configs = len(commands)
                 if num_configs > 1:
-                    print(f"🎬 Creating tmux session '{session_name}' with {num_configs} jobs in a tiled pane layout")
+                    print(
+                        f"🎬 Creating tmux session '{session_name}' with {num_configs} jobs in a tiled pane layout"
+                    )
                     print("   All jobs will be visible simultaneously side-by-side!")
 
                     for idx in range(1, num_configs):
@@ -2686,9 +2697,13 @@ def main():
                         # Target window 0 to keep all panes in the same window
                         # Alternate split direction for better initial placement
                         split_flag = "-h" if (idx % 2 == 1) else "-v"
-                        subprocess.call(["tmux", "split-window", split_flag, "-t", f"{session_name}:0", cmd_str])
+                        subprocess.call(
+                            ["tmux", "split-window", split_flag, "-t", f"{session_name}:0", cmd_str]
+                        )
                         # After each split, re-tile to keep panes evenly arranged
-                        subprocess.call(["tmux", "select-layout", "-t", f"{session_name}:0", "tiled"])
+                        subprocess.call(
+                            ["tmux", "select-layout", "-t", f"{session_name}:0", "tiled"]
+                        )
 
                     # Final layout pass
                     subprocess.call(["tmux", "select-layout", "-t", f"{session_name}:0", "tiled"])
@@ -2701,15 +2716,29 @@ def main():
                     while True:
                         try:
                             # Check if all panes in the session are dead
-                            out = subprocess.check_output(
-                                ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_dead}"],
-                                stderr=subprocess.DEVNULL,
-                            ).decode().strip().splitlines()
-                            
+                            out = (
+                                subprocess.check_output(
+                                    [
+                                        "tmux",
+                                        "list-panes",
+                                        "-t",
+                                        session_name,
+                                        "-F",
+                                        "#{pane_dead}",
+                                    ],
+                                    stderr=subprocess.DEVNULL,
+                                )
+                                .decode()
+                                .strip()
+                                .splitlines()
+                            )
+
                             if out and all(x.strip() == "1" for x in out):
                                 try:
                                     subprocess.call(["tmux", "kill-session", "-t", session_name])
-                                    print(f"✅ All jobs completed, tmux session '{session_name}' closed")
+                                    print(
+                                        f"✅ All jobs completed, tmux session '{session_name}' closed"
+                                    )
                                 except Exception:
                                     pass
                                 break
