@@ -9,8 +9,6 @@
   />
 </p>
 
-<br><br>
-
 
 Welcome to **Keys & Caches** — the fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.
 
