@@ -1,6 +1,6 @@
 # Keys & Caches
 
-![Keys & Caches Banner](assets/banner.png)
+<img width="1024" height="1024" alt="ChatGPT Image Aug 14, 2025, 11_59_07 PM" src="https://github.com/user-attachments/assets/8d731ffe-570f-4d72-8fab-cb1ce93cb370" />
 
 Welcome to **Keys & Caches** — the fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.
 
