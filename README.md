@@ -1,5 +1,6 @@
+<div align="center"><h1>Keys & Caches</h1></div>
+
 <p align="center">
-  <h1>Keys & Caches</h1>
   <img 
     width="256" 
     height="256" 
@@ -7,6 +8,18 @@
     src="https://github.com/user-attachments/assets/8d731ffe-570f-4d72-8fab-cb1ce93cb370" 
   />
 </p>
+
+<p align="center">
+  <img 
+    width="256" 
+    height="256" 
+    alt="ChatGPT Image Aug 14, 2025, 11_59_07 PM" 
+    src="https://github.com/user-attachments/assets/8d731ffe-570f-4d72-8fab-cb1ce93cb370" 
+  />
+</p>
+
+<br><br>
+
 
 
 Welcome to **Keys & Caches** — the fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.
