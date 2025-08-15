@@ -1,6 +1,5 @@
-# Keys & Caches
-
 <p align="center">
+  <h1>Keys & Caches</h1>
   <img 
     width="256" 
     height="256" 
