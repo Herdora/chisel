@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kandc"
-version = "0.0.14"
+version = "0.0.16"
 description = "Keys & Caches CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
 license = {text = "MIT"}
@@ -25,8 +25,6 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
     "requests>=2.25.0",
-    "click>=8.0.0",
-    "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]

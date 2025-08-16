@@ -1,9 +1,0 @@
-{
-    "model_size": "small",
-    "batch_size": 4,
-    "warmup": 1,
-    "repeats": 5,
-    "tasks": [
-        "mlp"
-    ]
-}

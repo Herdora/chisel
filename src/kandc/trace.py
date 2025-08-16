@@ -45,12 +45,14 @@ def capture_trace(
 
     def decorator(fn: Callable) -> Callable:
         # Check if we're running on the Keys & Caches backend
-
         if os.environ.get(KANDC_BACKEND_RUN_ENV_KEY) != "1":
             # Running locally - return original function
             return fn
 
-        assert os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY), "Keys & Caches app name is not set"
+        # Ensure we have required environment variables
+        if not os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY):
+            print("⚠️  Keys & Caches not initialized. Call kandc.init() first.")
+            return fn
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
             return _execute_with_trace(
@@ -99,7 +101,10 @@ def capture_model_instance(
         # Running locally - return original model instance
         return model_instance
 
-    assert os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY), "Keys & Caches app name is not set"
+    # Ensure we have required environment variables
+    if not os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY):
+        print("⚠️  Keys & Caches not initialized. Call kandc.init() first.")
+        return model_instance
 
     # Store the original forward method
     original_forward = model_instance.forward
@@ -142,8 +147,8 @@ def capture_model_instance(
             record_shapes,
             profile_memory,
         )
-    except Exception as _wrap_err:
-        print(f"⚠️  Failed to install fallback method wrappers: {_wrap_err}")
+    except Exception:
+        pass
 
     return model_instance
 
@@ -186,7 +191,10 @@ def capture_model_class(
             # Running locally - return original model
             return model
 
-        assert os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY), "Keys & Caches app name is not set"
+        # Ensure we have required environment variables
+        if not os.environ.get(KANDC_BACKEND_APP_NAME_ENV_KEY):
+            print("⚠️  Keys & Caches not initialized. Call kandc.init() first.")
+            return model
 
         # Create a wrapper class that inherits from the original model
         class ProfiledModel(model):
@@ -222,8 +230,8 @@ def capture_model_class(
                     record_shapes,
                     profile_memory,
                 )
-            except Exception as _wrap_err:
-                print(f"⚠️  Failed to install fallback method wrappers on class: {_wrap_err}")
+            except Exception:
+                pass
 
         ProfiledModel.__init__ = __init_with_wrappers  # type: ignore[method-assign]
 
@@ -276,7 +284,34 @@ def _execute_with_trace(
     trace_file = job_trace_dir / f"{trace_name}.json"
     prof.export_chrome_trace(str(trace_file))
 
-    print(f"💾 [capture_trace] {fn.__name__} → {trace_name}.json")
+    # Upload trace file as artifact to backend
+    try:
+        from .init import _current_run
+
+        if (
+            _current_run
+            and hasattr(_current_run, "_api_client")
+            and hasattr(_current_run, "_run_data")
+        ):
+            if _current_run._api_client and _current_run._run_data:
+                artifact_data = {
+                    "name": f"{trace_name}.json",
+                    "artifact_type": "trace",
+                    "file_size": trace_file.stat().st_size,
+                    "metadata": {
+                        "function_name": fn.__name__,
+                        "trace_name": trace_name,
+                        "record_shapes": record_shapes,
+                        "profile_memory": profile_memory,
+                        "trace_format": "chrome_trace",
+                    },
+                }
+                _current_run._api_client.create_artifact(
+                    _current_run._run_data["id"], artifact_data, str(trace_file)
+                )
+    except Exception:
+        # Don't fail the function if upload fails
+        pass
 
     return result
 
@@ -341,12 +376,38 @@ def _execute_model_forward(
             str(trace_file),
             kandc_io={"inputs": _inputs_summary, "outputs": _outputs_summary},
         )
-    except Exception as _inject_err:
-        print(f"⚠️  Failed to inject kandc_io into trace: {_inject_err}")
+    except Exception:
+        pass
 
-    print(
-        f"💾 [capture_model] {model_name} forward pass #{model._trace_counter} → {trace_name}.json"
-    )
+    # Upload trace file as artifact to backend
+    try:
+        from .init import _current_run
+
+        if (
+            _current_run
+            and hasattr(_current_run, "_api_client")
+            and hasattr(_current_run, "_run_data")
+        ):
+            if _current_run._api_client and _current_run._run_data:
+                artifact_data = {
+                    "name": f"{trace_name}.json",
+                    "artifact_type": "trace",
+                    "file_size": trace_file.stat().st_size,
+                    "metadata": {
+                        "model_name": model_name,
+                        "method_name": "forward",
+                        "trace_counter": model._trace_counter,
+                        "record_shapes": record_shapes,
+                        "profile_memory": profile_memory,
+                        "trace_format": "chrome_trace",
+                    },
+                }
+                _current_run._api_client.create_artifact(
+                    _current_run._run_data["id"], artifact_data, str(trace_file)
+                )
+    except Exception:
+        # Don't fail the function if upload fails
+        pass
 
     return result
 
@@ -417,10 +478,39 @@ def _execute_model_method(
             str(trace_file),
             kandc_io={"inputs": _inputs_summary, "outputs": _outputs_summary},
         )
-    except Exception as _inject_err:
-        print(f"⚠️  Failed to inject kandc_io into trace: {_inject_err}")
+    except Exception:
+        pass
 
-    print(f"💾 [capture_model] {model_name}.{method_name} #{current} → {trace_name}.json")
+    # Upload trace file as artifact to backend
+    try:
+        from .init import _current_run
+
+        if (
+            _current_run
+            and hasattr(_current_run, "_api_client")
+            and hasattr(_current_run, "_run_data")
+        ):
+            if _current_run._api_client and _current_run._run_data:
+                artifact_data = {
+                    "name": f"{trace_name}.json",
+                    "artifact_type": "trace",
+                    "file_size": trace_file.stat().st_size,
+                    "metadata": {
+                        "model_name": model_name,
+                        "method_name": method_name,
+                        "trace_counter": current,
+                        "record_shapes": record_shapes,
+                        "profile_memory": profile_memory,
+                        "trace_format": "chrome_trace",
+                    },
+                }
+                _current_run._api_client.create_artifact(
+                    _current_run._run_data["id"], artifact_data, str(trace_file)
+                )
+    except Exception as e:
+        # Don't fail the function if upload fails
+        pass
+
     return result
 
 

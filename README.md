@@ -1,95 +1,150 @@
-<div align="center"><h1>Keys & Caches</h1></div>
+# Keys & Caches
 
-<p align="center">
-  <img 
-    width="256" 
-    height="256" 
-    alt="ChatGPT Image Aug 14, 2025, 11_59_07 PM" 
-    src="https://github.com/user-attachments/assets/8d731ffe-570f-4d72-8fab-cb1ce93cb370" 
-  />
-</p>
+![Keys & Caches Banner](assets/banner.png)
 
-<br><br>
-
-
-
-Welcome to **Keys & Caches** — the fastest way to run PyTorch models on cloud GPUs with automatic profiling and performance insights.
-
----
-
-## 📚 Documentation Overview
-
-This documentation will help you get started with Keys & Caches and make the most of its powerful features for GPU-accelerated machine learning.
+A Python library for experiment tracking and machine learning workflow management.
 
 ---
 
 ## What is Keys & Caches?
 
-Keys & Caches is a command-line tool that makes it effortless to run PyTorch models on high-performance cloud GPUs. With just one command, you can:
+Keys & Caches is a Python library that provides experiment tracking and workflow management for machine learning projects. With a simple API, you can:
 
-* 🚀 **Submit jobs to cloud GPUs** — Access A100, H100, and L4 GPUs instantly
-* 📊 **Get automatic profiling** — Detailed performance traces for every model forward pass
-* 🔍 **Debug performance bottlenecks** — Chrome trace format for visual analysis
-* ⚡ **Stream real-time logs** — Watch your training progress live
-* 💰 **Pay only for what you use** — No idle time charges
+* 📊 **Track experiments** — Automatically log metrics and hyperparameters
+* 🌐 **Cloud dashboard** — Real-time visualization of your experiments
+* 🏷️ **Organize projects** — Group related experiments together
+* 🎯 **Zero-overhead when disabled** — Tracking only activates when initialized
+
+---
+
+## Installation
+
+```bash
+pip install kandc
+```
+
+---
+
+## Quick Start
+
+```python
+import kandc
+import torch
+import torch.nn as nn
+
+class SimpleNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(784, 128),
+            nn.ReLU(),
+            nn.Linear(128, 10),
+        )
+
+    def forward(self, x):
+        return self.layers(x)
+
+def main():
+    # Initialize experiment tracking
+    kandc.init(
+        project="my-project",
+        name="experiment-1",
+        config={"batch_size": 32, "learning_rate": 0.01}
+    )
+
+    # Your training/inference code
+    model = SimpleNet()
+    data = torch.randn(32, 784)
+    output = model(data)
+    loss = output.mean()
+
+    # Finish the run
+    kandc.finish()
+
+if __name__ == "__main__":
+    main()
+```
 
 ---
 
 ## Key Features
 
-### 🎯 One-Command Deployment
-
-```bash
-cd examples
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run any PyTorch script on cloud GPUs
-kandc run python basic_models/simple_cnn.py
-
-# Or capture locally with profiling
-kandc capture python basic_models/simple_cnn.py
-```
-
----
-
-### 📈 Automatic Model Profiling
+### 🎯 Simple Initialization
 
 ```python
-from kandc import capture_model_class
-
-@capture_model_class(model_name="MyModel")
-class MyModel(nn.Module):
-    # Your model automatically gets profiled!
+kandc.init(
+    project="my-ml-project",
+    name="experiment-1",
+    config={
+        "learning_rate": 0.001,
+        "batch_size": 32,
+        "model": "resnet18",
+    }
+)
 ```
 
-### 🎓 Students & Educators
+### 📊 Metrics Logging
 
-* Email us at **[founders@herdora.com](mailto:founders@herdora.com)** for free credits!
-* Access high-end GPUs for coursework and research
-* Learn about model optimization with built-in profiling tools
-* Focus on ML concepts, not DevOps complexity
+```python
+# Log single or multiple metrics
+kandc.log({"loss": 0.25, "accuracy": 0.92})
 
-### 🚀 Startups & Small Teams
+# Log with step numbers for training loops
+for epoch in range(100):
+    loss = train_epoch()
+    kandc.log({"epoch_loss": loss}, step=epoch)
+```
 
-* Get enterprise-grade GPU access without upfront costs
-* Scale compute resources based on actual needs
-* Streamline ML workflows from development to production
+### 🌐 Multiple Modes
+
+```python
+# Online mode (default) - full cloud experience
+kandc.init(project="my-project")
+
+# Offline mode - local development
+kandc.init(project="my-project", mode="offline")
+
+# Disabled mode - zero overhead
+kandc.init(project="my-project", mode="disabled")
+```
 
 ---
 
+## Examples
 
-## Ready to Get Started?
+See the `examples/` directory for detailed examples:
+- `complete_example.py` - Simple getting started example
+- `offline_example.py` - Offline mode usage
 
-👉 Jump to the **[Getting Started Guide](https://www.keysandcaches.com/docs)** to install Keys & Caches and run your first GPU job in under 5 minutes!
+---
 
+## API Reference
+
+### Core Functions
+- `kandc.init()` - Initialize a new run with configuration
+- `kandc.finish()` - Finish the current run and save all data
+- `kandc.log()` - Log metrics to the current run
+- `kandc.get_current_run()` - Get the active run object
+- `kandc.is_initialized()` - Check if kandc is initialized
+
+### Run Modes
+- `"online"` - Default mode, full cloud functionality
+- `"offline"` - Save everything locally, no server sync
+- `"disabled"` - No-op mode, zero overhead
+
+---
+
+## 🎓 Students & Educators
+
+Email us at **[founders@herdora.com](mailto:founders@herdora.com)** for support and collaboration opportunities!
+
+---
 
 # 📦 Publishing to PyPI
 
-## 🚀 Publish Stable Release (`kandc`)
+## 🚀 Publish Stable Release
 
-1. **Bump the version** in `pyproject.toml` (e.g., `0.0.4`).
+1. **Bump the version** in `pyproject.toml` (e.g., `0.0.15`).
 
 2. **Run the following commands:**
    ```bash
@@ -100,9 +155,9 @@ class MyModel(nn.Module):
    twine upload dist/*
    ```
 
-## 🧪 Publish Dev Release (`kandc-dev`)
+## 🧪 Publish Dev Release
 
-1. **Bump the dev version** in `pyproject.dev.toml` (e.g., `0.0.4.dev1`).
+1. **Bump the dev version** in `pyproject.dev.toml` (e.g., `0.0.15.dev1`).
 
 2. **Run the following commands:**
    ```bash
@@ -112,6 +167,5 @@ class MyModel(nn.Module):
    python -m build
    export TWINE_USERNAME=__token__
    twine upload dist/*
-   git checkout -- pyproject.toml   # Restore the original pyproject.toml after publishing (undo the cp above)
-   ```
+   git checkout -- pyproject.toml   # Restore the original pyproject.toml
    ```
