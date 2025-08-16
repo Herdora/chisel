@@ -1,8 +1,6 @@
-# Keys & Caches Library
+# Keys & Caches
 
-![Keys & Caches Banner](assets/banner.png)
-
-A Python library for GPU profiling and tracing PyTorch models, inspired by Weights & Biases.
+A Python library for GPU profiling and tracing PyTorch models.
 
 ---
 

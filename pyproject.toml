@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kandc"
-version = "0.0.15"
-description = "Keys & Caches - GPU profiling and tracing library for PyTorch"
+version = "0.0.14"
+description = "Keys & Caches CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
