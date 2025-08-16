@@ -20,7 +20,8 @@ from datetime import datetime
 from dataclasses import dataclass, asdict, field
 import warnings
 import webbrowser
-# import fnmatch  # No longer needed for source code capture
+import fnmatch
+from .code_snapshot import capture_project_source_code, create_snapshot_archive
 
 from .constants import (
     KANDC_BACKEND_APP_NAME_ENV_KEY,
@@ -154,6 +155,7 @@ class Run:
         self._finished = False
         self._project_data: Optional[Dict[str, Any]] = None
         self._run_data: Optional[Dict[str, Any]] = None
+        self._code_snapshot_uploaded = False
 
         # Set up the run
         self._setup_environment()
@@ -307,6 +309,25 @@ class Run:
                         self._api_client.log_metrics(self._run_data["id"], metrics_dict, step)
         except (APIError, AuthenticationError) as e:
             print(f"⚠️  Warning: Could not sync metrics: metrics: {metrics}, err: {e}")
+
+    def upload_code_snapshot(self, archive_bytes: bytes) -> bool:
+        """Upload code snapshot to backend."""
+        if not self._api_client:
+            return False
+
+        try:
+            # Use the run ID from backend
+            run_id = self._run_data.get("id") if self._run_data else None
+            if not run_id:
+                return False
+
+            response = self._api_client.upload_code_snapshot(run_id, archive_bytes)
+            self._code_snapshot_uploaded = response.get("success", False)
+            return self._code_snapshot_uploaded
+
+        except Exception as e:
+            print(f"Failed to upload code snapshot: {e}")
+            return False
 
     def finish(self):
         """Finish the run and clean up."""
@@ -546,8 +567,8 @@ def init(
     mode: Optional[str] = None,
     reinit: bool = False,
     open_browser: bool = True,
-    # capture_source: bool = True,  # Source code capture feature removed
-    # source_exclude_patterns: Optional[List[str]] = None,  # Source code capture feature removed
+    capture_code: bool = True,  # Enable code snapshot capture
+    code_exclude_patterns: Optional[List[str]] = None,  # Custom exclude patterns
     **kwargs,
 ) -> Run:
     """
@@ -563,6 +584,8 @@ def init(
         mode: Run mode - "online", "offline", or "disabled"
         reinit: Force reinitialization even if a run is already active
         open_browser: Whether to automatically open dashboard in browser (default: True)
+        capture_code: Whether to capture a code snapshot (default: True)
+        code_exclude_patterns: Additional patterns to exclude from code snapshot
         **kwargs: Additional configuration passed to config dict
 
     Returns:
@@ -648,10 +671,32 @@ def init(
     # Create new run
     _current_run = Run(run_config, system_info, api_client)
 
-    # Source code capture disabled
-    # if capture_source and mode != "disabled":
-    #     # Source code capture feature removed
-    #     pass
+    # Capture and upload code snapshot
+    if capture_code and mode != "disabled" and api_client:
+        try:
+            print("📸 Capturing code snapshot...")
+
+            # Capture source code
+            snapshot_data = capture_project_source_code(
+                project_root=dir or Path.cwd(), exclude_patterns=code_exclude_patterns
+            )
+
+            # Create archive
+            archive_bytes = create_snapshot_archive(snapshot_data)
+
+            # Upload to backend
+            if _current_run._run_data and _current_run._run_data.get("id"):
+                success = _current_run.upload_code_snapshot(archive_bytes)
+
+                if success:
+                    print(f"✅ Code snapshot captured ({len(snapshot_data['files'])} files)")
+                else:
+                    print("⚠️  Failed to upload code snapshot")
+            else:
+                print("⚠️  Run not created on backend, skipping code snapshot")
+
+        except Exception as e:
+            print(f"⚠️  Code snapshot failed: {e}")
 
     # Print minimal initialization message
     print(f"🚀 kandc initialized: {_current_run.name}")

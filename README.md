@@ -58,6 +58,9 @@ def main():
     output = model(data)
     loss = output.mean()
 
+    # Log metrics
+    kandc.log({"loss": loss.item(), "accuracy": 0.85})
+
     # Finish the run
     kandc.finish()
 
@@ -106,6 +109,56 @@ kandc.init(project="my-project", mode="offline")
 
 # Disabled mode - zero overhead
 kandc.init(project="my-project", mode="disabled")
+```
+
+### 🔮 Inference Tracking
+
+```python
+import kandc
+import torch
+import torch.nn as nn
+
+class SimpleNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(784, 128),
+            nn.ReLU(),
+            nn.Linear(128, 10)
+        )
+    
+    def forward(self, x):
+        return self.layers(x)
+
+def run_inference():
+    # Initialize inference tracking
+    kandc.init(
+        project="inference-demo",
+        name="simple-inference",
+        config={"batch_size": 32}
+    )
+    
+    # Create model and wrap with profiler
+    model = SimpleNet()
+    model = kandc.capture_model_instance(model, model_name="SimpleNet")
+    model.eval()
+    
+    # Run inference
+    data = torch.randn(32, 784)
+    with torch.no_grad():
+        predictions = model(data)
+        confidence = torch.softmax(predictions, dim=1).max(dim=1)[0].mean()
+    
+    # Log results
+    kandc.log({
+        "avg_confidence": confidence.item(),
+        "batch_size": 32
+    })
+    
+    kandc.finish()
+
+if __name__ == "__main__":
+    run_inference()
 ```
 
 ---

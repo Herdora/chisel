@@ -198,10 +198,24 @@ class APIClient:
             print(f"⚠️  Failed to register artifact {artifact_data.get('name', 'unknown')}: {e}")
             return {}
 
-    # Source code artifact method removed
-    # def create_source_code_artifact(...):
-    #     # Method removed
-    #     pass
+    def upload_code_snapshot(self, run_id: str, archive_bytes: bytes) -> Dict[str, Any]:
+        """Upload a code snapshot archive."""
+        files = {"file": ("snapshot.tar.gz", archive_bytes, "application/gzip")}
+
+        # Temporarily remove Content-Type header for multipart upload
+        original_headers = self.session.headers.copy()
+        if "Content-Type" in self.session.headers:
+            del self.session.headers["Content-Type"]
+
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/v1/code-snapshots/upload/{run_id}", files=files
+            )
+            response.raise_for_status()
+            return response.json()
+        finally:
+            # Restore original headers
+            self.session.headers.update(original_headers)
 
     def get_dashboard_url(self, project_id: str = None, run_id: str = None) -> str:
         """Get dashboard URL for project or run."""
