@@ -1,4 +1,4 @@
-# Keys & Caches Library
+# Keys & Caches
 
 ![Keys & Caches Banner](assets/banner.png)
 
