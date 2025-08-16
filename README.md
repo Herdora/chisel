@@ -2,18 +2,18 @@
 
 ![Keys & Caches Banner](assets/banner.png)
 
-A Python library for GPU profiling and tracing PyTorch models, inspired by Weights & Biases.
+A Python library for experiment tracking and machine learning workflow management.
 
 ---
 
 ## What is Keys & Caches?
 
-Keys & Caches is a Python library that provides automatic profiling and performance insights for PyTorch models. With simple decorators and a familiar API, you can:
+Keys & Caches is a Python library that provides experiment tracking and workflow management for machine learning projects. With a simple API, you can:
 
-* 📊 **Get automatic profiling** — Detailed performance traces for every model forward pass
-* 🔍 **Debug performance bottlenecks** — Chrome trace format for visual analysis
-* ⏱️ **Time critical operations** — Built-in timing decorators
-* 🎯 **Zero-overhead when disabled** — Profiling only activates when initialized
+* 📊 **Track experiments** — Automatically log metrics and hyperparameters
+* 🌐 **Cloud dashboard** — Real-time visualization of your experiments
+* 🏷️ **Organize projects** — Group related experiments together
+* 🎯 **Zero-overhead when disabled** — Tracking only activates when initialized
 
 ---
 
@@ -32,36 +32,40 @@ import kandc
 import torch
 import torch.nn as nn
 
-# Initialize Keys & Caches
-run = kandc.init(project="my-project", name="experiment-1")
-
-# Define a model with automatic profiling
-@kandc.capture_model_class(model_name="MyModel")
-class MyModel(nn.Module):
+class SimpleNet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.linear = nn.Linear(10, 1)
-    
+        self.layers = nn.Sequential(
+            nn.Linear(784, 128),
+            nn.ReLU(),
+            nn.Linear(128, 10),
+        )
+
     def forward(self, x):
-        return self.linear(x)
+        return self.layers(x)
 
-# Use the model - forward passes are automatically profiled
-model = MyModel()
-x = torch.randn(32, 10)
-y = model(x)
+def main():
+    # Initialize experiment tracking
+    kandc.init(
+        project="my-project",
+        name="experiment-1",
+        config={"batch_size": 32, "learning_rate": 0.01}
+    )
 
-# Log metrics
-loss = nn.functional.mse_loss(y, torch.randn(32, 1))
-kandc.log({"loss": loss.item(), "epoch": 1})
+    # Your training/inference code
+    model = SimpleNet()
+    data = torch.randn(32, 784)
+    output = model(data)
+    loss = output.mean()
 
-# Time other operations
-@kandc.timed("training_step")
-def train_step(model, data):
-    # Your training logic here
-    pass
+    # Log metrics
+    kandc.log({"loss": loss.item(), "accuracy": 0.85})
 
-# Finish the run
-kandc.finish()
+    # Finish the run
+    kandc.finish()
+
+if __name__ == "__main__":
+    main()
 ```
 
 ---
@@ -82,31 +86,29 @@ kandc.init(
 )
 ```
 
-### 📈 Automatic Model Profiling
+### 📊 Metrics Logging
 
 ```python
-# Class decorator
-@kandc.capture_model_class(model_name="CustomModel")
-class CustomModel(nn.Module):
-    # Your model definition
-    pass
+# Log single or multiple metrics
+kandc.log({"loss": 0.25, "accuracy": 0.92})
 
-# Instance wrapper (great for HuggingFace models)
-model = AutoModel.from_pretrained("bert-base-uncased")
-model = kandc.capture_model_instance(model, model_name="BERT")
+# Log with step numbers for training loops
+for epoch in range(100):
+    loss = train_epoch()
+    kandc.log({"epoch_loss": loss}, step=epoch)
 ```
 
-### ⏱️ Timing Utilities
+### 🌐 Multiple Modes
 
 ```python
-# Function decorator
-@kandc.timed("data_preprocessing")
-def preprocess_data(data):
-    # Your preprocessing logic
-    return processed_data
+# Online mode (default) - full cloud experience
+kandc.init(project="my-project")
 
-# One-off timing
-result = kandc.timed_call("expensive_operation", my_function, arg1, arg2)
+# Offline mode - local development
+kandc.init(project="my-project", mode="offline")
+
+# Disabled mode - zero overhead
+kandc.init(project="my-project", mode="disabled")
 ```
 
 ---
@@ -114,8 +116,8 @@ result = kandc.timed_call("expensive_operation", my_function, arg1, arg2)
 ## Examples
 
 See the `examples/` directory for detailed examples:
-- `quickstart.py` - Minimal getting started example
-- `library_usage_example.py` - Comprehensive usage examples
+- `complete_example.py` - Simple getting started example
+- `offline_example.py` - Offline mode usage
 
 ---
 
@@ -128,17 +130,10 @@ See the `examples/` directory for detailed examples:
 - `kandc.get_current_run()` - Get the active run object
 - `kandc.is_initialized()` - Check if kandc is initialized
 
-### Decorators
-- `@kandc.capture_model_class()` - Profile all forward passes of a model class
-- `@kandc.capture_model_instance()` - Profile all forward passes of a model instance
-- `@kandc.capture_trace()` - Capture detailed PyTorch profiler traces
-- `@kandc.timed()` - Time function execution
-- `kandc.timed_call()` - Time a single function call
-
 ### Run Modes
-- `"online"` - Default mode, full functionality
+- `"online"` - Default mode, full cloud functionality
 - `"offline"` - Save everything locally, no server sync
-- `"disabled"` - No-op mode, useful for production
+- `"disabled"` - No-op mode, zero overhead
 
 ---
 

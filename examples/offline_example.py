@@ -47,20 +47,13 @@ def main():
         nn.Softmax(dim=1),
     )
 
-    # Profile the model (works offline!)
-    model = kandc.capture_model_instance(
-        model, model_name="OfflineClassifier", record_shapes=True, profile_memory=True
-    )
+    print("🧠 Created model for offline experiment")
 
-    print("🧠 Created and wrapped model for profiling")
-
-    # Time some operations
-    @kandc.timed("data_generation")
+    # Generate data function
     def generate_data(batch_size=16):
         """Generate synthetic data."""
         return torch.randn(batch_size, 784)
 
-    @kandc.timed("inference")
     def run_inference(model, data):
         """Run model inference."""
         with torch.no_grad():
@@ -70,10 +63,10 @@ def main():
     for step in range(5):
         print(f"🔄 Running inference step {step + 1}/5")
 
-        # Generate data (timed)
+        # Generate data
         data = generate_data(batch_size=16)
 
-        # Run inference (timed and profiled)
+        # Run inference
         predictions = run_inference(model, data)
 
         # Log metrics (saved locally)

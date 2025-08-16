@@ -30,22 +30,17 @@ Showcases all kandc features:
 
 **1. Different Modes**
 - Online mode (default) - Full cloud experience with dashboard
-- Offline mode - Local profiling without internet
+- Offline mode - Local storage without internet
 - Disabled mode - Zero overhead for production
 
-**2. Model Profiling**
-- `@kandc.capture_model_class` - Decorator for your own model classes
-- `kandc.capture_model_instance()` - Wrap existing models (HuggingFace, etc.)
-- GPU/CPU profiling with shape recording and memory analysis
-
-**3. Timing Utilities**
-- `@kandc.timed()` - Decorator for timing functions
-- `kandc.timed_call()` - Inline timing for function calls
-- Automatic timing data collection
-
-**4. Logging & Metrics**
+**2. Experiment Tracking**
+- `kandc.init()` - Initialize experiment with project and configuration
 - `kandc.log()` - Log metrics, hyperparameters, and results
-- Real-time dashboard updates (online mode)
+- `kandc.finish()` - Complete the experiment run
+
+**3. Dashboard Features**
+- Real-time metric visualization (online mode)
+- Project organization and run comparison
 - Local data storage (offline mode)
 
 
