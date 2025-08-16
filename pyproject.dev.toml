@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kandc-dev"                 # <-- only change
-version = "0.0.12.dev0"             # use PEP 440 pre/dev versions for clarity
-description = "Keys & Caches CLI (DEV)"
+version = "0.0.15.dev0"             # use PEP 440 pre/dev versions for clarity
+description = "Keys & Caches - GPU profiling and tracing library (DEV)"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "Herdora", email = "contact@herdora.com"}]
@@ -21,7 +21,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 requires-python = ">=3.8"
-dependencies = ["requests>=2.25.0","click>=8.0.0","rich>=13.0.0"]
+dependencies = ["requests>=2.25.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=6.0","ruff>=0.1.0"]
@@ -30,15 +30,6 @@ dev = ["pytest>=6.0","ruff>=0.1.0"]
 Homepage = "https://github.com/Herdora/kandc"
 Repository = "https://github.com/Herdora/kandc.git"
 Issues = "https://github.com/Herdora/kandc/issues"
-
-[project.scripts]
-# pick ONE of these styles:
-
-# 1) Keep the same CLI name (will replace stable if both are present):
-# kandc = "kandc.cli:main"
-
-# 2) Avoid conflicts; give dev its own CLI:
-kandc-dev = "kandc.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

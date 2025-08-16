@@ -1,26 +1,21 @@
 import os
 from enum import Enum
 
+# Tracing constants
 DEFAULT_TRACE_ACTIVITIES = ["CPU", "CUDA"]
-MINIMUM_PACKAGES = ["torch", "requests", "kandc"]
-# MINIMUM_PACKAGES = ["torch", "requests", "git+https://github.com/Herdora/kandc.git@dev"]
-ENV_CACHY_ENABLED = "CACHY_ENABLED"
-
 TRACE_DIR = "traces"
-REPO_NAME = "kandc"
 
+# Environment variable keys
 KANDC_BACKEND_RUN_ENV_KEY = "KANDC_BACKEND_RUN"
 KANDC_JOB_ID_ENV_KEY = "KANDC_JOB_ID"
-KANDC_API_KEY_ENV_KEY = "KANDC_API_KEY"
-KANDC_BACKEND_URL_ENV_KEY = "KANDC_BACKEND_URL"
 KANDC_BACKEND_APP_NAME_ENV_KEY = "KANDC_BACKEND_APP_NAME"
 KANDC_TRACE_BASE_DIR_ENV_KEY = "KANDC_TRACE_BASE_DIR"
 
-# Default to production API, use localhost only in development
-if os.environ.get("KANDC_DEV"):
-    KANDC_BACKEND_URL = "http://localhost:8000"
-else:
-    KANDC_BACKEND_URL = "https://api.keysandcaches.com"
+# Backend configuration
+KANDC_BACKEND_URL = os.environ.get("KANDC_BACKEND_URL", "http://localhost:8000")
+
+# Frontend configuration
+KANDC_FRONTEND_URL = os.environ.get("KANDC_FRONTEND_URL", "http://localhost:3000")
 
 
 class GPUType(Enum):
