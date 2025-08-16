@@ -78,8 +78,16 @@ def timed(name: Optional[str] = None) -> Callable[[Callable[..., Any]], Callable
                     with open(out, "a", encoding="utf-8") as f:
                         f.write(json.dumps(rec) + "\n")
 
-                    # Upload timing as artifact to backend
+                    # Persist one JSON file per call under artifacts and upload it
                     try:
+                        # Write per-call file to artifacts dir
+                        call_file = td / f"timing_{label}_{idx}.json"
+                        try:
+                            with open(call_file, "w", encoding="utf-8") as tf:
+                                json.dump(rec, tf)
+                        except Exception:
+                            pass
+
                         from ..core.run import _current_run
 
                         if (
@@ -88,15 +96,6 @@ def timed(name: Optional[str] = None) -> Callable[[Callable[..., Any]], Callable
                             and hasattr(_current_run, "_run_data")
                         ):
                             if _current_run._api_client and _current_run._run_data:
-                                # Create a temporary file with just this timing record
-                                import tempfile
-
-                                with tempfile.NamedTemporaryFile(
-                                    mode="w", suffix=".json", delete=False
-                                ) as tf:
-                                    json.dump(rec, tf)
-                                    temp_file_path = tf.name
-
                                 artifact_data = {
                                     "name": f"timing_{label}_{idx}.json",
                                     "artifact_type": "timing",
@@ -105,13 +104,9 @@ def timed(name: Optional[str] = None) -> Callable[[Callable[..., Any]], Callable
                                 }
 
                                 _current_run._api_client.create_artifact(
-                                    _current_run._run_data["id"], artifact_data, temp_file_path
+                                    _current_run._run_data["id"], artifact_data, str(call_file)
                                 )
-
-                                # Clean up temp file
-                                os.unlink(temp_file_path)
                     except Exception:
-                        # Don't fail if upload fails
                         pass
                 except Exception:
                     pass

@@ -70,12 +70,20 @@ def main():
 
         kandc.log({"loss": loss.item(), "accuracy": random.random()}, x=x_value)
 
-    # Verify artifacts were created
-    if hasattr(run, "_api_client") and hasattr(run, "_run_data"):
-        print(f"✅ Run ID: {run._run_data['id']}")
+    # Verify artifacts / print run id (fallback to local id if backend offline)
+    try:
+        backend_run_id = (
+            getattr(run, "_run_data", {}).get("id") if getattr(run, "_run_data", None) else None
+        )
+    except Exception:
+        backend_run_id = None
+    if backend_run_id:
+        print(f"✅ Run ID: {backend_run_id}")
         print("✅ API client initialized")
     else:
-        print("⚠️ Run or API client not properly initialized")
+        # Always available local run id
+        print(f"✅ Local Run ID: {run.id}")
+        print("⚠️ Backend run not created; operating offline")
 
     kandc.finish()
 

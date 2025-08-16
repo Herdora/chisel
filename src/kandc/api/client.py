@@ -6,6 +6,7 @@ import os
 import time
 import webbrowser
 from typing import Dict, Any, Optional, List, Union, TypedDict, Literal, cast
+import json
 from urllib.parse import urljoin
 
 import requests
@@ -373,42 +374,64 @@ class APIClient:
         self, run_id: str, artifact_data: Dict[str, Any], file_path: str
     ) -> ArtifactResponse:
         """
-        Upload an artifact file to the backend.
-
-        Note: Currently just registers the artifact metadata.
-        File upload to storage would be implemented separately.
+        Upload an artifact file (multipart) so the backend stores it in S3.
 
         Args:
             run_id: ID of the run
-            artifact_data: Dictionary containing artifact metadata
-            file_path: Path to the artifact file
+            artifact_data: Dict with optional keys: name, artifact_type, metadata
+            file_path: Local path to the artifact file to upload
 
         Returns:
             Artifact response dictionary
         """
         try:
-            # Read file to get actual size
-            file_size: int = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Artifact file not found: {file_path}")
 
-            # Prepare the artifact data for the backend
-            artifact_metadata: Dict[str, Any] = {
-                "name": artifact_data.get("name", "unnamed"),
-                "artifact_type": artifact_data.get("artifact_type", "file"),
-                "file_size": file_size,
-                "storage_path": file_path,  # Required field - using local path for now
-                "original_path": file_path,  # Store original local path
-                "metadata": artifact_data.get("metadata", {}),
+            import mimetypes
+
+            filename = os.path.basename(file_path)
+            mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+            # Build multipart form
+            files: Dict[str, tuple] = {
+                "file": (filename, open(file_path, "rb"), mime),
             }
 
-            # Send artifact metadata to backend
-            return cast(
-                ArtifactResponse,
-                self._request("POST", f"/api/v1/runs/{run_id}/artifacts", json=artifact_metadata),
-            )
+            data: Dict[str, Any] = {
+                "name": artifact_data.get("name", filename),
+                "artifact_type": artifact_data.get("artifact_type", "file"),
+                "metadata": json.dumps(artifact_data.get("metadata", {})),
+            }
+
+            # Temporarily remove Content-Type header for multipart upload
+            original_headers: Dict[str, Any] = dict(self.session.headers)
+            if "Content-Type" in self.session.headers:
+                del self.session.headers["Content-Type"]
+
+            try:
+                resp: Response = self.session.post(
+                    f"{self.base_url}/api/v1/runs/{run_id}/artifacts", files=files, data=data
+                )
+            finally:
+                # close file handle(s)
+                try:
+                    file_obj = files["file"][1]
+                    if hasattr(file_obj, "close"):
+                        file_obj.close()
+                except Exception:
+                    pass
+                # restore headers
+                self.session.headers.clear()
+                self.session.headers.update(original_headers)
+
+            if not resp.ok:
+                raise APIError(f"Upload failed: {resp.status_code} {resp.text}")
+
+            return cast(ArtifactResponse, resp.json())
 
         except Exception as e:
-            print(f"⚠️  Failed to register artifact {artifact_data.get('name', 'unknown')}: {e}")
-            # Return empty dict cast as ArtifactResponse for error case
+            print(f"⚠️  Failed to upload artifact {artifact_data.get('name', 'unknown')}: {e}")
             return cast(ArtifactResponse, {})
 
     def upload_code_snapshot(self, run_id: str, archive_bytes: bytes) -> CodeSnapshotResponse:

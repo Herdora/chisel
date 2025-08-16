@@ -94,7 +94,13 @@ def _execute_with_trace(
             profile_memory=profile_memory,
             with_stack=True,
         ) as prof:
-            result = fn(*args, **kwargs)
+            # Insert a clear function marker so the UI can show a root span
+            record_fn = getattr(torch.profiler, "record_function", None)
+            if record_fn is not None:
+                with record_fn(f"{trace_name}"):
+                    result = fn(*args, **kwargs)
+            else:
+                result = fn(*args, **kwargs)
 
         trace_file = job_artifacts_dir / f"{trace_name}.json"
         try:
@@ -339,8 +345,29 @@ def _execute_model_forward(
         record_shapes=record_shapes,
         profile_memory=profile_memory,
         with_stack=with_stack,
+        with_modules=True,
     ) as prof:
-        result = original_forward(*args, **kwargs)
+        try:
+            # Create a clear python_function span we can reliably target in the UI
+            try:
+                import torch  # type: ignore
+
+                record_fn = getattr(torch.profiler, "record_function", None) or getattr(
+                    __import__("torch.autograd.profiler", fromlist=["record_function"]),
+                    "record_function",
+                    None,
+                )  # type: ignore
+            except Exception:
+                record_fn = None
+
+            if record_fn is not None:
+                with record_fn(f"{model_name}.forward"):
+                    result = original_forward(*args, **kwargs)
+            else:
+                result = original_forward(*args, **kwargs)
+        except Exception:
+            # Ensure profiler context exits cleanly even if forward raises
+            raise
 
     trace_file = job_artifacts_dir / f"{trace_name}.json"
     prof.export_chrome_trace(str(trace_file))
@@ -440,6 +467,7 @@ def _execute_model_method(
         record_shapes=record_shapes,
         profile_memory=profile_memory,
         with_stack=with_stack,
+        with_modules=True,
     ) as prof:
         result = original_method(*args, **kwargs)
 
