@@ -58,9 +58,6 @@ def main():
     output = model(data)
     loss = output.mean()
 
-    # Log metrics
-    kandc.log({"loss": loss.item(), "accuracy": 0.85})
-
     # Finish the run
     kandc.finish()
 
