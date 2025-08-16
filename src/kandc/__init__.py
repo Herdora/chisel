@@ -1,10 +1,46 @@
+"""
+Keys & Caches (kandc) - Experiment tracking and profiling library.
+
+This package provides tools for tracking machine learning experiments,
+capturing performance metrics, and profiling model execution.
+"""
+
 __version__ = "0.0.15"
 
-from .constants import GPUType
-from .timing import timed, timed_call
-from .trace import capture_trace, capture_model_instance, capture_model_class, parse_model_trace
-from .init import init, finish, get_current_run, is_initialized, log
-from .sweep import SweepManager, SweepConfig, SweepResult, sweep_folder, sweep_files
+# Import from new modular structure
+
+# Core functionality
+from .core import (
+    init,
+    finish,
+    log,
+    get_current_run,
+    is_initialized,
+    SweepManager,
+    SweepConfig,
+    SweepResult,
+    sweep_folder,
+    sweep_files,
+)
+
+# Annotators (decorators and wrapping functions)
+from .annotators import (
+    timed,
+    timed_call,
+    capture_trace,
+    capture_model_instance,
+    capture_model_class,
+    parse_model_trace,
+)
+
+# API functionality (if needed directly)
+from .api import (
+    APIClient,
+    APIError,
+    AuthenticationError,
+    get_api_key,
+    ensure_authenticated,
+)
 
 __all__ = [
     # Main API
@@ -27,7 +63,11 @@ __all__ = [
     "SweepResult",
     "sweep_folder",
     "sweep_files",
-    # Constants
-    "GPUType",
     "__version__",
+    # API exports (for advanced usage)
+    "APIClient",
+    "APIError",
+    "AuthenticationError",
+    "get_api_key",
+    "ensure_authenticated",
 ]
