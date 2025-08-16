@@ -39,7 +39,7 @@ Repository = "https://github.com/Herdora/kandc.git"
 Issues = "https://github.com/Herdora/kandc/issues"
 
 [project.scripts]
-kandc = "kandc.cli:main"
+kandc = "kandc.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
