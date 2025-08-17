@@ -1,5 +1,4 @@
 import os
-from enum import Enum
 
 # Tracing constants
 DEFAULT_TRACE_ACTIVITIES = ["CPU", "CUDA"]
@@ -16,9 +15,9 @@ KANDC_TRACE_BASE_DIR_ENV_KEY = "KANDC_TRACE_BASE_DIR"
 KANDC_DISABLED_ENV_KEY = "KANDC_DISABLED"  # if set, kandc will not run
 
 # Backend configuration
-KANDC_BACKEND_URL = os.environ.get("KANDC_BACKEND_URL", "http://localhost:8000")
+KANDC_BACKEND_URL = os.environ.get("KANDC_BACKEND_URL", "https://api.keysandcaches.com")
 
 # Frontend configuration
-KANDC_FRONTEND_URL = os.environ.get("KANDC_FRONTEND_URL", "http://localhost:3000")
+KANDC_FRONTEND_URL = os.environ.get("KANDC_FRONTEND_URL", "https://keysandcaches.com")
 
 """Constants for kandc package (no GPU enum exported)."""

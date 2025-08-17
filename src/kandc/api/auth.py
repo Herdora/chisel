@@ -60,16 +60,24 @@ class AuthManager:
 
     def verify_api_key(self, api_key: str) -> bool:
         """Verify if API key is valid by testing with backend."""
+        if not api_key:
+            return False
+
         try:
             client = APIClient(api_key=api_key)
-            # Test API key by trying to access a simple endpoint
-            client._request("GET", "/")
+            # Test API key by trying to access projects endpoint
+            client._request("GET", "/api/v1/projects")
             return True
         except AuthenticationError:
+            print("⚠️  API key validation failed")
             return False
-        except Exception:
-            # Network errors or other issues - assume key might be valid
-            return True
+        except Exception as e:
+            # Only assume valid if it's a network error
+            if "Connection" in str(e):
+                print(f"⚠️  Network error during validation: {e}")
+                return True
+            print(f"⚠️  API key validation error: {e}")
+            return False
 
     def ensure_authenticated(self) -> APIClient:
         """
@@ -106,9 +114,29 @@ class AuthManager:
             # Get user info to store email
             authenticated_client = APIClient(api_key=new_api_key)
 
-            # Store credentials
-            self.set_api_key(new_api_key)
-            print(f"💾 Credentials saved to {self.settings_file}")
+            try:
+                # Try to get user info to verify the token and get email
+                user_info = authenticated_client._request("GET", "/api/v1/auth/me")
+                if user_info and "email" in user_info:
+                    # Store credentials with email
+                    self.set_api_key(new_api_key, user_info["email"])
+                    print(f"✅ Authenticated as {user_info['email']}")
+                else:
+                    # Store just the API key if we can't get email
+                    self.set_api_key(new_api_key)
+                print(f"💾 Credentials saved to {self.settings_file}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not fetch user info: {e}")
+                # Still store the API key even if we can't get user info
+                self.set_api_key(new_api_key)
+                print(f"💾 API key saved to {self.settings_file}")
+
+            # Verify the client works
+            try:
+                authenticated_client._request("GET", "/api/v1/projects")
+                print("✅ API client verified")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not verify API client: {e}")
 
             return authenticated_client
 
