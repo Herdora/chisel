@@ -61,22 +61,32 @@ class AuthManager:
     def verify_api_key(self, api_key: str) -> bool:
         """Verify if API key is valid by testing with backend."""
         if not api_key:
+            print("⚠️  No API key provided")
             return False
 
         try:
             client = APIClient(api_key=api_key)
             # Test API key by trying to access projects endpoint
+            print("🔍 Verifying API key with backend...")
             client._request("GET", "/api/v1/projects")
+            print("✅ API key verified successfully")
             return True
-        except AuthenticationError:
-            print("⚠️  API key validation failed")
+        except AuthenticationError as e:
+            print("❌ API key validation failed")
+            print(f"   Error: {str(e)}")
+            print("   Please check your credentials and try again")
             return False
         except Exception as e:
             # Only assume valid if it's a network error
             if "Connection" in str(e):
-                print(f"⚠️  Network error during validation: {e}")
+                print(f"⚠️  Network error during validation:")
+                print(f"   Error: {str(e)}")
+                print("   Assuming API key is valid (offline mode)")
                 return True
-            print(f"⚠️  API key validation error: {e}")
+            print(f"❌ API key validation error:")
+            print(f"   Error: {str(e)}")
+            print("   Backend URL:", client.base_url)
+            print("   Please check your network connection and backend status")
             return False
 
     def ensure_authenticated(self) -> APIClient:

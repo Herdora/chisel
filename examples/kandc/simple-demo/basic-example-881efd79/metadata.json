@@ -1,0 +1,25 @@
+{
+  "project": "simple-demo",
+  "name": "basic-example",
+  "job_id": "basic-example-881efd79",
+  "config": {},
+  "flattened_config": {},
+  "tags": [],
+  "notes": null,
+  "mode": "offline",
+  "start_time": "2025-08-17T22:46:42.945499",
+  "system_info": {
+    "os": "Darwin",
+    "os_version": "Darwin Kernel Version 25.0.0: Fri Jul 11 23:59:43 PDT 2025; root:xnu-12377.0.154.0.2~26/RELEASE_ARM64_T8132",
+    "python_version": "3.12.11",
+    "python_executable": "/Users/stevenarellano/Desktop/stuff/herdora/kandc/examples/.venv/bin/python",
+    "hostname": "Steves-MacBook-Air.local",
+    "cpu_count": 10,
+    "git_commit": "a44c8e447cc7fc5f43ee10ed1e9da23d5a1a1e19",
+    "git_branch": "main",
+    "git_dirty": true
+  },
+  "finish_time": "2025-08-17T22:46:45.636350",
+  "duration_seconds": 2.690876,
+  "status": "finished"
+}

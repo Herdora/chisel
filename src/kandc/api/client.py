@@ -174,16 +174,41 @@ class APIClient:
             return response.json()
         except requests.exceptions.HTTPError as e:
             if response is not None:
+                error_detail = ""
+                try:
+                    error_json = response.json()
+                    if isinstance(error_json, dict):
+                        error_detail = error_json.get("detail", error_json.get("message", ""))
+                except:
+                    error_detail = response.text
+
                 if response.status_code == 401:
-                    raise AuthenticationError(f"Authentication failed: {e}")
+                    raise AuthenticationError(
+                        f"Authentication failed (401): {error_detail or 'Invalid or expired credentials'}"
+                    )
                 elif response.status_code == 403:
-                    raise AuthenticationError(f"Access forbidden: {e}")
+                    raise AuthenticationError(
+                        f"Access forbidden (403): {error_detail or 'Insufficient permissions'}"
+                    )
                 else:
-                    raise APIError(f"HTTP {response.status_code}: {e}")
+                    raise APIError(
+                        f"HTTP {response.status_code}: {error_detail or str(e)}\n"
+                        f"URL: {url}\n"
+                        f"Method: {method}"
+                    )
             else:
                 raise APIError(f"Request failed: {e}")
+        except requests.exceptions.ConnectionError as e:
+            raise APIError(
+                f"Connection failed: Could not connect to {self.base_url}\n"
+                f"Please check:\n"
+                f"1. Your internet connection\n"
+                f"2. The backend server is running\n"
+                f"3. The KANDC_BACKEND_URL environment variable is correct\n"
+                f"Error: {str(e)}"
+            )
         except requests.exceptions.RequestException as e:
-            raise APIError(f"Request failed: {e}")
+            raise APIError(f"Request failed:\nURL: {url}\nMethod: {method}\nError: {str(e)}")
 
     def authenticate_with_browser(self) -> str:
         """
