@@ -106,39 +106,75 @@ class AuthManager:
             print("   Existing credentials are invalid")
             self.clear_credentials()
 
-        # Authenticate via browser
+        # Use the backend auth init endpoint to get proper session ID and auth URL
         client = APIClient()  # No API key yet
         try:
-            new_api_key = client.authenticate_with_browser()
+            # Get auth URL from backend (this creates the session ID)
+            auth_response = client._request("GET", "/api/v1/auth/init")
+            auth_url = auth_response.get("auth_url")
+            session_id = auth_response.get("session_id")
 
-            # Get user info to store email
-            authenticated_client = APIClient(api_key=new_api_key)
+            if not auth_url or not session_id:
+                raise AuthenticationError("Invalid response from auth init endpoint")
+
+            print("🌐 Please sign in with your Google account in the browser")
+            print(f"   Opening: {auth_url}")
+            print("   After signing in, your CLI will be automatically authenticated")
 
             try:
-                # Try to get user info to verify the token and get email
-                user_info = authenticated_client._request("GET", "/api/v1/auth/me")
-                if user_info and "email" in user_info:
-                    # Store credentials with email
-                    self.set_api_key(new_api_key, user_info["email"])
-                    print(f"✅ Authenticated as {user_info['email']}")
-                else:
-                    # Store just the API key if we can't get email
-                    self.set_api_key(new_api_key)
-                print(f"💾 Credentials saved to {self.settings_file}")
+                webbrowser.open(auth_url)
             except Exception as e:
-                print(f"⚠️  Warning: Could not fetch user info: {e}")
-                # Still store the API key even if we can't get user info
-                self.set_api_key(new_api_key)
-                print(f"💾 API key saved to {self.settings_file}")
+                print(f"⚠️  Could not open browser automatically: {e}")
+                print(f"   Please manually visit: {auth_url}")
 
-            # Verify the client works
-            try:
-                authenticated_client._request("GET", "/api/v1/projects")
-                print("✅ API client verified")
-            except Exception as e:
-                print(f"⚠️  Warning: Could not verify API client: {e}")
+            # Poll for authentication completion (like the old flow)
+            print("⏳ Waiting for authentication...")
+            max_attempts = 60  # 5 minutes with 5-second intervals
 
-            return authenticated_client
+            for attempt in range(max_attempts):
+                remaining = max_attempts - attempt
+                # Only show progress every 10 attempts to reduce noise
+                if attempt % 10 == 0:
+                    print(f"   ⏰ {remaining} attempts remaining ({remaining * 5}s)...")
+
+                try:
+                    # Check auth status
+                    auth_status = client._request("GET", f"/api/v1/auth/check/{session_id}")
+
+                    if auth_status.get("authenticated"):
+                        api_key = auth_status.get("api_key")
+                        if api_key:
+                            print("🎉 Authentication successful!")
+                            print(f"   Email: {auth_status.get('email', 'Unknown')}")
+
+                            # Store the API key
+                            email = auth_status.get("email")
+                            if email:
+                                self.set_api_key(api_key, email)
+                                print(f"✅ Authenticated as {email}")
+                            else:
+                                self.set_api_key(api_key)
+
+                            print(f"💾 Credentials saved to {self.settings_file}")
+                            return APIClient(api_key=api_key)
+                        else:
+                            raise AuthenticationError(
+                                "Authentication succeeded but no API key returned"
+                            )
+
+                    # Wait before next check
+                    import time
+
+                    time.sleep(5)
+
+                except Exception:
+                    # Continue polling on API errors
+                    import time
+
+                    time.sleep(5)
+                    continue
+
+            raise AuthenticationError("Authentication timed out. Please try again.")
 
         except AuthenticationError as e:
             raise AuthenticationError(f"Authentication failed: {e}")

@@ -166,36 +166,23 @@ class APIClient:
             APIError: If the request fails
         """
         url: str = urljoin(f"{self.base_url}/", endpoint.lstrip("/"))
-        print(f"🔍 Making request to: {url}")
-        print(f"   Method: {method}")
-        print(f"   Headers: {self.session.headers}")
 
         response: Optional[Response] = None
         try:
             response = self.session.request(method, url, **kwargs)
-            print(f"   Response status: {response.status_code}")
-            if response.status_code >= 400:
-                print(f"   Error response: {response.text}")
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as e:
             if response is not None:
                 if response.status_code == 401:
-                    print("❌ Authentication failed - invalid or missing token")
-                    print(f"   Response: {response.text}")
                     raise AuthenticationError(f"Authentication failed: {e}")
                 elif response.status_code == 403:
-                    print("❌ Access forbidden - insufficient permissions")
-                    print(f"   Response: {response.text}")
                     raise AuthenticationError(f"Access forbidden: {e}")
                 else:
-                    print(f"❌ HTTP error {response.status_code}")
-                    print(f"   Response: {response.text}")
                     raise APIError(f"HTTP {response.status_code}: {e}")
             else:
                 raise APIError(f"Request failed: {e}")
         except requests.exceptions.RequestException as e:
-            print(f"❌ Request failed: {e}")
             raise APIError(f"Request failed: {e}")
 
     def authenticate_with_browser(self) -> str:
@@ -226,8 +213,9 @@ class APIClient:
         print(f"   URL: {auth_url}")
 
         # Check if we're in development mode
-        is_dev_mode = "localhost" in self.base_url or os.environ.get("LOCAL_DEV")
-        if is_dev_mode:
+        from ..constants import DEV_MODE
+
+        if DEV_MODE:
             print("   🔧 Running in development mode")
         else:
             print("   🌍 Running in production mode")
@@ -244,7 +232,9 @@ class APIClient:
 
         for attempt in range(max_attempts):
             remaining: int = max_attempts - attempt
-            print(f"   ⏰ {remaining} attempts remaining ({remaining * 5}s)...")
+            # Only show progress every 10 attempts to reduce noise
+            if attempt % 10 == 0:
+                print(f"   ⏰ {remaining} attempts remaining ({remaining * 5}s)...")
 
             try:
                 # Check auth status
