@@ -1,3 +1,5 @@
+import os
+
 DEFAULT_TRACE_ACTIVITIES = ["CPU", "CUDA"]
 TRACE_DIR = "traces"
 ARTIFACTS_DIR = "artifacts"
@@ -10,7 +12,7 @@ KANDC_TRACE_BASE_DIR_ENV_KEY = "KANDC_TRACE_BASE_DIR"
 
 KANDC_DISABLED_ENV_KEY = "KANDC_DISABLED"  # if set, kandc will not run
 
-DEV_MODE = True
+DEV_MODE = os.getenv("DEV_MODE", "True").lower() == "true"
 if DEV_MODE:
     KANDC_BACKEND_URL = "http://localhost:8000"
     KANDC_FRONTEND_URL = "http://localhost:3000"
