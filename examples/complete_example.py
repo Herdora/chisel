@@ -19,18 +19,38 @@ import torch.nn as nn
 import kandc
 
 
-@kandc.capture_model_class(model_name="SimpleNet")
-class SimpleNet(nn.Module):
-    def __init__(self):
+@kandc.capture_model_class(model_name="SimpleTransformer")
+class SimpleTransformer(nn.Module):
+    def __init__(self, input_dim=32, seq_len=16, d_model=64, nhead=4, num_layers=2, num_classes=10):
         super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(784, 128),
-            nn.ReLU(),
-            nn.Linear(128, 10),
+        self.input_dim = input_dim
+        self.seq_len = seq_len
+        self.d_model = d_model
+
+        # Project input to d_model
+        self.input_proj = nn.Linear(input_dim, d_model)
+
+        # Positional encoding (learnable)
+        self.pos_embedding = nn.Parameter(torch.zeros(1, seq_len, d_model))
+
+        # Transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        # Output head
+        self.head = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, num_classes)
         )
 
     def forward(self, x):
-        return self.layers(x)
+        # x: (batch, seq_len, input_dim)
+        x = self.input_proj(x)  # (batch, seq_len, d_model)
+        x = x + self.pos_embedding  # Add positional encoding
+        x = self.transformer(x)  # (batch, seq_len, d_model)
+        x = x.mean(dim=1)  # Pool over sequence
+        x = self.head(x)   # (batch, num_classes)
+        return x
 
 
 def main():
@@ -38,14 +58,15 @@ def main():
 
     # Initialize with debug logging
     run = kandc.init(
-        project="simple-demo",
-        name="basic-example",
+        project="optimize-transformer",
+        name="test-run-1",
     )
     print("✅ Using existing authentication")
 
     # Create and run model
-    model = SimpleNet()
-    data = torch.randn(32, 784)
+    model = SimpleTransformer()
+    # Simulate a batch of 32 sequences, each of length 16, with 32 features
+    data = torch.randn(32, 16, 32)
 
     print("📊 Running model forward pass...")
     output = model(data)
