@@ -142,15 +142,29 @@ def capture_project_source_code(
     skipped_files = []
 
     def should_exclude(path: Path) -> bool:
-        """Check if a path should be excluded."""
+        """Check if a path should be excluded (Git-style patterns)."""
         try:
             path_str = str(path.relative_to(project_root))
         except ValueError:
             path_str = str(path)
 
         for pattern in exclude_patterns:
-            if fnmatch.fnmatch(path.name, pattern) or fnmatch.fnmatch(path_str, pattern):
-                return True
+            # Handle Git-style directory patterns (ending with /)
+            if pattern.endswith('/'):
+                # For directory patterns, check if the path starts with the directory
+                dir_pattern = pattern[:-1]  # Remove trailing slash
+                # Check if path is inside this directory
+                if path_str.startswith(dir_pattern + '/') or path_str == dir_pattern:
+                    return True
+                # Also check if any parent directory matches
+                path_parts = path_str.split('/')
+                for i in range(len(path_parts)):
+                    if '/'.join(path_parts[:i+1]) == dir_pattern:
+                        return True
+            else:
+                # Regular file patterns - use fnmatch for wildcards
+                if fnmatch.fnmatch(path.name, pattern) or fnmatch.fnmatch(path_str, pattern):
+                    return True
         return False
 
     def get_file_language(file_path: Path) -> str:
