@@ -1,14 +1,11 @@
 """
-Command-line interface for kandc.
+CLI functionality for kandc.
 
-This module provides CLI commands for authentication, sweep operations,
-and other command-line utilities.
+This module provides CLI commands for authentication and configuration.
 """
 
 from .main import main
-from .sweep import main as sweep_main
 
 __all__ = [
     "main",
-    "sweep_main",
 ]

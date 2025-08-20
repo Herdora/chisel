@@ -16,11 +16,6 @@ from .core import (
     log,
     get_current_run,
     is_initialized,
-    SweepManager,
-    SweepConfig,
-    SweepResult,
-    sweep_folder,
-    sweep_files,
 )
 
 # Annotators (decorators and wrapping functions)
@@ -57,12 +52,6 @@ __all__ = [
     # Timing decorators
     "timed",
     "timed_call",
-    # Sweep functionality
-    "SweepManager",
-    "SweepConfig",
-    "SweepResult",
-    "sweep_folder",
-    "sweep_files",
     "__version__",
     # API exports (for advanced usage)
     "APIClient",
