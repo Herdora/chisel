@@ -89,8 +89,7 @@ def main():
         # Use custom x value (could be epoch, iteration, etc.)
         x_value = i * 0.5  # Example: x values will be 0, 0.5, 1.0, 1.5, etc.
 
-        kandc.log({"loss": loss.item(), "accuracy": random.random()}, x=x_value)
-
+  
     # Verify artifacts / print run id (fallback to local id if backend offline)
     try:
         backend_run_id = (

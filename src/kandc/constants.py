@@ -11,6 +11,7 @@ KANDC_BACKEND_APP_NAME_ENV_KEY = "KANDC_BACKEND_APP_NAME"
 KANDC_TRACE_BASE_DIR_ENV_KEY = "KANDC_TRACE_BASE_DIR"
 
 KANDC_DISABLED_ENV_KEY = "KANDC_DISABLED"  # if set, kandc will not run
+KANDC_PROFILER_DISABLED_ENV_KEY = "KANDC_PROFILER_DISABLED"  # if set, profiler will not run
 
 DEV_MODE = os.getenv("DEV_MODE", "False").lower() == "true"  # Default to production mode
 if DEV_MODE:

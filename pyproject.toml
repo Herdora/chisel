@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kandc"
-version = "0.0.27"
+version = "0.0.28"
 description = "Keys & Caches CLI - Accelerate your Python functions with cloud GPUs"
 readme = "README.md"
 license = {text = "MIT"}

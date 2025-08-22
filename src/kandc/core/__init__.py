@@ -1,7 +1,5 @@
 """
 Core functionality for kandc.
-
-This module provides the main run management and code snapshot functionality.
 """
 
 from .run import init, finish, get_current_run, is_initialized, log, Run

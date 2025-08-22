@@ -12,6 +12,12 @@ from .trace import (
     capture_model_class,
     parse_model_trace,
 )
+from .profiler import (
+    ProfilerWrapper,
+    ProfilerDecorator,
+    profile,
+    profiler,
+)
 
 __all__ = [
     # Timing decorators
@@ -22,4 +28,9 @@ __all__ = [
     "capture_model_instance",
     "capture_model_class",
     "parse_model_trace",
+    # Profiler decorators and wrappers
+    "ProfilerWrapper",
+    "ProfilerDecorator",
+    "profile",
+    "profiler",
 ]

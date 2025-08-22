@@ -26,6 +26,10 @@ from .annotators import (
     capture_model_instance,
     capture_model_class,
     parse_model_trace,
+    ProfilerWrapper,
+    ProfilerDecorator,
+    profile,
+    profiler,
 )
 
 # API functionality (if needed directly)
@@ -52,6 +56,11 @@ __all__ = [
     # Timing decorators
     "timed",
     "timed_call",
+    # Profiler decorators and wrappers
+    "ProfilerWrapper",
+    "ProfilerDecorator",
+    "profile",
+    "profiler",
     "__version__",
     # API exports (for advanced usage)
     "APIClient",
