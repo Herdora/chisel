@@ -1,10 +1,23 @@
-# Keys & Caches
+<!-- Hero image -->
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/8f49fec7-02aa-46e3-8e02-6cade0f56dd6"
+       alt="Keys and Caches logo"
+       width="200">
+</p>
 
-![Keys & Caches Banner](assets/banner.png)
+<!-- Title -->
+<h1 align="center">Keys & Caches</h1>
 
-A Python library for experiment tracking and machine learning workflow management.
 
----
+<!-- Optional blurb / CTAs -->
+<p align="center">
+  The open-source profiler that gives you a unified view of your entire stack - from PyTorch down to the GPU. 
+  <br />
+  <a href="https://discord.gg/5NXD5ddN">Join our Discord community!</a>
+</p>
+
+<br /> 
+<br /> 
 
 ## What is Keys & Caches?
 
@@ -187,7 +200,7 @@ See the `examples/` directory for detailed examples:
 
 ---
 
-## 🎓 Students & Educators
+## 🎓 Students and Educators
 
 Email us at **[founders@herdora.com](mailto:founders@herdora.com)** for support and collaboration opportunities!
 
