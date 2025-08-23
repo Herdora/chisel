@@ -88,8 +88,13 @@ def main():
 
         # Use custom x value (could be epoch, iteration, etc.)
         x_value = i * 0.5  # Example: x values will be 0, 0.5, 1.0, 1.5, etc.
+        
+        # Log metrics with custom x coordinate
+        kandc.log({
+            "loss": loss.item() - i * 0.01,  # Simulate decreasing loss
+            "accuracy": 0.7 + i * 0.02,     # Simulate increasing accuracy
+        }, step=i)
 
-  
     # Verify artifacts / print run id (fallback to local id if backend offline)
     try:
         backend_run_id = (

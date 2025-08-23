@@ -137,7 +137,7 @@ class SimpleNet(nn.Module):
         self.layers = nn.Sequential(
             nn.Linear(784, 128),
             nn.ReLU(),
-            nn.Linear(128, 10)
+            nn.Linear(128, 10),
         )
     
     def forward(self, x):
@@ -181,6 +181,9 @@ if __name__ == "__main__":
 See the `examples/` directory for detailed examples:
 - `complete_example.py` - Simple getting started example
 - `offline_example.py` - Offline mode usage
+- `profiler_example.py` - Performance profiling with model tracing
+- `timed_block.py` - Using timing decorators and context managers
+- `vllm_example.py` - Integration with VLLM for LLM inference tracking
 
 ---
 
