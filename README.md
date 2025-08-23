@@ -137,7 +137,7 @@ class SimpleNet(nn.Module):
         self.layers = nn.Sequential(
             nn.Linear(784, 128),
             nn.ReLU(),
-            nn.Linear(128, 10),
+            nn.Linear(128, 10)
         )
     
     def forward(self, x):
