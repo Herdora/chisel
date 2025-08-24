@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kandc-dev"                 # <-- only change
-version = "0.0.15.dev0"             # use PEP 440 pre/dev versions for clarity
+version = "0.0.29.dev0"             # use PEP 440 pre/dev versions for clarity
 description = "Keys & Caches - GPU profiling and tracing library (DEV)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -20,8 +20,13 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
-requires-python = ">=3.8"
-dependencies = ["requests>=2.25.0"]
+requires-python = ">=3.8,<3.14"
+dependencies = [
+    "requests>=2.25.0",
+    "torch>=2.0.0",
+    "numpy>=1.21.0",
+    "packaging>=21.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=6.0","ruff>=0.1.0"]
