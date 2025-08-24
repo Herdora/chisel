@@ -5,7 +5,7 @@ This package provides tools for tracking machine learning experiments,
 capturing performance metrics, and profiling model execution.
 """
 
-__version__ = "0.0.22"
+__version__ = "0.0.29"
 
 # Import from new modular structure
 
