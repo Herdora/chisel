@@ -93,7 +93,7 @@ def main():
         kandc.log({
             "loss": loss.item() - i * 0.01,  # Simulate decreasing loss
             "accuracy": 0.7 + i * 0.02,     # Simulate increasing accuracy
-        }, step=i)
+        }, x=i)
 
     # Verify artifacts / print run id (fallback to local id if backend offline)
     try:
